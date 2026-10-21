@@ -9,7 +9,7 @@ O sistema utiliza dados fictícios e não realiza diagnósticos ou decisões cl�
 ## 2. Equipe e responsabilidades
 
 | Papel | Integrante | Responsabilidade |
-|---|---|---|
+| --- | --- | --- |
 | Líder técnico / Gerente | Marcella | Arquitetura, integração e planejamento |
 | Backend | Sonally | Dados e regras de negócio |
 | Web 1 | Lethycia | Estudos, protocolos e usuários |
@@ -20,7 +20,7 @@ O sistema utiliza dados fictícios e não realiza diagnósticos ou decisões cl�
 ## 3. Tecnologias utilizadas
 
 | Componente | Tecnologia |
-|---|---|
+| --- | --- |
 | Backend | TypeScript, NestJS e Node.js |
 | Web | TypeScript, React e Vite |
 | Mobile | TypeScript, React Native e Expo |
@@ -54,3 +54,7 @@ As instruções de instalação, configuração do ambiente e execução do back
 ## 8. Documentação complementar
 
 A documentação do projeto incluirá requisitos funcionais, diagramas de arquitetura, decisões técnicas, evidências das sprints e relatórios das releases.
+
+## 9. Fatia inicial de acesso e usuários
+
+O protótipo das tasks 3115, 3078, 3081 e 3094 está na aplicação `web/` e nos módulos `backend/src/auth/` e `backend/src/users/`. A interface contém login, administração de usuários, proteção de rotas, menus por perfil e páginas auxiliares 403/404. Páginas genéricas sem design aprovado foram retiradas. Esta versão não inclui as telas da task 3205. Consulte [`docs/tasks-acesso-e-usuarios.md`](docs/tasks-acesso-e-usuarios.md) para credenciais fictícias, endpoints, limites do protótipo e instruções para execução.
