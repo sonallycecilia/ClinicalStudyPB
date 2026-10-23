@@ -9,7 +9,7 @@ O sistema utiliza dados fictícios e não realiza diagnósticos ou decisões cl�
 ## 2. Equipe e responsabilidades
 
 | Papel | Integrante | Responsabilidade |
-|---|---|---|
+| --- | --- | --- |
 | Líder técnico / Gerente | Marcella | Arquitetura, integração e planejamento |
 | Backend | Sonally | Dados e regras de negócio |
 | Web 1 | Lethycia | Estudos, protocolos e usuários |
@@ -20,7 +20,7 @@ O sistema utiliza dados fictícios e não realiza diagnósticos ou decisões cl�
 ## 3. Tecnologias utilizadas
 
 | Componente | Tecnologia |
-|---|---|
+| --- | --- |
 | Backend | TypeScript, NestJS e Node.js |
 | Web | TypeScript, React e Vite |
 | Mobile | TypeScript, React Native e Expo |
