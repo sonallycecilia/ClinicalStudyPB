@@ -54,3 +54,7 @@ As instruções de instalação, configuração do ambiente e execução do back
 ## 8. Documentação complementar
 
 A documentação do projeto incluirá requisitos funcionais, diagramas de arquitetura, decisões técnicas, evidências das sprints e relatórios das releases.
+
+## 9. Fatia inicial de acesso e usuários
+
+O protótipo das tasks 3115, 3078, 3081, 3094 e 3205 está na aplicação `web/` e nos módulos `backend/src/auth/` e `backend/src/users/`. A interface contém login, administração de usuários, proteção de rotas, menus por perfil e páginas auxiliares 403/404. Para o perfil Pesquisador, a task 3205 inclui lista de estudos, cadastro, edição, confirmação de sucesso e detalhes. Os dados de estudos são mantidos localmente no navegador; ainda não há endpoints nem persistência de banco para essa área. Consulte [`docs/tasks-acesso-e-usuarios.md`](docs/tasks-acesso-e-usuarios.md) para credenciais fictícias, endpoints, limites do protótipo e instruções para execução.
