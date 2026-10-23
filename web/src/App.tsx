@@ -4,6 +4,7 @@ import { AppLayout } from './components/AppLayout';
 import { RequireAuth, RequireRole } from './components/ProtectedRoute';
 import { LoginPage } from './pages/LoginPage';
 import { UsersPage } from './pages/UsersPage';
+import { StudiesPage } from './pages/StudiesPage';
 import { ForbiddenPage, NotFoundPage } from './pages/StatusPages';
 import { getHomeForRole } from './security/access';
 
@@ -21,6 +22,7 @@ function AppRoutes() {
       <Route element={<AppLayout />}>
         <Route element={<RequireRole />}>
           <Route path="/usuarios" element={<UsersPage />} />
+          <Route path="/estudos" element={<StudiesPage />} />
         </Route>
       </Route>
     </Route>

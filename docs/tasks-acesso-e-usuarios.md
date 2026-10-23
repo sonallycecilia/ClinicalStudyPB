@@ -1,8 +1,8 @@
 # Protótipo web — tasks 3115, 3078, 3081 e 3094
 
-Esta versão contém apenas o protótipo de acesso e administração de usuários, as proteções de navegação e os testes relacionados. As páginas genéricas sem design aprovado foram retiradas. **As telas da task 3205 não estão incluídas.**
+Esta versão reúne o protótipo de acesso e administração de usuários, a proteção de navegação, os testes de autorização e as telas da task 3205 para o perfil Pesquisador. As páginas genéricas sem design aprovado foram retiradas.
 
-A interface web apresenta os perfis Administrador, Pesquisador e Coordenador na administração de contas e na autenticação. Nesta versão, a tela funcional disponível após o login é a de Administração de usuários para o Administrador. Pesquisador e Coordenador são tipos de conta reconhecidos, mas são direcionados à tela 403 porque as telas específicas desses perfis não fazem parte deste pacote.
+A interface web contempla somente os perfis Administrador, Pesquisador e Coordenador; o perfil Participante não é exposto na interface. O Administrador acessa Administração de usuários. O Pesquisador acessa Estudos clínicos. O Coordenador continua sem página própria nesta versão e é direcionado à tela 403 até que exista um design aprovado para sua área.
 
 ## Relação entre as tasks
 
@@ -10,7 +10,7 @@ A interface web apresenta os perfis Administrador, Pesquisador e Coordenador na 
 | --- | --- | --- |
 | 3115 — Protótipo web: acesso e usuários | `web/src/pages/LoginPage.tsx`, `web/src/pages/UsersPage.tsx`, `web/src/styles.css`, `backend/src/users/` | Login, listagem, busca, filtro por perfil, resumo de contas, cadastro e edição de usuários. |
 | 3078 — Proteger rotas web | `web/src/components/ProtectedRoute.tsx`, `web/src/security/access.ts`, `backend/src/auth/access-token.guard.ts` | A interface redireciona usuários não autenticados; a API exige token bearer nas rotas privadas e confere se a conta continua ativa. |
-| 3081 — Ajustar menus conforme o perfil | `web/src/security/access.ts`, `web/src/components/AppLayout.tsx` | O menu de Administração de usuários é exibido somente para Administrador. Os perfis Pesquisador e Coordenador não recebem páginas genéricas sem design aprovado nesta versão. |
+| 3081 — Ajustar menus conforme o perfil | `web/src/security/access.ts`, `web/src/components/AppLayout.tsx` | Administração de usuários é exibida para Administrador e Estudos clínicos para Pesquisador. O Coordenador ainda não tem página própria nesta versão. |
 | 3094 — Testar acesso permitido e negado | `web/src/security/access.test.ts`, `backend/src/auth/*.spec.ts`, `backend/src/users/users.service.spec.ts` | Casos automatizados para menu/rota, token válido/inválido, perfil permitido/negado e operações básicas de usuários, incluindo testes E2E das respostas HTTP protegidas. |
 
 ## Estrutura relevante
@@ -37,6 +37,7 @@ web/src/
 ├── pages/
 │   ├── LoginPage.tsx
 │   ├── StatusPages.tsx
+│   ├── StudiesPage.tsx
 │   └── UsersPage.tsx
 └── security/
 ```
@@ -106,3 +107,14 @@ npm run build
 ```
 
 Os testes foram adicionados, mas devem ser executados no ambiente Node compatível após instalar as dependências.
+
+## Confirmação antes de excluir um usuário
+
+Na tela de Administração de usuários, o botão **Excluir** abre um modal de confirmação com o nome e o perfil da conta selecionada. A exclusão só acontece depois de confirmar em **Excluir usuário**; **Cancelar**, clicar fora do modal ou pressionar `Esc` fecha a confirmação sem excluir. A própria conta conectada não pode ser excluída. A implementação fica em `web/src/pages/UsersPage.tsx`, e os estilos do modal ficam em `web/src/styles.css`.
+
+
+## Task 3205 — protótipo web de estudos e recrutamento (perfil Pesquisador)
+
+A interface `web/src/pages/StudiesPage.tsx` implementa a lista de estudos clínicos, os indicadores de resumo, busca e filtro por situação, menu de ações, cadastro, edição, confirmação de sucesso e detalhes do estudo. A rota fica em `web/src/App.tsx`; o menu e as permissões do perfil Pesquisador ficam em `web/src/security/access.ts`; os estilos específicos estão no fim de `web/src/styles.css`.
+
+**Limitação:** estudos e indicadores são armazenados localmente no navegador (`localStorage`). Esta entrega não cria endpoints ou persistência de banco para estudos. A integração com o backend deve ser feita quando a equipe definir o contrato da API. O perfil Participante continua fora da interface web.

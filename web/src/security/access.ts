@@ -1,5 +1,5 @@
 import type { UserRole } from '../types';
-import { UsersRound } from 'lucide-react';
+import { UsersRound, FlaskConical } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 export interface MenuItem {
@@ -9,15 +9,15 @@ export interface MenuItem {
   roles: UserRole[];
 }
 
-// Apenas a página com design aprovado nesta versão fica disponível no menu.
-// As áreas do Pesquisador e do Coordenador serão adicionadas quando seus designs
-// forem implementados em uma task própria; esta versão não inclui a task 3205.
+// Cada perfil enxerga somente as áreas implementadas para ele nesta versão.
 export const MENU_ITEMS: MenuItem[] = [
   { label: 'Administração de usuários', path: '/usuarios', icon: UsersRound, roles: ['Administrador'] },
+  { label: 'Estudos clínicos', path: '/estudos', icon: FlaskConical, roles: ['Pesquisador'] },
 ];
 
 const ROUTE_ACCESS: Record<string, UserRole[]> = {
   '/usuarios': ['Administrador'],
+  '/estudos': ['Pesquisador'],
 };
 
 export function menuForRole(role: UserRole): MenuItem[] {
@@ -32,5 +32,6 @@ export function canAccessRoute(role: UserRole | undefined, path: string): boolea
 
 export function getHomeForRole(role: UserRole): string {
   if (role === 'Administrador') return '/usuarios';
+  if (role === 'Pesquisador') return '/estudos';
   return '/403';
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
-import { Eye, EyeOff, Plus, Search, ShieldCheck, UserRound, X } from 'lucide-react';
+import { Eye, EyeOff, Plus, Search, ShieldCheck, Trash2, UserRound, X } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { createLocalUser, deleteLocalUser, listLocalUsers, updateLocalUser } from '../auth/localUsers';
 import type { AccountStatus, User, UserRole } from '../types';
@@ -32,6 +32,9 @@ export function UsersPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
+  const [deletingUser, setDeletingUser] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -57,6 +60,15 @@ export function UsersPage() {
     void load();
     return () => { cancelled = true; };
   }, [accessToken, demoMode]);
+
+  useEffect(() => {
+    if (!deleteTarget) return;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape' && !deletingUser) closeDeleteConfirmation();
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [deleteTarget, deletingUser]);
 
   const filteredUsers = useMemo(() => users.filter((entry) => {
     const term = search.trim().toLocaleLowerCase('pt-BR');
@@ -134,12 +146,27 @@ export function UsersPage() {
     }
   }
 
-  async function deleteUser(entry: User) {
+  function requestDeleteUser(entry: User) {
     if (entry.id === signedInUser?.id) {
       setNotice('Por segurança, você não pode excluir a própria conta.');
       return;
     }
-    if (!window.confirm(`Excluir a conta de ${entry.name}? Esta ação não poderá ser desfeita.`)) return;
+    setNotice('');
+    setDeleteError('');
+    setDeleteTarget(entry);
+  }
+
+  function closeDeleteConfirmation() {
+    if (deletingUser) return;
+    setDeleteTarget(null);
+    setDeleteError('');
+  }
+
+  async function confirmDeleteUser() {
+    if (!deleteTarget || deletingUser) return;
+    const entry = deleteTarget;
+    setDeletingUser(true);
+    setDeleteError('');
     try {
       if (!demoMode && accessToken) {
         const response = await fetch(`${API_URL}/users/${entry.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}` } });
@@ -148,9 +175,12 @@ export function UsersPage() {
       } else {
         setUsers(deleteLocalUser(entry.id));
       }
-      setNotice('Conta excluída.');
+      setDeleteTarget(null);
+      setNotice('Conta excluída com sucesso.');
     } catch (reason) {
-      setNotice(reason instanceof Error ? reason.message : 'Não foi possível excluir a conta.');
+      setDeleteError(reason instanceof Error ? reason.message : 'Não foi possível excluir a conta.');
+    } finally {
+      setDeletingUser(false);
     }
   }
 
@@ -183,7 +213,7 @@ export function UsersPage() {
                 <td className="email-cell">{entry.email}</td>
                 <td><span className={`role-pill role-${slug(entry.role)}`}>{entry.role}</span></td>
                 <td><span className={`status-pill status-${entry.status.toLowerCase()}`}><span />{entry.status}</span></td>
-                <td><div className="row-actions"><button type="button" className="text-action edit-action" onClick={() => openEdit(entry)}>Editar</button><button type="button" className="text-action delete-action" onClick={() => void deleteUser(entry)}>Excluir</button></div></td>
+                <td><div className="row-actions"><button type="button" className="text-action edit-action" onClick={() => openEdit(entry)}>Editar</button><button type="button" className="text-action delete-action" onClick={() => requestDeleteUser(entry)}>Excluir</button></div></td>
               </tr>)}
               {!isLoading && filteredUsers.length === 0 && <tr><td colSpan={5} className="table-message">Nenhuma conta corresponde à busca.</td></tr>}
             </tbody>
@@ -204,6 +234,26 @@ export function UsersPage() {
             {formError && <p className="form-error form-error-wide" role="alert">{formError}</p>}
             <footer className="modal-actions"><button className="button button-outline" type="button" onClick={closeModal} disabled={saving}>Cancelar</button><button className="button button-primary" type="submit" disabled={saving}>{saving ? 'Salvando…' : editing ? 'Salvar alterações' : 'Cadastrar usuário'}</button></footer>
           </form>
+        </section>
+      </div>}
+      {deleteTarget && <div className="modal-backdrop delete-confirm-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeDeleteConfirmation(); }}>
+        <section className="delete-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="delete-user-title" aria-describedby="delete-user-description">
+          <header className="delete-confirm-header">
+            <div className="delete-confirm-icon"><Trash2 size={19} aria-hidden="true" /></div>
+            <h2 id="delete-user-title">Excluir usuário?</h2>
+          </header>
+          <p id="delete-user-description" className="delete-confirm-description">Deseja realmente excluir esta conta do sistema?</p>
+          <div className="delete-user-preview">
+            <div className="avatar">{getInitials(deleteTarget.name)}</div>
+            <div className="delete-user-copy"><strong>{deleteTarget.name}</strong><span>{deleteTarget.role}</span></div>
+          </div>
+          {deleteError && <p className="form-error delete-confirm-error" role="alert">{deleteError}</p>}
+          <footer className="delete-confirm-actions">
+            <button className="button button-outline" type="button" onClick={closeDeleteConfirmation} disabled={deletingUser}>Cancelar</button>
+            <button className="button button-danger" type="button" onClick={() => void confirmDeleteUser()} disabled={deletingUser}>
+              <Trash2 size={15} aria-hidden="true" />{deletingUser ? 'Excluindo…' : 'Excluir usuário'}
+            </button>
+          </footer>
         </section>
       </div>}
     </div>
