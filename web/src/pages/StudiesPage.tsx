@@ -5,7 +5,6 @@ import {
   Eye, HeartPulse, MoreVertical, Moon, Pencil, Search, UsersRound,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
-import { listLocalUsers } from '../auth/localUsers';
 
 type StudyStatus = 'Em andamento' | 'Planejado';
 type StudyKind = 'Estudo observacional' | 'Estudo longitudinal';
@@ -181,12 +180,10 @@ export function StudiesPage() {
   const selectedStudy = studies.find((study) => study.id === selectedId) ?? studies[0];
   const editingStudy = editingId ? studies.find((study) => study.id === editingId) : undefined;
   const researcherOptions = useMemo(() => {
-    const fromLocalAccounts = listLocalUsers()
-      .filter((entry) => entry.role === 'Pesquisador' && entry.status === 'Ativo')
-      .map((entry) => entry.name);
-    if (user?.role === 'Pesquisador') fromLocalAccounts.unshift(user.name);
-    return Array.from(new Set(fromLocalAccounts.length ? fromLocalAccounts : ['Marina Costa']));
-  }, [user]);
+    const names = studies.map((study) => study.researcher);
+    if (user?.role === 'Pesquisador') names.unshift(user.name);
+    return Array.from(new Set(names));
+  }, [user, studies]);
 
   const visibleStudies = useMemo(() => studies.filter((study) => {
     const term = search.trim().toLocaleLowerCase('pt-BR');

@@ -2,11 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Eye, EyeOff, Plus, Search, ShieldCheck, Trash2, UserRound, X } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
-import { createLocalUser, deleteLocalUser, listLocalUsers, updateLocalUser } from '../auth/localUsers';
 import type { AccountStatus, User, UserRole } from '../types';
 
-const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3000';
-const roles: UserRole[] = ['Administrador', 'Pesquisador', 'Coordenador'];
+const roles: UserRole[] = ['Administrador', 'Pesquisador', 'Coordenador', 'Participante'];
 
 interface UserForm {
   name: string;
@@ -20,7 +18,7 @@ interface UserForm {
 const blankForm: UserForm = { name: '', email: '', phone: '', password: '', role: 'Pesquisador', status: 'Ativo' };
 
 export function UsersPage() {
-  const { accessToken, demoMode, useDemoMode, user: signedInUser } = useAuth();
+  const { accessToken, request, user: signedInUser } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -40,26 +38,20 @@ export function UsersPage() {
     let cancelled = false;
     async function load() {
       setIsLoading(true);
-      if (demoMode || !accessToken) {
-        if (!cancelled) setUsers(listLocalUsers());
-        if (!cancelled) setIsLoading(false);
-        return;
-      }
       try {
-        const response = await fetch(`${API_URL}/users`, { headers: { Authorization: `Bearer ${accessToken}` } });
+        const response = await request('/users');
         if (!response.ok) throw new Error('A API não respondeu com sucesso.');
         const data = await response.json() as User[];
         if (!cancelled) setUsers(data);
       } catch {
-        useDemoMode();
-        if (!cancelled) setUsers(listLocalUsers());
+        if (!cancelled) setNotice('Não foi possível carregar os usuários. Atualize a página para tentar novamente.');
       } finally {
         if (!cancelled) setIsLoading(false);
       }
     }
     void load();
     return () => { cancelled = true; };
-  }, [accessToken, demoMode]);
+  }, [accessToken]);
 
   useEffect(() => {
     if (!deleteTarget) return;
@@ -113,8 +105,8 @@ export function UsersPage() {
     try {
       const payload: Record<string, string> = { name: form.name.trim(), email: form.email.trim(), phone: form.phone.trim(), role: form.role, status: form.status };
       if (form.password.trim()) payload.password = form.password;
-      if (!demoMode && accessToken) {
-        const response = await fetch(editing ? `${API_URL}/users/${editing.id}` : `${API_URL}/users`, {
+      if (accessToken) {
+        const response = await request(editing ? `/users/${editing.id}` : '/users', {
           method: editing ? 'PATCH' : 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
           body: JSON.stringify(editing ? payload : { ...payload, password: form.password }),
@@ -129,13 +121,7 @@ export function UsersPage() {
         }
         const saved = await response.json() as User;
         setUsers((current) => editing ? current.map((entry) => entry.id === saved.id ? saved : entry) : [...current, saved]);
-      } else if (editing) {
-        const updated = updateLocalUser(editing.id, { name: form.name.trim(), email: form.email.trim(), phone: form.phone.trim(), role: form.role, status: form.status });
-        setUsers(updated);
-      } else {
-        const created = createLocalUser({ name: form.name.trim(), email: form.email.trim(), phone: form.phone.trim(), role: form.role, password: form.password });
-        setUsers((current) => [...current, created]);
-      }
+      } else { throw new Error('Faça login novamente.'); }
       setModalOpen(false);
       setEditing(null);
       setNotice(editing ? 'Alterações salvas com sucesso.' : 'Usuário cadastrado com sucesso.');
@@ -168,12 +154,12 @@ export function UsersPage() {
     setDeletingUser(true);
     setDeleteError('');
     try {
-      if (!demoMode && accessToken) {
-        const response = await fetch(`${API_URL}/users/${entry.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}` } });
+      if (accessToken) {
+        const response = await request(`/users/${entry.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}` } });
         if (!response.ok) throw new Error('Não foi possível excluir a conta na API.');
         setUsers((current) => current.filter((user) => user.id !== entry.id));
       } else {
-        setUsers(deleteLocalUser(entry.id));
+        throw new Error('Faça login novamente.');
       }
       setDeleteTarget(null);
       setNotice('Conta excluída com sucesso.');

@@ -2,6 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { canAccessRoute, getHomeForRole, menuForRole } from './access';
 
 describe('permissões por perfil — tasks 3078, 3081 e 3094', () => {
+  it('mantém participante sem acesso às áreas administrativas e de pesquisa', () => {
+    expect(menuForRole('Participante')).toEqual([]);
+    expect(canAccessRoute('Participante', '/usuarios')).toBe(false);
+    expect(canAccessRoute('Participante', '/estudos')).toBe(false);
+    expect(getHomeForRole('Participante')).toBe('/403');
+    expect(canAccessRoute('Coordenador', '/estudos')).toBe(false);
+  });
   it('exibe administração de usuários somente para administradores', () => {
     expect(menuForRole('Administrador').map((item) => item.path)).toEqual(['/usuarios']);
     expect(menuForRole('Pesquisador').map((item) => item.path)).toEqual(['/estudos']);

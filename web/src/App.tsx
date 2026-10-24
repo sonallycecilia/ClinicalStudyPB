@@ -9,7 +9,8 @@ import { ForbiddenPage, NotFoundPage } from './pages/StatusPages';
 import { getHomeForRole } from './security/access';
 
 function LandingRedirect() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+  if (loading) return <p role="status">Validando sessão…</p>;
   return <Navigate to={user ? getHomeForRole(user.role) : '/login'} replace />;
 }
 

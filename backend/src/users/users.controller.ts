@@ -10,6 +10,7 @@ import {
   UseGuards,
   BadRequestException,
   ForbiddenException,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { AccessTokenGuard } from '../auth/access-token.guard.js';
 import { Roles } from '../auth/roles.decorator.js';
@@ -36,8 +37,13 @@ export class UsersController {
     return this.usersService.create(body);
   }
 
+  @Get(':id')
+  find(@Param('id', new ParseUUIDPipe()) id: string) {
+    return this.usersService.findById(id);
+  }
+
   @Patch(':id')
-  update(@Param('id') id: string, @Body() body: UpdateUserInput, @Req() request: AuthenticatedRequest) {
+  update(@Param('id', new ParseUUIDPipe()) id: string, @Body() body: UpdateUserInput, @Req() request: AuthenticatedRequest) {
     this.validateUpdate(body);
     if (request.user?.sub === id && body.status === 'Inativo') {
       throw new ForbiddenException('Não é permitido inativar a própria conta.');
@@ -49,11 +55,11 @@ export class UsersController {
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string, @Req() request: AuthenticatedRequest) {
+  async remove(@Param('id', new ParseUUIDPipe()) id: string, @Req() request: AuthenticatedRequest) {
     if (request.user?.sub === id) {
       throw new ForbiddenException('Não é permitido excluir a própria conta.');
     }
-    this.usersService.remove(id);
+    await this.usersService.remove(id);
     return { message: 'Conta excluída com sucesso.' };
   }
 
@@ -61,13 +67,13 @@ export class UsersController {
     if (!body || typeof body !== 'object') {
       throw new BadRequestException('Informe os dados da conta.');
     }
-    if (typeof body.name !== 'string' || body.name.trim().length < 3) {
+    if (typeof body.name !== 'string' || body.name.trim().length < 3 || body.name.trim().length > 200) {
       throw new BadRequestException('Informe o nome completo.');
     }
-    if (typeof body.email !== 'string' || !/^\S+@\S+\.\S+$/.test(body.email)) {
+    if (typeof body.email !== 'string' || body.email.trim().length > 254 || !/^\S+@\S+\.\S+$/.test(body.email.trim())) {
       throw new BadRequestException('Informe um e-mail válido.');
     }
-    if (typeof body.phone !== 'string' || body.phone.trim().length < 8) {
+    if (typeof body.phone !== 'string' || body.phone.trim().length < 8 || body.phone.trim().length > 30) {
       throw new BadRequestException('Informe um telefone válido.');
     }
     if (typeof body.password !== 'string' || body.password.length < 8) {
@@ -82,13 +88,13 @@ export class UsersController {
     if (!body || typeof body !== 'object' || Object.keys(body).length === 0) {
       throw new BadRequestException('Informe ao menos um campo para alterar.');
     }
-    if (body.name !== undefined && (typeof body.name !== 'string' || body.name.trim().length < 3)) {
+    if (body.name !== undefined && (typeof body.name !== 'string' || body.name.trim().length < 3 || body.name.trim().length > 200)) {
       throw new BadRequestException('Informe o nome completo.');
     }
-    if (body.email !== undefined && (typeof body.email !== 'string' || !/^\S+@\S+\.\S+$/.test(body.email))) {
+    if (body.email !== undefined && (typeof body.email !== 'string' || body.email.trim().length > 254 || !/^\S+@\S+\.\S+$/.test(body.email.trim()))) {
       throw new BadRequestException('Informe um e-mail válido.');
     }
-    if (body.phone !== undefined && (typeof body.phone !== 'string' || body.phone.trim().length < 8)) {
+    if (body.phone !== undefined && (typeof body.phone !== 'string' || body.phone.trim().length < 8 || body.phone.trim().length > 30)) {
       throw new BadRequestException('Informe um telefone válido.');
     }
     if (body.password !== undefined && (typeof body.password !== 'string' || body.password.length < 8)) {

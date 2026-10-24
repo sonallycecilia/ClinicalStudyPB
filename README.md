@@ -49,7 +49,49 @@ Os resultados dos testes e da cobertura serão registrados ao longo do desenvolv
 
 ## 7. Instalação e execução
 
-As instruções de instalação, configuração do ambiente e execução do backend, da aplicação web, do aplicativo mobile e do banco de dados serão adicionadas conforme a estrutura do projeto for configurada.
+### Com Docker (ambiente de desenvolvimento)
+
+Instale Docker com Compose v2 e mantenha o serviço Docker iniciado. No Windows e macOS, use Docker Desktop; no Linux, Docker Engine com o plugin Compose ou Docker Desktop. Use containers Linux.
+
+Depois de clonar o repositório, execute na raiz:
+
+```bash
+docker compose up --build
+```
+
+Esse comando instala as dependências dentro das imagens e inicia PostgreSQL, aplica as migrations e inicia backend e web. Não é necessário instalar Node.js ou npm na máquina, executar `npm ci`, nem criar arquivos `.env` para a demonstração padrão.
+
+Abra `http://localhost:5173`; a API fica em `http://localhost:3000`. A web inicia depois que a API estiver respondendo. As portas 3000 e 5173 devem estar livres; encerre servidores locais antes de usar Docker.
+
+Alterações em `backend/src`, `web/src` e `web/index.html` são refletidas durante o desenvolvimento. As dependências ficam dentro das imagens, separadas do `node_modules` da máquina. Ao alterar dependências ou outros arquivos de configuração, execute novamente `docker compose up --build`.
+
+Para rodar em segundo plano, use `docker compose up --build -d`. Para acompanhar os logs, use `docker compose logs -f`. Para parar e remover os containers, execute `docker compose down`; em primeiro plano, `Ctrl+C` também para os serviços.
+
+Essa configuração é para desenvolvimento local. O Compose define a URL pública da API como `http://localhost:3000`, pois as chamadas partem do navegador. Os arquivos `.env` locais não são copiados para as imagens; configurações adicionais devem ser declaradas no Compose. Usuários e sessões são persistidos no PostgreSQL. O Compose habilita explicitamente o seed de quatro contas fictícias, preservando contas existentes. Consulte [PostgreSQL e migrations](docs/postgresql.md) para conexão e comandos.
+
+### Sem Docker
+
+Use Node.js 24, conforme `backend/.nvmrc`. Na raiz do repositório, instale as dependências uma vez:
+
+```bash
+npm ci
+npm run setup
+```
+
+Depois, inicie backend e web juntos com um único comando:
+
+```bash
+npm run dev
+```
+
+Acesse a aplicação em `http://localhost:5173`. A API fica em `http://localhost:3000`.
+Os logs aparecem no mesmo terminal, identificados por `backend` e `web`. Use `Ctrl+C` para encerrar os dois serviços. Se um deles encerrar, o outro também será encerrado.
+
+As configurações opcionais estão em `backend/.env.example` e `web/.env.example`; copie para `.env` na respectiva pasta quando precisar personalizá-las. As portas 3000 e 5173 devem estar livres antes de iniciar. A web usa porta fixa para corresponder à origem CORS padrão do backend.
+
+Para executar separadamente, use `npm run dev:backend` ou `npm run dev:web` na raiz. Repita `npm ci` quando mudar o lockfile da raiz e `npm run setup` quando mudarem as dependências de backend ou web.
+
+O backend exige `DATABASE_URL`. Antes de executar, aplique as migrations conforme [PostgreSQL e migrations](docs/postgresql.md). Cadastro, consulta, edição, exclusão e login de usuários usam o banco; logout invalida a sessão no servidor. Os estudos da web continuam no navegador.
 
 ## 8. Documentação complementar
 

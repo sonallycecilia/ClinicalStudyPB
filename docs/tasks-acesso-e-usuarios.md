@@ -2,7 +2,7 @@
 
 Esta versão reúne o protótipo de acesso e administração de usuários, a proteção de navegação, os testes de autorização e as telas da task 3205 para o perfil Pesquisador. As páginas genéricas sem design aprovado foram retiradas.
 
-A interface web contempla somente os perfis Administrador, Pesquisador e Coordenador; o perfil Participante não é exposto na interface. O Administrador acessa Administração de usuários. O Pesquisador acessa Estudos clínicos. O Coordenador continua sem página própria nesta versão e é direcionado à tela 403 até que exista um design aprovado para sua área.
+A administração web permite cadastrar e editar os quatro perfis, incluindo Participante. O Administrador acessa Administração de usuários. O Pesquisador acessa Estudos clínicos. Coordenador e Participante podem autenticar, consultar a própria conta e encerrar a sessão, mas ainda não possuem página própria e são direcionados à tela 403, com saída para o login.
 
 ## Relação entre as tasks
 
@@ -50,7 +50,9 @@ A integração em `backend/src/app.module.ts` registra os módulos de autentica�
 | --- | --- | --- |
 | `POST` | `/auth/login` | Público; retorna token e dados públicos do usuário. |
 | `GET` | `/auth/me` | Token válido de conta ativa. |
+| `POST` | `/auth/logout` | Sessão válida; invalida a sessão atual no banco. |
 | `GET` | `/users` | Administrador. |
+| `GET` | `/users/:id` | Administrador; UUID válido. |
 | `POST` | `/users` | Administrador. |
 | `PATCH` | `/users/:id` | Administrador. |
 | `DELETE` | `/users/:id` | Administrador; não pode excluir a própria conta. |
@@ -64,6 +66,7 @@ Estas contas são exclusivamente dados de demonstração. Não use credenciais r
 | Administrador | `ana.souza@clinicalstudypb.test` | `Admin123!` |
 | Pesquisador | `marina.costa@clinicalstudypb.test` | `Demo123!` |
 | Coordenador | `rafael.lima@clinicalstudypb.test` | `Demo123!` |
+| Participante | `bianca.oliveira@clinicalstudypb.test` | `Demo123!` |
 
 ## Como executar
 
@@ -75,6 +78,7 @@ Use a versão Node definida pelo projeto (`backend/.nvmrc`, Node 24):
 cd backend
 cp .env.example .env
 npm ci
+npm run db:migrate
 npm run start:dev
 ```
 
@@ -92,7 +96,7 @@ npm run dev
 
 Abra o endereço mostrado pelo Vite (normalmente `http://localhost:5173`). Para apontar a interface para outra API, crie `web/.env` com `VITE_API_URL=http://localhost:3000`.
 
-Se a API estiver indisponível, a interface pode usar as contas fictícias no modo de demonstração. Nesse modo, alterações na tabela ficam apenas no `localStorage` do navegador; a API utiliza dados em memória. Isso é suficiente para o protótipo, mas não substitui persistência PostgreSQL nem autenticação configurada para produção.
+As contas fictícias são criadas no PostgreSQL pelo seed explícito de desenvolvimento, habilitado no Compose; para execução local, consulte [PostgreSQL](postgresql.md). A interface depende da API e não troca para dados locais se ela falhar. CRUD e login usam PostgreSQL. O logout invalida a sessão no banco antes de limpar o navegador; se a API estiver indisponível, a interface informa a falha e permite tentar novamente. Alterações de senha ou inativação revogam todas as sessões da conta. Alterações de perfil valem na próxima requisição protegida. O administrador não pode excluir, inativar ou remover o próprio perfil administrativo.
 
 ## Testes
 
@@ -106,7 +110,7 @@ npm test
 npm run build
 ```
 
-Os testes foram adicionados, mas devem ser executados no ambiente Node compatível após instalar as dependências.
+Os testes E2E exigem `DATABASE_URL` e PostgreSQL disponível. Cada suíte usa um schema temporário, preservando os dados de desenvolvimento. São cobertos os quatro perfis, CRUD persistente e invalidação de sessões, inclusive após reiniciar a aplicação.
 
 ## Confirmação antes de excluir um usuário
 
@@ -117,4 +121,4 @@ Na tela de Administração de usuários, o botão **Excluir** abre um modal de c
 
 A interface `web/src/pages/StudiesPage.tsx` implementa a lista de estudos clínicos, os indicadores de resumo, busca e filtro por situação, menu de ações, cadastro, edição, confirmação de sucesso e detalhes do estudo. A rota fica em `web/src/App.tsx`; o menu e as permissões do perfil Pesquisador ficam em `web/src/security/access.ts`; os estilos específicos estão no fim de `web/src/styles.css`.
 
-**Limitação:** estudos e indicadores são armazenados localmente no navegador (`localStorage`). Esta entrega não cria endpoints ou persistência de banco para estudos. A integração com o backend deve ser feita quando a equipe definir o contrato da API. O perfil Participante continua fora da interface web.
+**Limitação:** estudos e indicadores são armazenados localmente no navegador (`localStorage`). Esta entrega não cria endpoints ou persistência de banco para estudos. A integração com o backend deve ser feita quando a equipe definir o contrato da API. O perfil Participante pode ser administrado na web, mas ainda não possui área própria.
