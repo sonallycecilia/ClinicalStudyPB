@@ -356,7 +356,7 @@ export function StudiesPage() {
           <div><h1>{selectedStudy.title}</h1><p>{selectedStudy.kind} <span>•</span> Código {selectedStudy.code}</p></div>
           <div className="study-detail-hero-actions"><span className={`study-status status-${selectedStudy.status.toLowerCase().replace(' ', '-')}`}><i />{selectedStudy.status}</span><button className="button button-primary" type="button" onClick={() => openEdit(selectedStudy)}><Pencil size={14} /> Editar estudo</button></div>
         </section>
-        <div className="study-detail-grid">
+        <div className="study-detail-grid page-content-offset">
           <div className="study-detail-main-column">
             <section className="study-detail-card study-information-card">
               <h2>Informações do estudo</h2>
@@ -388,34 +388,36 @@ export function StudiesPage() {
   return (
     <div className="page-wrap studies-page">
       <section className="page-heading studies-heading"><h1>Estudos clínicos</h1><button className="button button-primary new-study-button" type="button" onClick={openCreate}>+ Cadastrar estudo</button></section>
-      <section className="study-stat-grid" aria-label="Resumo dos estudos">
-        <article className="study-stat-card"><p>Estudos cadastrados</p><strong>{String(studyStats.total).padStart(2, '0')}</strong></article>
-        <article className="study-stat-card"><p>Em andamento</p><strong>{String(studyStats.inProgress).padStart(2, '0')}</strong></article>
-        <article className="study-stat-card"><p>Planejados</p><strong>{String(studyStats.planned).padStart(2, '0')}</strong></article>
-      </section>
-      <section className="study-list-panel">
-        <div className="study-list-heading"><h2>Meus estudos</h2><div className="study-list-tools"><label className="study-search"><Search size={15} /><span className="sr-only">Buscar estudo</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar estudo..." /></label><label className="study-filter"><span className="sr-only">Filtrar estudos</span><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option>Todos</option><option>Em andamento</option><option>Planejado</option></select><ChevronDown size={13} /></label></div></div>
-        <div className="study-cards-grid">
-          {visibleStudies.map((study) => {
-            const progress = progressFor(study);
-            return <article className="study-card" key={study.id}>
-              <div className="study-card-top">
-                <div className="study-card-symbol">{studyIcon(study.symbol, 18)}</div>
-                <div className="study-card-title"><h3>{study.title}</h3><p>{study.kind}</p></div>
-                <div className="study-card-menu-wrap"><button className="study-menu-trigger" type="button" aria-label={`Ações de ${study.title}`} aria-expanded={openActionsFor === study.id} onClick={() => setOpenActionsFor((current) => current === study.id ? null : study.id)}><MoreVertical size={17} /></button>{openActionsFor === study.id && <div className="study-action-menu"><button type="button" onClick={() => startDetails(study)}><Eye size={14} />Ver detalhes</button><button type="button" onClick={() => openEdit(study)}><Pencil size={14} />Editar estudo</button></div>}</div>
-                <span className={`study-status status-${study.status.toLowerCase().replace(' ', '-')}`}><i />{study.status}</span>
-              </div>
-              <div className="study-card-body">
-                <div className="study-meta-line"><CalendarDays size={14} /><div><span>Período</span><strong>{dateRange(study)}</strong></div></div>
-                <div className="study-meta-line"><UsersRound size={14} /><div><span>Participantes</span><strong>{study.participantsLinked} de {study.participantLimit} participantes</strong></div></div>
-                <div className="study-progress-label"><span>Progresso</span><strong>{progress}%</strong></div>
-                <div className="study-progress-track"><span style={{ width: `${progress}%` }} /></div>
-              </div>
-            </article>;
-          })}
-          {visibleStudies.length === 0 && <div className="study-empty-state">Nenhum estudo corresponde à busca.</div>}
-        </div>
-      </section>
+      <div className="page-content-offset">
+        <section className="study-stat-grid" aria-label="Resumo dos estudos">
+          <article className="study-stat-card"><p>Estudos cadastrados</p><strong>{String(studyStats.total).padStart(2, '0')}</strong></article>
+          <article className="study-stat-card"><p>Em andamento</p><strong>{String(studyStats.inProgress).padStart(2, '0')}</strong></article>
+          <article className="study-stat-card"><p>Planejados</p><strong>{String(studyStats.planned).padStart(2, '0')}</strong></article>
+        </section>
+        <section className="study-list-panel">
+          <div className="study-list-heading"><h2>Meus estudos</h2><div className="study-list-tools"><label className="study-search"><Search size={15} /><span className="sr-only">Buscar estudo</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar estudo..." /></label><label className="study-filter"><span className="sr-only">Filtrar estudos</span><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option>Todos</option><option>Em andamento</option><option>Planejado</option></select><ChevronDown size={13} /></label></div></div>
+          <div className="study-cards-grid">
+            {visibleStudies.map((study) => {
+              const progress = progressFor(study);
+              return <article className="study-card" key={study.id}>
+                <div className="study-card-top">
+                  <div className="study-card-symbol">{studyIcon(study.symbol, 18)}</div>
+                  <div className="study-card-title"><h3>{study.title}</h3><p>{study.kind}</p></div>
+                  <div className="study-card-menu-wrap"><button className="study-menu-trigger" type="button" aria-label={`Ações de ${study.title}`} aria-expanded={openActionsFor === study.id} onClick={() => setOpenActionsFor((current) => current === study.id ? null : study.id)}><MoreVertical size={17} /></button>{openActionsFor === study.id && <div className="study-action-menu"><button type="button" onClick={() => startDetails(study)}><Eye size={14} />Ver detalhes</button><button type="button" onClick={() => openEdit(study)}><Pencil size={14} />Editar estudo</button></div>}</div>
+                  <span className={`study-status status-${study.status.toLowerCase().replace(' ', '-')}`}><i />{study.status}</span>
+                </div>
+                <div className="study-card-body">
+                  <div className="study-meta-line"><CalendarDays size={14} /><div><span>Período</span><strong>{dateRange(study)}</strong></div></div>
+                  <div className="study-meta-line"><UsersRound size={14} /><div><span>Participantes</span><strong>{study.participantsLinked} de {study.participantLimit} participantes</strong></div></div>
+                  <div className="study-progress-label"><span>Progresso</span><strong>{progress}%</strong></div>
+                  <div className="study-progress-track"><span style={{ width: `${progress}%` }} /></div>
+                </div>
+              </article>;
+            })}
+            {visibleStudies.length === 0 && <div className="study-empty-state">Nenhum estudo corresponde à busca.</div>}
+          </div>
+        </section>
+      </div>
       {dialogMode === 'create' && renderStudyForm(false)}
       {dialogMode === 'edit' && renderStudyForm(true)}
       {dialogMode === 'success' && renderSuccessDialog()}
