@@ -1,5 +1,5 @@
 import type { UserRole } from '../types';
-import { UsersRound, FlaskConical } from 'lucide-react';
+import { UsersRound, FlaskConical, LayoutDashboard, Users, CalendarCheck, CalendarClock, FileText, } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 export interface MenuItem {
@@ -13,11 +13,21 @@ export interface MenuItem {
 export const MENU_ITEMS: MenuItem[] = [
   { label: 'Administração de usuários', path: '/usuarios', icon: UsersRound, roles: ['Administrador'] },
   { label: 'Estudos clínicos', path: '/estudos', icon: FlaskConical, roles: ['Pesquisador'] },
+  { label: 'Painel do coordenador', path: '/coordenador/painel', icon: LayoutDashboard, roles: ['Coordenador'] },
+  { label: 'Candidatos e participantes', path: '/coordenador/candidatos', icon: Users, roles: ['Coordenador'] },
+  { label: 'Visitas e avaliações', path: '/coordenador/visitas', icon: CalendarCheck, roles: ['Coordenador'] },
+  { label: 'Reagendamentos', path: '/coordenador/reagendamentos', icon: CalendarClock, roles: ['Coordenador'] },
+  { label: 'Relatórios', path: '/coordenador/relatorios', icon: FileText, roles: ['Coordenador'] },
 ];
 
 const ROUTE_ACCESS: Record<string, UserRole[]> = {
   '/usuarios': ['Administrador'],
   '/estudos': ['Pesquisador'],
+  '/coordenador/painel': ['Coordenador'],
+  '/coordenador/candidatos': ['Coordenador'],
+  '/coordenador/visitas': ['Coordenador'],
+  '/coordenador/reagendamentos': ['Coordenador'],
+  '/coordenador/relatorios': ['Coordenador'],
 };
 
 export function menuForRole(role: UserRole): MenuItem[] {
@@ -33,5 +43,6 @@ export function canAccessRoute(role: UserRole | undefined, path: string): boolea
 export function getHomeForRole(role: UserRole): string {
   if (role === 'Administrador') return '/usuarios';
   if (role === 'Pesquisador') return '/estudos';
+  if (role === 'Coordenador') return '/coordenador/painel';
   return '/403';
 }
