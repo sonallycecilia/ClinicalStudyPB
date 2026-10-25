@@ -8,6 +8,7 @@ on:
   push:
     branches:
       - main
+      - feat/banco-de-dados
     paths:
       - "backend/**"
       - ".github/workflows/backend-ci.yml"
