@@ -5,25 +5,8 @@ import {
   Eye, HeartPulse, MoreVertical, Moon, Pencil, Search, UsersRound,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
-import { listLocalUsers } from '../auth/localUsers';
-
-type StudyStatus = 'Em andamento' | 'Planejado';
-type StudyKind = 'Estudo observacional' | 'Estudo longitudinal';
-
-interface Study {
-  id: string;
-  code: string;
-  title: string;
-  objective: string;
-  researcher: string;
-  startDate: string;
-  endDate: string;
-  participantLimit: number;
-  participantsLinked: number;
-  status: StudyStatus;
-  kind: StudyKind;
-  symbol: 'moon' | 'heart' | 'activity';
-}
+import { studiesApi } from '../studies/studiesApi';
+import type { Study } from '../studies/studiesApi';
 
 interface StudyForm {
   title: string;
@@ -38,68 +21,10 @@ interface StudyForm {
 type ViewMode = 'list' | 'detail';
 type DialogMode = 'create' | 'edit' | 'success' | null;
 
-const STUDIES_STORAGE_KEY = 'clinicalstudy.demo-studies';
-const STUDY_STATS_STORAGE_KEY = 'clinicalstudy.demo-study-stats';
 const EMPTY_FORM: StudyForm = {
   title: '', objective: '', researcher: '', startDate: '', endDate: '',
   participantLimit: '', participantsLinked: '',
 };
-
-const INITIAL_STUDIES: Study[] = [
-  {
-    id: 'study-1', code: 'EST-001', title: 'Qualidade do sono',
-    objective: 'Investigar padrões de sono e acompanhar indicadores da qualidade do sono dos participantes.',
-    researcher: 'Marina Costa', startDate: '2026-04-01', endDate: '2026-11-28',
-    participantLimit: 30, participantsLinked: 18, status: 'Em andamento',
-    kind: 'Estudo observacional', symbol: 'moon',
-  },
-  {
-    id: 'study-2', code: 'EST-002', title: 'Acomp. da pressão arterial',
-    objective: 'Acompanhar indicadores de pressão arterial e observar alterações ao longo do período do estudo.',
-    researcher: 'Marina Costa', startDate: '2026-05-06', endDate: '2026-12-30',
-    participantLimit: 25, participantsLinked: 11, status: 'Em andamento',
-    kind: 'Estudo longitudinal', symbol: 'heart',
-  },
-  {
-    id: 'study-3', code: 'EST-003', title: 'Hábitos de atividade física',
-    objective: 'Avaliar hábitos de atividade física e acompanhar padrões de atividade ao longo do período.',
-    researcher: 'Marina Costa', startDate: '2027-01-11', endDate: '2027-06-30',
-    participantLimit: 20, participantsLinked: 0, status: 'Planejado',
-    kind: 'Estudo observacional', symbol: 'activity',
-  },
- ];
-
-function loadStudies(): Study[] {
-  try {
-    const raw = localStorage.getItem(STUDIES_STORAGE_KEY);
-    if (!raw) return INITIAL_STUDIES;
-    const parsed = JSON.parse(raw) as Study[];
-    return Array.isArray(parsed) ? parsed : INITIAL_STUDIES;
-  } catch {
-    return INITIAL_STUDIES;
-  }
- }
-
-function loadStudyStats(): { total: number; inProgress: number; planned: number } {
-  try {
-    const raw = localStorage.getItem(STUDY_STATS_STORAGE_KEY);
-    if (!raw) return { total: 5, inProgress: 2, planned: 1 };
-    const value = JSON.parse(raw) as { total?: number; inProgress?: number; planned?: number };
-    return { total: value.total ?? 5, inProgress: value.inProgress ?? 2, planned: value.planned ?? 1 };
-  } catch {
-    return { total: 5, inProgress: 2, planned: 1 };
-  }
-}
-
-function todayISO(): string {
-  const now = new Date();
-  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 10);
- }
-
-function statusFromStartDate(startDate: string): StudyStatus {
-  return startDate && startDate > todayISO() ? 'Planejado' : 'Em andamento';
- }
 
 function toForm(study: Study): StudyForm {
   return {
@@ -144,11 +69,15 @@ function Field({ label, children, wide = false }: { label: string; children: Rea
  }
 
 export function StudiesPage() {
-  const { user } = useAuth();
-  const [studies, setStudies] = useState<Study[]>(loadStudies);
+  const { user, accessToken, demoMode } = useAuth();
+  const [studies, setStudies] = useState<Study[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [dialogMode, setDialogMode] = useState<DialogMode>(null);
-  const [selectedId, setSelectedId] = useState<string>('study-1');
+  const [selectedId, setSelectedId] = useState<string>('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editOrigin, setEditOrigin] = useState<ViewMode>('list');
   const [form, setForm] = useState<StudyForm>(EMPTY_FORM);
@@ -157,36 +86,55 @@ export function StudiesPage() {
   const [statusFilter, setStatusFilter] = useState('Todos');
   const [openActionsFor, setOpenActionsFor] = useState<string | null>(null);
   const [successTitle, setSuccessTitle] = useState('');
-  const [studyStats, setStudyStats] = useState(loadStudyStats);
+  const studyStats = useMemo(() => ({
+    total: studies.length,
+    inProgress: studies.filter((item) => item.status === 'Em andamento').length,
+    planned: studies.filter((item) => item.status === 'Planejado').length,
+  }), [studies]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STUDIES_STORAGE_KEY, JSON.stringify(studies));
-      localStorage.setItem(STUDY_STATS_STORAGE_KEY, JSON.stringify(studyStats));
-    } catch { /* armazenamento local é opcional no protótipo */ }
-  }, [studies, studyStats]);
+    const controller = new AbortController();
+    if (!accessToken || demoMode) {
+      setStudies([]);
+      setIsLoading(false);
+      setLoadError('Entre usando a API para consultar e gerenciar estudos. O modo demonstração não salva estudos.');
+      return () => controller.abort();
+    }
+    setIsLoading(true);
+    setLoadError('');
+    void studiesApi.list(accessToken, controller.signal)
+      .then((response) => {
+        if (!controller.signal.aborted) setStudies(response);
+      })
+      .catch((reason: unknown) => {
+        if (!controller.signal.aborted) {
+          setStudies([]);
+          setLoadError(reason instanceof Error ? reason.message : 'Não foi possível carregar os estudos.');
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsLoading(false);
+      });
+    return () => controller.abort();
+  }, [accessToken, demoMode]);
 
   useEffect(() => {
     if (!dialogMode) return;
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
+      if (event.key === 'Escape' && !isSaving) {
         setDialogMode(null);
         setFormError('');
       }
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [dialogMode]);
+  }, [dialogMode, isSaving]);
 
   const selectedStudy = studies.find((study) => study.id === selectedId) ?? studies[0];
   const editingStudy = editingId ? studies.find((study) => study.id === editingId) : undefined;
-  const researcherOptions = useMemo(() => {
-    const fromLocalAccounts = listLocalUsers()
-      .filter((entry) => entry.role === 'Pesquisador' && entry.status === 'Ativo')
-      .map((entry) => entry.name);
-    if (user?.role === 'Pesquisador') fromLocalAccounts.unshift(user.name);
-    return Array.from(new Set(fromLocalAccounts.length ? fromLocalAccounts : ['Marina Costa']));
-  }, [user]);
+  // A listagem /studies está restrita ao pesquisador autenticado.
+  // O responsável vem do token, não de opções locais ou do formulário.
+  const researcherOptions = useMemo(() => user?.role === 'Pesquisador' ? [user.name] : [], [user]);
 
   const visibleStudies = useMemo(() => studies.filter((study) => {
     const term = search.trim().toLocaleLowerCase('pt-BR');
@@ -224,9 +172,11 @@ export function StudiesPage() {
     setFormError('');
   }
 
-  function saveStudy(event: FormEvent<HTMLFormElement>) {
+  async function saveStudy(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isSaving) return;
     setFormError('');
+    if (!accessToken || demoMode) return setFormError('Entre pela API para salvar estudos.');
     const participantLimit = Number(form.participantLimit);
     const participantsLinked = Number(form.participantsLinked);
     if (form.title.trim().length < 3) return setFormError('Informe um título para o estudo.');
@@ -238,54 +188,58 @@ export function StudiesPage() {
     if (!Number.isInteger(participantsLinked) || participantsLinked < 0) return setFormError('Informe uma quantidade válida de participantes vinculados.');
     if (participantsLinked > participantLimit) return setFormError('Os participantes vinculados não podem ultrapassar o limite definido.');
 
-    const newStatus = statusFromStartDate(form.startDate);
-    if (dialogMode === 'edit' && editingStudy) {
-      const updated: Study = {
-        ...editingStudy,
-        title: form.title.trim(), objective: form.objective.trim(), researcher: form.researcher,
-        startDate: form.startDate, endDate: form.endDate,
-        participantLimit, participantsLinked, status: newStatus,
-      };
-      setStudies((current) => current.map((study) => study.id === updated.id ? updated : study));
-      if (editingStudy.status !== newStatus) {
-        setStudyStats((current) => ({
-          ...current,
-          inProgress: Math.max(0, current.inProgress + (newStatus === 'Em andamento' ? 1 : -1)),
-          planned: Math.max(0, current.planned + (newStatus === 'Planejado' ? 1 : -1)),
-        }));
-      }
-      setSelectedId(updated.id);
-      setSuccessTitle(updated.title);
-      setDialogMode(null);
-      setViewMode(editOrigin);
-      setFormError('');
-      return;
-    }
-
-    const nextNumber = Math.max(0, ...studies.map((study) => Number(study.code.replace(/\D/g, '')) || 0)) + 1;
-    const created: Study = {
-      id: `study-${Date.now()}`, code: `EST-${String(nextNumber).padStart(3, '0')}`,
-      title: form.title.trim(), objective: form.objective.trim(), researcher: form.researcher,
-      startDate: form.startDate, endDate: form.endDate, participantLimit,
-      participantsLinked, status: newStatus, kind: 'Estudo observacional', symbol: 'activity',
+    const payload = {
+      title: form.title.trim(), objective: form.objective.trim(),
+      startDate: form.startDate, endDate: form.endDate,
+      participantLimit, participantsLinked,
     };
-    setStudies((current) => [...current, created]);
-    setStudyStats((current) => ({
-      total: current.total + 1,
-      inProgress: current.inProgress + (newStatus === 'Em andamento' ? 1 : 0),
-      planned: current.planned + (newStatus === 'Planejado' ? 1 : 0),
-    }));
-    setSuccessTitle(created.title);
-    setDialogMode('success');
-    setViewMode('list');
-    setSearch('');
-    setStatusFilter('Todos');
+    const isEdit = dialogMode === 'edit' && Boolean(editingStudy);
+    setIsSaving(true);
+    try {
+      const saved = isEdit && editingStudy
+        ? await studiesApi.update(accessToken, editingStudy.id, payload)
+        : await studiesApi.create(accessToken, payload);
+      setStudies((current) => isEdit
+        ? current.map((item) => item.id === saved.id ? saved : item)
+        : [...current, saved]);
+      setSelectedId(saved.id);
+      setEditingId(null);
+      setFormError('');
+      if (isEdit) {
+        setDialogMode(null);
+        setViewMode(editOrigin);
+      } else {
+        setSuccessTitle(saved.title);
+        setDialogMode('success');
+        setViewMode('list');
+        setSearch('');
+        setStatusFilter('Todos');
+      }
+    } catch (reason) {
+      setFormError(reason instanceof Error ? reason.message : 'Não foi possível salvar o estudo na API.');
+    } finally {
+      setIsSaving(false);
+    }
   }
 
-  function startDetails(study: Study) {
-    setSelectedId(study.id);
-    setViewMode('detail');
+  async function startDetails(study: Study) {
     setOpenActionsFor(null);
+    if (!accessToken || demoMode) {
+      setLoadError('Entre pela API para consultar os detalhes.');
+      return;
+    }
+    setIsLoadingDetail(true);
+    setLoadError('');
+    try {
+      const detail = await studiesApi.detail(accessToken, study.id);
+      setStudies((current) => current.map((item) => item.id === detail.id ? detail : item));
+      setSelectedId(detail.id);
+      setViewMode('detail');
+    } catch (reason) {
+      setLoadError(reason instanceof Error ? reason.message : 'Não foi possível consultar o estudo.');
+    } finally {
+      setIsLoadingDetail(false);
+    }
   }
 
   function backToStudies() {
@@ -297,13 +251,13 @@ export function StudiesPage() {
   function renderStudyForm(isEdit: boolean) {
     const isEditingCurrent = isEdit && Boolean(editingStudy);
     return (
-      <div className="study-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeDialog(); }}>
+      <div className="study-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !isSaving) closeDialog(); }}>
         <section className="study-form-panel" role="dialog" aria-modal="true" aria-labelledby="study-form-title">
           <div className="study-form-heading">
             <h2 id="study-form-title">{isEdit ? 'Editar estudo' : 'Informações do estudo'}</h2>
             {isEditingCurrent && <span className={`study-status status-${(editingStudy?.status ?? 'Planejado').toLowerCase().replace(' ', '-')}`}><i />{editingStudy?.status}</span>}
           </div>
-          <form className="study-form" onSubmit={saveStudy}>
+          <form className="study-form" onSubmit={(event) => void saveStudy(event)}>
             <Field label="Título do estudo" wide>
               <input value={form.title} onChange={(event) => updateField('title', event.target.value)} placeholder="Ex.: Estudo de acompanhamento da pressão arterial" required />
             </Field>
@@ -311,7 +265,7 @@ export function StudiesPage() {
               <input value={form.objective} onChange={(event) => updateField('objective', event.target.value)} placeholder="Ex.: Acompanhar indicadores simulados durante o estudo" required />
             </Field>
             <Field label="Pesquisador responsável" wide>
-              <span className="study-select-wrap"><select value={form.researcher} onChange={(event) => updateField('researcher', event.target.value)} required><option value="">Selecione o pesquisador responsável</option>{researcherOptions.map((name) => <option key={name} value={name}>{name}</option>)}</select><ChevronDown size={15} /></span>
+              <span className="study-select-wrap"><select value={form.researcher} onChange={(event) => updateField('researcher', event.target.value)} disabled required><option value="">Selecione o pesquisador responsável</option>{researcherOptions.map((name) => <option key={name} value={name}>{name}</option>)}</select><ChevronDown size={15} /></span>
             </Field>
             <div className="study-form-bottom-grid">
               <Field label="Data de início"><input type="date" value={form.startDate} onChange={(event) => updateField('startDate', event.target.value)} required /></Field>
@@ -321,8 +275,8 @@ export function StudiesPage() {
             </div>
             {formError && <p className="form-error study-form-error" role="alert">{formError}</p>}
             <div className="study-form-actions">
-              {isEdit ? <button className="button button-outline" type="button" onClick={() => editingStudy && setForm(toForm(editingStudy))}>Desfazer alterações</button> : <button className="button button-outline" type="button" onClick={closeDialog}>Cancelar</button>}
-              <button className="button button-primary" type="submit">{isEdit ? 'Salvar alterações' : 'Cadastrar estudo'}</button>
+              {isEdit ? <button className="button button-outline" type="button" onClick={() => editingStudy && setForm(toForm(editingStudy))} disabled={isSaving}>Desfazer alterações</button> : <button className="button button-outline" type="button" onClick={closeDialog} disabled={isSaving}>Cancelar</button>}
+              <button className="button button-primary" type="submit" disabled={isSaving}>{isSaving ? 'Salvando...' : isEdit ? 'Salvar alterações' : 'Cadastrar estudo'}</button>
             </div>
           </form>
         </section>
@@ -387,8 +341,11 @@ export function StudiesPage() {
 
   return (
     <div className="page-wrap studies-page">
-      <section className="page-heading studies-heading"><h1>Estudos clínicos</h1><button className="button button-primary new-study-button" type="button" onClick={openCreate}>+ Cadastrar estudo</button></section>
+      <section className="page-heading studies-heading"><h1>Estudos clínicos</h1><button className="button button-primary new-study-button" type="button" onClick={openCreate} disabled={isLoading || Boolean(loadError)}>+ Cadastrar estudo</button></section>
       <div className="page-content-offset">
+        {loadError && <p role="alert" className="form-error">{loadError}</p>}
+        {isLoading && <p role="status">Carregando estudos da API...</p>}
+        {isLoadingDetail && <p role="status">Consultando detalhes...</p>}
         <section className="study-stat-grid" aria-label="Resumo dos estudos">
           <article className="study-stat-card"><p>Estudos cadastrados</p><strong>{String(studyStats.total).padStart(2, '0')}</strong></article>
           <article className="study-stat-card"><p>Em andamento</p><strong>{String(studyStats.inProgress).padStart(2, '0')}</strong></article>
@@ -403,7 +360,7 @@ export function StudiesPage() {
                 <div className="study-card-top">
                   <div className="study-card-symbol">{studyIcon(study.symbol, 18)}</div>
                   <div className="study-card-title"><h3>{study.title}</h3><p>{study.kind}</p></div>
-                  <div className="study-card-menu-wrap"><button className="study-menu-trigger" type="button" aria-label={`Ações de ${study.title}`} aria-expanded={openActionsFor === study.id} onClick={() => setOpenActionsFor((current) => current === study.id ? null : study.id)}><MoreVertical size={17} /></button>{openActionsFor === study.id && <div className="study-action-menu"><button type="button" onClick={() => startDetails(study)}><Eye size={14} />Ver detalhes</button><button type="button" onClick={() => openEdit(study)}><Pencil size={14} />Editar estudo</button></div>}</div>
+                  <div className="study-card-menu-wrap"><button className="study-menu-trigger" type="button" aria-label={`Ações de ${study.title}`} aria-expanded={openActionsFor === study.id} onClick={() => setOpenActionsFor((current) => current === study.id ? null : study.id)}><MoreVertical size={17} /></button>{openActionsFor === study.id && <div className="study-action-menu"><button type="button" onClick={() => void startDetails(study)}><Eye size={14} />Ver detalhes</button><button type="button" onClick={() => openEdit(study)}><Pencil size={14} />Editar estudo</button></div>}</div>
                   <span className={`study-status status-${study.status.toLowerCase().replace(' ', '-')}`}><i />{study.status}</span>
                 </div>
                 <div className="study-card-body">
@@ -414,7 +371,7 @@ export function StudiesPage() {
                 </div>
               </article>;
             })}
-            {visibleStudies.length === 0 && <div className="study-empty-state">Nenhum estudo corresponde à busca.</div>}
+            {!isLoading && !loadError && visibleStudies.length === 0 && <div className="study-empty-state">Nenhum estudo corresponde à busca.</div>}
           </div>
         </section>
       </div>
