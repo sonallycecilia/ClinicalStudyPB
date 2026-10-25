@@ -9,11 +9,21 @@ import { UsersService } from '../users/users.service.js';
 import type { Study, StudyInput, StudyStatus } from './study.types.js';
 
 function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
+  // Estudos do ClinicalStudyPB usam a data civil de Campina Grande/PB.
+  // Evita encerrar o estudo horas antes por causa da virada do dia em UTC.
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Fortaleza', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date());
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? '';
+  return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
-function statusFor(date: string): StudyStatus {
-  return date > todayISO() ? 'Planejado' : 'Em andamento';
+// Classificação provisória por datas. O fluxo completo do RF07
+// (planejamento, recrutamento, execução e encerrado) ainda terá etapas próprias.
+export function statusFor(startDate: string, endDate: string): StudyStatus {
+  const today = todayISO();
+  if (endDate < today) return 'Encerrado';
+  return startDate > today ? 'Planejado' : 'Em andamento';
 }
 
 function validISODate(date: unknown): date is string {
@@ -33,7 +43,7 @@ export class StudiesService {
       researcherId: 'usr-researcher', researcher: 'Marina Costa',
       startDate: '2026-04-01', endDate: '2026-11-28',
       participantLimit: 30, participantsLinked: 18,
-      status: statusFor('2026-04-01'), kind: 'Estudo observacional', symbol: 'moon',
+      status: statusFor('2026-04-01', '2026-11-28'), kind: 'Estudo observacional', symbol: 'moon',
     },
     {
       id: 'study-2', code: 'EST-002', title: 'Acomp. da pressão arterial',
@@ -41,7 +51,7 @@ export class StudiesService {
       researcherId: 'usr-researcher', researcher: 'Marina Costa',
       startDate: '2026-05-06', endDate: '2026-12-30',
       participantLimit: 25, participantsLinked: 11,
-      status: statusFor('2026-05-06'), kind: 'Estudo longitudinal', symbol: 'heart',
+      status: statusFor('2026-05-06', '2026-12-30'), kind: 'Estudo longitudinal', symbol: 'heart',
     },
     {
       id: 'study-3', code: 'EST-003', title: 'Hábitos de atividade física',
@@ -49,7 +59,7 @@ export class StudiesService {
       researcherId: 'usr-researcher', researcher: 'Marina Costa',
       startDate: '2027-01-11', endDate: '2027-06-30',
       participantLimit: 20, participantsLinked: 0,
-      status: statusFor('2027-01-11'), kind: 'Estudo observacional', symbol: 'activity',
+      status: statusFor('2027-01-11', '2027-06-30'), kind: 'Estudo observacional', symbol: 'activity',
     },
   ];
   private sequence = 3;
@@ -60,13 +70,13 @@ export class StudiesService {
     this.assertResearcher(researcherId);
     return this.studies
       .filter((study) => study.researcherId === researcherId)
-      .map((study) => ({ ...study, status: statusFor(study.startDate) }));
+      .map((study) => ({ ...study, status: statusFor(study.startDate, study.endDate) }));
   }
 
   findById(id: string, researcherId: string): Study {
     this.assertResearcher(researcherId);
     const found = this.findOwned(id, researcherId);
-    return { ...found, status: statusFor(found.startDate) };
+    return { ...found, status: statusFor(found.startDate, found.endDate) };
   }
 
   create(input: StudyInput, researcherId: string): Study {
@@ -79,7 +89,7 @@ export class StudiesService {
       ...data,
       researcherId,
       researcher: researcherName,
-      status: statusFor(data.startDate),
+      status: statusFor(data.startDate, data.endDate),
       kind: 'Estudo observacional',
       symbol: 'activity',
     };
@@ -101,7 +111,7 @@ export class StudiesService {
       participantLimit: input?.participantLimit ?? study.participantLimit,
       participantsLinked: input?.participantsLinked ?? study.participantsLinked,
     });
-    Object.assign(study, data, { status: statusFor(data.startDate) });
+    Object.assign(study, data, { status: statusFor(data.startDate, data.endDate) });
     return { ...study };
   }
 
@@ -127,10 +137,10 @@ export class StudiesService {
       throw new BadRequestException('Informe os dados do estudo.');
     }
     if (typeof input.title !== 'string' || input.title.trim().length < 3) {
-      throw new BadRequestException('Informe um título para o estudo.');
+      throw new BadRequestException('O título deve ter pelo menos 3 caracteres.');
     }
     if (typeof input.objective !== 'string' || input.objective.trim().length < 8) {
-      throw new BadRequestException('Descreva o objetivo do estudo.');
+      throw new BadRequestException('O objetivo deve ter pelo menos 8 caracteres.');
     }
     if (!validISODate(input.startDate) || !validISODate(input.endDate)) {
       throw new BadRequestException('Informe datas válidas no formato AAAA-MM-DD.');

@@ -1,4 +1,4 @@
-export type StudyStatus = 'Planejado' | 'Em andamento';
+export type StudyStatus = 'Planejado' | 'Em andamento' | 'Encerrado';
 export type StudyKind = 'Estudo observacional' | 'Estudo longitudinal';
 export type StudySymbol = 'moon' | 'heart' | 'activity';
 

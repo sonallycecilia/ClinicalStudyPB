@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { UsersService } from '../users/users.service.js';
-import { StudiesService } from './studies.service.js';
+import { StudiesService, statusFor } from './studies.service.js';
 
 const payload = {
   title: 'Teste de qualidade do sono',
@@ -44,6 +44,24 @@ describe('StudiesService', () => {
     try { studies.create(input, 'usr-researcher'); } catch (error) {
       expect((error as Error).message).toContain(message);
     }
+  });
+
+  it('diferencia estudos anteriores, atuais e futuros pelas datas', () => {
+    expect(statusFor('2020-01-10', '2020-04-10')).toBe('Encerrado');
+    expect(statusFor('2099-01-10', '2099-04-10')).toBe('Planejado');
+    expect(statusFor('2020-01-10', '2099-04-10')).toBe('Em andamento');
+    const past = studies.create({
+      ...payload, startDate: '2020-01-10', endDate: '2020-04-10',
+    }, 'usr-researcher');
+    expect(past.status).toBe('Encerrado');
+    expect(studies.findById(past.id, 'usr-researcher').status).toBe('Encerrado');
+  });
+
+  it('retorna mensagens de minimo de caracteres especificas', () => {
+    expect(() => studies.create({ ...payload, title: 'Es' }, 'usr-researcher'))
+      .toThrow('O título deve ter pelo menos 3 caracteres.');
+    expect(() => studies.create({ ...payload, objective: 'dd' }, 'usr-researcher'))
+      .toThrow('O objetivo deve ter pelo menos 8 caracteres.');
   });
 
   it('nega acesso a estudo de outro pesquisador', () => {
