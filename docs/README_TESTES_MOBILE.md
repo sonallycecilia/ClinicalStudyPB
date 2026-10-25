@@ -113,6 +113,22 @@ O fluxo geral é:
 3. **Execução dos testes:** executa os testes automatizados configurados para o aplicativo.
 4. **Verificações adicionais:** executa as demais verificações definidas no arquivo de workflow, quando configuradas.
 
-## 8. Considerações finais
+## 8. Resultados e cobertura dos testes
+
+Para avaliar os testes automatizados do aplicativo mobile, foi executado o seguinte comando na pasta `mobile`:
+```bat
+npm.cmd test -- --coverage --runInBand
+```
+O comando executa os testes automatizados com o Jest, gera um relatório de cobertura de código e executa os testes sequencialmente, em um único processo.
+
+### Resultados obtidos
+
+A execução foi concluída com sucesso, com todos os testes implementados aprovados.
+
+A cobertura de código obtida foi de 100% considerando o código e os cenários atualmente implementados e contemplados pela configuração de cobertura do projeto.
+
+Esse resultado indica que a implementação atual está totalmente coberta pelas métricas de cobertura consideradas no relatório gerado pelo Jest. Entretanto, não significa que todos os comportamentos possíveis do aplicativo foram testados, nem garante a ausência de defeitos.
+
+## 9. Considerações finais
 
 Os testes automatizados implementados estabelecem uma base inicial de validação para o aplicativo mobile do ClinicalStudyPB. Como evolução, recomenda-se ampliar a cobertura para validações de formulários, interações do usuário, estados de carregamento, tratamento de erros e fluxos de navegação, conforme as funcionalidades forem implementadas.
