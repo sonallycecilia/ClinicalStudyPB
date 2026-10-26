@@ -2,6 +2,12 @@
 
 API REST desenvolvida em TypeScript e NestJS, com persistência em PostgreSQL e testes automatizados utilizando Jest e Supertest.
 
+## Documentação da API
+
+Com o backend em execução, acesse a interface Swagger UI em [`http://localhost:3000/api`](http://localhost:3000/api). A especificação OpenAPI em JSON está disponível em [`http://localhost:3000/api-json`](http://localhost:3000/api-json). Se a variável `PORT` estiver configurada, substitua `3000` pela porta escolhida.
+
+As rotas protegidas usam autenticação HTTP Bearer com o token JWT retornado por `POST /auth/login`. Na Swagger UI, execute o login, copie `accessToken` e use **Authorize** para informá-lo como Bearer token. Os recursos e permissões documentados refletem os guards aplicados nos controllers.
+
 ## Pré-requisitos
 
 - Node.js 24 LTS (indicado também em `.nvmrc`).

@@ -13,7 +13,8 @@ O Compose inicia PostgreSQL 17, aguarda o banco ficar disponível, aplica as mig
 | Configuração | Valor |
 | --- | --- |
 | Host para ferramentas locais | `localhost` |
-| Porta | `5432` |
+| Porta publicada na máquina | `5433` |
+| Porta dentro da rede Docker | `5432` |
 | Banco | `clinicalstudypb` |
 | Usuário | `clinicalstudy` |
 | Senha local | `clinicalstudy_local` |
@@ -31,7 +32,7 @@ Dentro do psql, `\dt` lista as tabelas e `\d usuarios` mostra a estrutura de usu
 
 É possível iniciar somente o banco com `docker compose up -d postgres`, ou usar um PostgreSQL 17 instalado localmente com banco e usuário criados previamente.
 
-Copie `backend/.env.example` para `backend/.env`. O exemplo usa `localhost` na `DATABASE_URL`; ajuste as credenciais se usar uma instalação própria. Depois, dentro de `backend/`:
+Copie `backend/.env.example` para `backend/.env`. O exemplo usa `localhost` na `DATABASE_URL`; ajuste as credenciais se usar uma instalação própria. Se o PostgreSQL for iniciado pelo Compose e o backend rodar na máquina, configure a porta `5433` nessa URL. Depois, dentro de `backend/`:
 
 ```bash
 npm ci
@@ -72,8 +73,8 @@ O token dura uma hora e só é aceito enquanto sua sessão existir no banco. `PO
 docker compose ps
 docker compose exec backend npm run db:migrate
 docker compose exec postgres psql -U clinicalstudy -d clinicalstudypb -c "SELECT nome FROM schema_migrations ORDER BY nome;"
-# Na raiz, com dependências locais instaladas:
-$env:DATABASE_URL='postgresql://clinicalstudy:clinicalstudy_local@localhost:5432/clinicalstudypb'
+# Na raiz, com dependências locais instaladas e o PostgreSQL do Compose:
+$env:DATABASE_URL='postgresql://clinicalstudy:clinicalstudy_local@localhost:5433/clinicalstudypb'
 npm --prefix backend test -- --runInBand
 npm --prefix backend run test:e2e -- --runInBand
 npm --prefix web test
