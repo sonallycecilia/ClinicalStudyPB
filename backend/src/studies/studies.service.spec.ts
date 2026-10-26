@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service.js';
 import { UsersService } from '../users/users.service.js';
@@ -35,13 +36,21 @@ function makeStudy(row: typeof baseStudyRow = baseStudyRow): Study {
 }
 
 describe('StudiesService com PostgreSQL', () => {
-  let database: { query: jest.Mock };
-  let users: { findById: jest.Mock };
+  let database: {
+    query: jest.Mock<
+      (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount: number | null }>
+    >;
+  };
+  let users: { findById: jest.Mock<(id: string) => Promise<PublicUser>> };
   let service: StudiesService;
 
   beforeEach(() => {
-    database = { query: jest.fn() };
-    users = { findById: jest.fn().mockResolvedValue(researcher) };
+    database = {
+      query: jest.fn<
+        (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount: number | null }>
+      >(),
+    };
+    users = { findById: jest.fn<(id: string) => Promise<PublicUser>>().mockResolvedValue(researcher) };
     service = new StudiesService(database as unknown as DatabaseService, users as unknown as UsersService);
   });
 
