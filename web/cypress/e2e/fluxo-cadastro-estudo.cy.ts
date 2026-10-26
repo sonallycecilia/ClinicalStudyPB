@@ -66,6 +66,37 @@ describe('Task 3210 — fluxo de cadastro de estudo', () => {
     cy.get('.study-card').should('have.length', 1).and('contain.text', title);
   });
 
+  it('edita um estudo no backend e mantém as alterações após atualizar a página', () => {
+    const title = `Estudo Cypress para editar ${Date.now()}`;
+    const updatedTitle = `${title} atualizado`;
+    const updatedObjective = 'Acompanhar dados fictícios após a edição do protocolo.';
+
+    cy.contains('button', 'Cadastrar estudo').click();
+    fillStudyForm({ title });
+    cy.get('[role="dialog"]').contains('button', 'Cadastrar estudo').click();
+    cy.get('[role="dialog"]').contains('button', 'Ver estudos').click();
+    cy.contains('.study-card', title).should('be.visible').within(() => {
+      cy.get('button[aria-label^="Ações de"]').click();
+    });
+    cy.contains('button', 'Ver detalhes').click();
+    cy.get('h1').should('contain.text', title);
+    cy.contains('button', 'Editar estudo').click();
+
+    cy.get('[role="dialog"]').within(() => {
+      cy.contains('label', 'Título do estudo').find('input').clear().type(updatedTitle);
+      cy.contains('label', 'Objetivo').find('input').clear().type(updatedObjective);
+      cy.contains('button', 'Salvar alterações').click();
+    });
+
+    cy.get('h1').should('contain.text', updatedTitle);
+    cy.contains('.study-objective-card', updatedObjective).should('be.visible');
+    cy.contains('button', 'Voltar aos estudos').click();
+    cy.reload();
+    cy.get('.study-card', { timeout: 10000 }).should('contain.text', updatedTitle);
+    cy.get('input[placeholder="Buscar estudo..."]').type(updatedTitle);
+    cy.get('.study-card').should('have.length', 1).and('contain.text', updatedTitle);
+  });
+
   it('rejeita data de término anterior à data de início', () => {
     cy.contains('button', 'Cadastrar estudo').click();
     fillStudyForm({ title: `Estudo com datas inválidas ${Date.now()}`, startDate: '2099-02-10', endDate: '2099-02-01' });
