@@ -17,20 +17,12 @@ export interface Study {
   symbol: 'moon' | 'heart' | 'activity';
 }
 export type StudyInput = Pick<Study, 'title' | 'objective' | 'startDate' | 'endDate' | 'participantLimit' | 'participantsLinked'>;
+export type AuthenticatedRequest = (path: string, options?: RequestInit) => Promise<Response>;
 
-const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:3000';
-
-async function studiesRequest<T>(token: string, path: string, init: RequestInit = {}): Promise<T> {
+async function studiesRequest<T>(request: AuthenticatedRequest, path: string, init: RequestInit = {}): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(`${API_URL}${path}`, {
-      ...init,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        ...(init.body ? { 'Content-Type': 'application/json' } : {}),
-        ...init.headers,
-      },
-    });
+    response = await request(path, init);
   } catch {
     throw new Error('Não foi possível conectar à API de estudos. Verifique se o backend está ligado.');
   }
@@ -43,12 +35,12 @@ async function studiesRequest<T>(token: string, path: string, init: RequestInit 
 }
 
 export const studiesApi = {
-  list: (token: string, signal?: AbortSignal) => studiesRequest<Study[]>(token, '/studies', { signal }),
-  detail: (token: string, id: string) => studiesRequest<Study>(token, `/studies/${encodeURIComponent(id)}`),
-  create: (token: string, input: StudyInput) => studiesRequest<Study>(token, '/studies', {
-    method: 'POST', body: JSON.stringify(input),
+  list: (request: AuthenticatedRequest, signal?: AbortSignal) => studiesRequest<Study[]>(request, '/studies', { signal }),
+  detail: (request: AuthenticatedRequest, id: string) => studiesRequest<Study>(request, `/studies/${encodeURIComponent(id)}`),
+  create: (request: AuthenticatedRequest, input: StudyInput) => studiesRequest<Study>(request, '/studies', {
+    method: 'POST', body: JSON.stringify(input), headers: { 'Content-Type': 'application/json' },
   }),
-  update: (token: string, id: string, input: StudyInput) => studiesRequest<Study>(token, `/studies/${encodeURIComponent(id)}`, {
-    method: 'PATCH', body: JSON.stringify(input),
+  update: (request: AuthenticatedRequest, id: string, input: StudyInput) => studiesRequest<Study>(request, `/studies/${encodeURIComponent(id)}`, {
+    method: 'PATCH', body: JSON.stringify(input), headers: { 'Content-Type': 'application/json' },
   }),
 };

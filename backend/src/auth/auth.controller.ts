@@ -23,4 +23,10 @@ export class AuthController {
     if (!id) throw new UnauthorizedException('Sessão inválida.');
     return this.usersService.findById(id);
   }
+
+  @Post('logout')
+  @UseGuards(AccessTokenGuard)
+  logout(@Req() request: AuthenticatedRequest) {
+    return this.authService.logout(request.user!.jti);
+  }
 }

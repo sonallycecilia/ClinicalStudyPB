@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards, ParseUUIDPipe } from '@nestjs/common';
 import { AccessTokenGuard } from '../auth/access-token.guard.js';
 import { Roles } from '../auth/roles.decorator.js';
 import { RolesGuard } from '../auth/roles.guard.js';
@@ -18,7 +18,7 @@ export class StudiesController {
   }
 
   @Get(':id')
-  findById(@Param('id') id: string, @Req() request: AuthenticatedRequest) {
+  findById(@Param('id', new ParseUUIDPipe()) id: string, @Req() request: AuthenticatedRequest) {
     return this.studiesService.findById(id, request.user!.sub);
   }
 
@@ -28,7 +28,7 @@ export class StudiesController {
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() input: Partial<StudyInput>, @Req() request: AuthenticatedRequest) {
+  update(@Param('id', new ParseUUIDPipe()) id: string, @Body() input: Partial<StudyInput>, @Req() request: AuthenticatedRequest) {
     return this.studiesService.update(id, input, request.user!.sub);
   }
 }

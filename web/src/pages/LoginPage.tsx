@@ -6,7 +6,7 @@ import { useAuth } from '../auth/AuthContext';
 import { getHomeForRole } from '../security/access';
 
 export function LoginPage() {
-  const { user, login } = useAuth();
+  const { user, login, loading: checkingSession } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [email, setEmail] = useState('');
@@ -15,6 +15,7 @@ export function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  if (checkingSession) return <p role="status">Validando sessão…</p>;
   if (user) return <Navigate to={getHomeForRole(user.role)} replace />;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {

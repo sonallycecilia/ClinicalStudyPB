@@ -1,60 +1,98 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { App } from 'supertest/types.js';
-import { AppModule } from '../src/app.module.js';
+import { databaseTestApp } from './database-test-app.js';
+import { UsersService } from '../src/users/users.service.js';
+import type { PublicUser } from '../src/users/user.types.js';
 
 const sample = {
-  title: 'Acompanhamento da qualidade de sono',
+  title: 'Acompanhamento da qualidade do sono',
   objective: 'Analisar hábitos de sono com dados fictícios de participantes.',
-  startDate: '2026-10-01',
-  endDate: '2026-12-31',
+  startDate: '2099-10-01',
+  endDate: '2099-12-31',
   participantLimit: 30,
   participantsLinked: 0,
 };
 
-describe('Studies (e2e)', () => {
-  let app: INestApplication<App>;
+describe('Estudos clínicos com PostgreSQL (E2E)', () => {
+  let fixture: Awaited<ReturnType<typeof databaseTestApp>>;
+  let researcher: PublicUser;
+  let otherResearcher: PublicUser;
+  let admin: PublicUser;
   let researcherToken: string;
+  let otherResearcherToken: string;
   let adminToken: string;
+  const api = () => fixture.app.getHttpServer();
+  const bearer = (token: string) => `Bearer ${token}`;
+
+  async function login(email: string) {
+    const response = await request(api()).post('/auth/login').send({ email, password: 'Senha123!' }).expect(201);
+    return response.body.accessToken as string;
+  }
 
   beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({ imports: [AppModule] }).compile();
-    app = moduleFixture.createNestApplication();
-    await app.init();
-    const researcher = await request(app.getHttpServer()).post('/auth/login')
-      .send({ email: 'marina.costa@clinicalstudypb.test', password: 'Demo123!' }).expect(201);
-    researcherToken = researcher.body.accessToken as string;
-    const admin = await request(app.getHttpServer()).post('/auth/login')
-      .send({ email: 'ana.souza@clinicalstudypb.test', password: 'Admin123!' }).expect(201);
-    adminToken = admin.body.accessToken as string;
+    fixture = await databaseTestApp();
+    const users = fixture.app.get(UsersService);
+    const baseUser = { name: 'Pessoa Teste', phone: '83999990000', password: 'Senha123!' };
+    researcher = await users.create({ ...baseUser, email: 'pesquisadora@example.test', role: 'Pesquisador' });
+    otherResearcher = await users.create({ ...baseUser, email: 'outra.pesquisadora@example.test', role: 'Pesquisador' });
+    admin = await users.create({ ...baseUser, email: 'administradora@example.test', role: 'Administrador' });
+    researcherToken = await login(researcher.email);
+    otherResearcherToken = await login(otherResearcher.email);
+    adminToken = await login(admin.email);
   });
 
-  it('nega acesso sem token e a perfis não pesquisadores', async () => {
-    await request(app.getHttpServer()).get('/studies').expect(401);
-    await request(app.getHttpServer()).get('/studies')
-      .set('Authorization', `Bearer ${adminToken}`).expect(403);
+  afterAll(async () => {
+    await fixture?.app.close();
+    await fixture?.cleanup();
   });
 
-  it('lista, cadastra, consulta e atualiza estudo via HTTP', async () => {
-    await request(app.getHttpServer()).get('/studies')
-      .set('Authorization', `Bearer ${researcherToken}`).expect(200)
-      .expect(({ body }) => { if (!Array.isArray(body) || body.length !== 3) throw Error('Seed esperado'); });
-    const created = await request(app.getHttpServer()).post('/studies')
-      .set('Authorization', `Bearer ${researcherToken}`).send(sample).expect(201);
+  it('nega acesso sem sessão e a perfis que não são pesquisadores', async () => {
+    await request(api()).get('/studies').expect(401);
+    await request(api()).get('/studies').set('Authorization', bearer(adminToken)).expect(403);
+  });
+
+  it('lista, cadastra, consulta e atualiza estudos persistidos no PostgreSQL', async () => {
+    await request(api()).get('/studies').set('Authorization', bearer(researcherToken))
+      .expect(200).expect(({ body }) => expect(body).toEqual([]));
+
+    const created = await request(api()).post('/studies')
+      .set('Authorization', bearer(researcherToken)).send(sample).expect(201);
+    expect(created.body).toMatchObject({
+      title: sample.title, objective: sample.objective, researcher: researcher.name,
+      researcherId: researcher.id, participantLimit: 30, participantsLinked: 0,
+    });
     expect(created.body.id).toBeDefined();
-    expect(created.body.researcher).toBe('Marina Costa');
-    expect(created.body.researcherId).toBe('usr-researcher');
-    await request(app.getHttpServer()).get(`/studies/${created.body.id}`)
-      .set('Authorization', `Bearer ${researcherToken}`).expect(200);
-    await request(app.getHttpServer()).patch(`/studies/${created.body.id}`)
-      .set('Authorization', `Bearer ${researcherToken}`)
-      .send({ title: 'Título alterado' }).expect(200)
-      .expect(({ body }) => { if (body.title !== 'Título alterado') throw Error('Edição não persistiu na sessão'); });
-    await request(app.getHttpServer()).post('/studies')
-      .set('Authorization', `Bearer ${researcherToken}`)
+    expect(created.body.code).toMatch(/^EST-\d{3,}$/);
+
+    await request(api()).get(`/studies/${created.body.id}`)
+      .set('Authorization', bearer(researcherToken)).expect(200)
+      .expect(({ body }) => expect(body.id).toBe(created.body.id));
+
+    await request(api()).patch(`/studies/${created.body.id}`)
+      .set('Authorization', bearer(researcherToken)).send({ title: 'Título atualizado' }).expect(200)
+      .expect(({ body }) => expect(body.title).toBe('Título atualizado'));
+
+    await request(api()).post('/studies').set('Authorization', bearer(researcherToken))
       .send({ ...sample, participantLimit: 0 }).expect(400);
   });
 
-  afterAll(async () => { await app?.close(); });
+  it('isola os estudos por pesquisador', async () => {
+    const created = await request(api()).post('/studies')
+      .set('Authorization', bearer(researcherToken)).send({ ...sample, title: 'Estudo privado' }).expect(201);
+    await request(api()).get('/studies').set('Authorization', bearer(otherResearcherToken))
+      .expect(200).expect(({ body }) => expect(body).toEqual([]));
+    await request(api()).get(`/studies/${created.body.id}`)
+      .set('Authorization', bearer(otherResearcherToken)).expect(403);
+    await request(api()).patch(`/studies/${created.body.id}`)
+      .set('Authorization', bearer(otherResearcherToken)).send({ title: 'Tentativa indevida' }).expect(403);
+  });
+
+  it('persiste os estudos após reiniciar a aplicação', async () => {
+    const created = await request(api()).post('/studies')
+      .set('Authorization', bearer(researcherToken)).send({ ...sample, title: 'Estudo persistente' }).expect(201);
+    await fixture.app.close();
+    fixture.app = await fixture.open();
+    await request(api()).get(`/studies/${created.body.id}`)
+      .set('Authorization', bearer(researcherToken)).expect(200)
+      .expect(({ body }) => expect(body.title).toBe('Estudo persistente'));
+  });
 });

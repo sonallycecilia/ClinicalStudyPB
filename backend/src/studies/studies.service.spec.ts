@@ -1,77 +1,120 @@
+import { jest } from '@jest/globals';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { DatabaseService } from '../database/database.service.js';
 import { UsersService } from '../users/users.service.js';
+import type { PublicUser } from '../users/user.types.js';
 import { StudiesService, statusFor } from './studies.service.js';
+import type { Study } from './study.types.js';
 
+const researcherId = '00000000-0000-4000-8000-000000000002';
+const adminId = '00000000-0000-4000-8000-000000000001';
+const studyId = '00000000-0000-4000-8000-000000000003';
 const payload = {
   title: 'Teste de qualidade do sono',
   objective: 'Avaliar indicadores de sono em um estudo fictício.',
-  startDate: '2026-10-01',
-  endDate: '2026-12-31',
+  startDate: '2099-01-10',
+  endDate: '2099-12-31',
   participantLimit: 12,
   participantsLinked: 4,
 };
+const researcher: PublicUser = {
+  id: researcherId, name: 'Marina Costa', email: 'marina@example.test', phone: '83999990000',
+  role: 'Pesquisador', status: 'Ativo', createdAt: '2026-10-01T12:00:00.000Z',
+};
+const baseStudyRow = {
+  id: studyId, code: 'EST-007', title: payload.title, objective: payload.objective,
+  researcherId, researcher: researcher.name, startDate: payload.startDate, endDate: payload.endDate,
+  participantLimit: payload.participantLimit, participantsLinked: payload.participantsLinked,
+  kind: 'Estudo observacional' as const, symbol: 'activity' as const,
+};
 
-describe('StudiesService', () => {
-  let users: UsersService;
-  let studies: StudiesService;
+function makeStudy(row: typeof baseStudyRow = baseStudyRow): Study {
+  return {
+    ...row,
+    status: 'Planejado',
+  };
+}
+
+describe('StudiesService com PostgreSQL', () => {
+  let database: {
+    query: jest.Mock<
+      (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount: number | null }>
+    >;
+  };
+  let users: { findById: jest.Mock<(id: string) => Promise<PublicUser>> };
+  let service: StudiesService;
+
   beforeEach(() => {
-    users = new UsersService();
-    studies = new StudiesService(users);
+    database = {
+      query: jest.fn<
+        (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount: number | null }>
+      >(),
+    };
+    users = { findById: jest.fn<(id: string) => Promise<PublicUser>>().mockResolvedValue(researcher) };
+    service = new StudiesService(database as unknown as DatabaseService, users as unknown as UsersService);
   });
 
-  it('retorna apenas estudos da pesquisadora autenticada', () => {
-    expect(studies.listForResearcher('usr-researcher')).toHaveLength(3);
-    expect(() => studies.listForResearcher('usr-admin')).toThrow(ForbiddenException);
+  it('lista apenas os estudos do pesquisador autenticado e converte as datas/status', async () => {
+    database.query.mockResolvedValue({ rows: [baseStudyRow], rowCount: 1 });
+    const result = await service.listForResearcher(researcherId);
+    expect(result).toEqual([makeStudy()]);
+    expect(database.query.mock.calls[0]?.[0]).toContain('WHERE e.id_pesquisador = $1');
+    expect(database.query.mock.calls[0]?.[1]).toEqual([researcherId]);
   });
 
-  it('cria, consulta e edita estudo com código gerado pela API', () => {
-    const created = studies.create(payload, 'usr-researcher');
-    expect(created.code).toBe('EST-004');
-    expect(created.researcherId).toBe('usr-researcher');
+  it('cria um estudo utilizando o pesquisador do token, não um identificador enviado pelo cliente', async () => {
+    database.query.mockResolvedValue({ rows: [{ ...baseStudyRow, researcher: undefined }], rowCount: 1 });
+    const created = await service.create(payload, researcherId);
+    expect(created.researcherId).toBe(researcherId);
     expect(created.researcher).toBe('Marina Costa');
-    expect(studies.findById(created.id, 'usr-researcher').id).toBe(created.id);
-    const updated = studies.update(created.id, { ...payload, title: 'Título atualizado' }, 'usr-researcher');
+    expect(database.query.mock.calls[0]?.[0]).toContain("nextval('estudos_codigo_seq')");
+    expect(database.query.mock.calls[0]?.[1]).toEqual([
+      payload.title, payload.objective, researcherId, payload.startDate, payload.endDate,
+      payload.participantLimit, payload.participantsLinked,
+    ]);
+  });
+
+  it('atualiza campos autorizados e rejeita campo não permitido', async () => {
+    database.query
+      .mockResolvedValueOnce({ rows: [baseStudyRow], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ ...baseStudyRow, title: 'Título atualizado' }], rowCount: 1 });
+    const updated = await service.update(studyId, { title: 'Título atualizado' }, researcherId);
     expect(updated.title).toBe('Título atualizado');
+
+    await expect(service.update(studyId, { researcherId } as never, researcherId))
+      .rejects.toThrow(BadRequestException);
   });
 
   it.each([
-    [{ ...payload, endDate: '2026-01-01' }, 'data de término'],
-    [{ ...payload, startDate: '2026-02-30' }, 'datas válidas'],
+    [{ ...payload, endDate: '2099-01-01' }, 'data de término'],
+    [{ ...payload, startDate: '2099-02-30' }, 'datas válidas'],
     [{ ...payload, participantLimit: 0 }, 'limite de participantes'],
     [{ ...payload, participantsLinked: 100 }, 'não podem ultrapassar'],
-  ])('rejeita regras inválidas', (input, message) => {
-    expect(() => studies.create(input, 'usr-researcher')).toThrow(BadRequestException);
-    try { studies.create(input, 'usr-researcher'); } catch (error) {
-      expect((error as Error).message).toContain(message);
-    }
+  ])('rejeita dados inválidos do estudo', async (input, message) => {
+    await expect(service.create(input, researcherId)).rejects.toThrow(message as string);
+    expect(database.query).not.toHaveBeenCalled();
   });
 
-  it('diferencia estudos anteriores, atuais e futuros pelas datas', () => {
+  it('impede que outro pesquisador consulte ou altere um estudo alheio', async () => {
+    const otherId = '00000000-0000-4000-8000-000000000004';
+    database.query.mockResolvedValue({ rows: [{ ...baseStudyRow, researcherId: otherId }], rowCount: 1 });
+    await expect(service.findById(studyId, researcherId)).rejects.toThrow(ForbiddenException);
+
+    database.query.mockResolvedValueOnce({ rows: [{ ...baseStudyRow, researcherId: otherId }], rowCount: 1 });
+    await expect(service.update(studyId, { title: 'Título alterado' }, researcherId)).rejects.toThrow(ForbiddenException);
+  });
+
+  it('retorna 404 quando o estudo não existe e rejeita perfis que não sejam pesquisadores ativos', async () => {
+    database.query.mockResolvedValue({ rows: [], rowCount: 0 });
+    await expect(service.findById(studyId, researcherId)).rejects.toThrow(NotFoundException);
+
+    users.findById.mockResolvedValue({ ...researcher, id: adminId, role: 'Administrador' });
+    await expect(service.listForResearcher(adminId)).rejects.toThrow(ForbiddenException);
+  });
+
+  it('classifica estudos encerrados, planejados e em andamento usando a data local do projeto', () => {
     expect(statusFor('2020-01-10', '2020-04-10')).toBe('Encerrado');
     expect(statusFor('2099-01-10', '2099-04-10')).toBe('Planejado');
     expect(statusFor('2020-01-10', '2099-04-10')).toBe('Em andamento');
-    const past = studies.create({
-      ...payload, startDate: '2020-01-10', endDate: '2020-04-10',
-    }, 'usr-researcher');
-    expect(past.status).toBe('Encerrado');
-    expect(studies.findById(past.id, 'usr-researcher').status).toBe('Encerrado');
-  });
-
-  it('retorna mensagens de minimo de caracteres especificas', () => {
-    expect(() => studies.create({ ...payload, title: 'Es' }, 'usr-researcher'))
-      .toThrow('O título deve ter pelo menos 3 caracteres.');
-    expect(() => studies.create({ ...payload, objective: 'dd' }, 'usr-researcher'))
-      .toThrow('O objetivo deve ter pelo menos 8 caracteres.');
-  });
-
-  it('nega acesso a estudo de outro pesquisador', () => {
-    const other = users.create({
-      name: 'Outro Pesquisador', email: 'outro@example.test',
-      phone: '(83) 99999-9999', password: 'Senha123!', role: 'Pesquisador',
-    });
-    expect(studies.listForResearcher(other.id)).toHaveLength(0);
-    expect(() => studies.findById('study-1', other.id)).toThrow(ForbiddenException);
-    expect(() => studies.update('study-1', payload, other.id)).toThrow(ForbiddenException);
-    expect(() => studies.findById('not-found', 'usr-researcher')).toThrow(NotFoundException);
   });
 });
