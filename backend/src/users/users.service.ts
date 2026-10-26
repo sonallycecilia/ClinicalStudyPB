@@ -1,150 +1,99 @@
-import {
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
-import type {
-  AccountStatus,
-  CreateUserInput,
-  InternalUser,
-  PublicUser,
-  UpdateUserInput,
-  UserRole,
-} from './user.types.js';
+import { DatabaseService } from '../database/database.service.js';
+import type { CreateUserInput, InternalUser, PublicUser, UpdateUserInput } from './user.types.js';
+
+const columns = `id_usuario AS id, nome AS name, email, COALESCE(telefone, '') AS phone,
+  perfil AS role, status, data_criacao AS "createdAt",
+  senha_hash AS "passwordHash", senha_salt AS "passwordSalt"`;
 
 @Injectable()
 export class UsersService {
-  private readonly accounts: InternalUser[];
+  constructor(private readonly database: DatabaseService) {}
 
-  constructor() {
-    this.accounts = [
-      this.makeSeed('usr-admin', 'Ana Souza', 'ana.souza@clinicalstudypb.test', '(83) 99900-0001', 'Administrador', 'Ativo', 'Admin123!'),
-      this.makeSeed('usr-researcher', 'Marina Costa', 'marina.costa@clinicalstudypb.test', '(81) 7788-4444', 'Pesquisador', 'Ativo', 'Demo123!'),
-      this.makeSeed('usr-coordinator', 'Rafael Lima', 'rafael.lima@clinicalstudypb.test', '(83) 98888-1111', 'Coordenador', 'Ativo', 'Demo123!'),
-      this.makeSeed('usr-participant', 'Bianca Oliveira', 'bianca.oliveira@clinicalstudypb.test', '(83) 97777-2222', 'Participante', 'Ativo', 'Demo123!'),
-    ];
+  async list(): Promise<PublicUser[]> {
+    const { rows } = await this.database.query<InternalUser>('SELECT ' + columns + ' FROM usuarios ORDER BY data_criacao, id_usuario');
+    return rows.map((row) => this.toPublic(row));
   }
 
-  list(): PublicUser[] {
-    return this.accounts.map((account) => this.toPublic(account));
+  async findById(id: string): Promise<PublicUser> {
+    const { rows } = await this.database.query<InternalUser>('SELECT ' + columns + ' FROM usuarios WHERE id_usuario = $1', [id]);
+    if (!rows[0]) throw new NotFoundException('Conta não encontrada.');
+    return this.toPublic(rows[0]);
   }
 
-  findById(id: string): PublicUser {
-    return this.toPublic(this.getInternalById(id));
+  async findInternalByEmail(email: string): Promise<InternalUser | undefined> {
+    const { rows } = await this.database.query<InternalUser>('SELECT ' + columns + ' FROM usuarios WHERE email = $1', [email.trim().toLowerCase()]);
+    return rows[0];
   }
 
-  findInternalByEmail(email: string): InternalUser | undefined {
-    const normalized = email.trim().toLowerCase();
-    return this.accounts.find((account) => account.email.toLowerCase() === normalized);
-  }
-
-  authenticate(email: string, password: string): PublicUser | null {
-    const account = this.findInternalByEmail(email);
+  async authenticate(email: string, password: string): Promise<PublicUser | null> {
+    const account = await this.findInternalByEmail(email);
     if (!account || account.status !== 'Ativo') return null;
-
     const candidate = scryptSync(password, account.passwordSalt, 64);
     const stored = Buffer.from(account.passwordHash, 'hex');
-    if (candidate.length !== stored.length || !timingSafeEqual(candidate, stored)) {
-      return null;
-    }
+    if (candidate.length !== stored.length || !timingSafeEqual(candidate, stored)) return null;
     return this.toPublic(account);
   }
 
-  create(input: CreateUserInput): PublicUser {
-    const email = input.email.trim().toLowerCase();
-    if (this.findInternalByEmail(email)) {
+  async create(input: CreateUserInput): Promise<PublicUser> {
+    const salt = randomBytes(16).toString('hex');
+    try {
+      const { rows } = await this.database.query<InternalUser>(
+        'INSERT INTO usuarios (nome, email, telefone, perfil, senha_hash, senha_salt) VALUES ($1, $2, $3, $4, $5, $6) RETURNING ' + columns,
+        [input.name.trim(), input.email.trim().toLowerCase(), input.phone.trim(), input.role,
+          scryptSync(input.password, salt, 64).toString('hex'), salt],
+      );
+      return this.toPublic(rows[0]!);
+    } catch (error) { this.handleWriteError(error); }
+  }
+
+  async update(id: string, input: UpdateUserInput): Promise<PublicUser> {
+    const salt = input.password ? randomBytes(16).toString('hex') : null;
+    try {
+      // Alteração de credenciais e revogação das sessões na mesma instrução.
+      const { rows } = await this.database.query<InternalUser>(
+        `WITH updated AS (
+          UPDATE usuarios SET nome = COALESCE($2, nome), email = COALESCE($3, email),
+            telefone = COALESCE($4, telefone), perfil = COALESCE($5, perfil),
+            status = COALESCE($6, status), senha_hash = COALESCE($7, senha_hash),
+            senha_salt = COALESCE($8, senha_salt)
+          WHERE id_usuario = $1 RETURNING *
+        ), revoked AS (
+          DELETE FROM sessoes WHERE id_usuario = $1
+            AND ($7::text IS NOT NULL OR $6::text = 'Inativo')
+        ) SELECT ${columns} FROM updated`,
+        [id, input.name?.trim() ?? null, input.email?.trim().toLowerCase() ?? null,
+          input.phone?.trim() ?? null, input.role ?? null, input.status ?? null,
+          salt ? scryptSync(input.password!, salt, 64).toString('hex') : null, salt],
+      );
+      if (!rows[0]) throw new NotFoundException('Conta não encontrada.');
+      return this.toPublic(rows[0]);
+    } catch (error) { this.handleWriteError(error); }
+  }
+
+  async remove(id: string): Promise<void> {
+    try {
+      const result = await this.database.query('DELETE FROM usuarios WHERE id_usuario = $1', [id]);
+      if (!result.rowCount) throw new NotFoundException('Conta não encontrada.');
+    } catch (error) {
+      // Não apagar estudos associados silenciosamente ao excluir uma conta de pesquisador.
+      if ((error as { code?: string }).code === '23503') {
+        throw new ConflictException('Não é possível excluir esta conta enquanto houver estudos vinculados.');
+      }
+      throw error;
+    }
+  }
+
+  private handleWriteError(error: unknown): never {
+    if ((error as { code?: string }).code === '23505') {
       throw new ConflictException('Já existe uma conta com este e-mail.');
     }
-
-    const account = this.makeAccount({
-      id: randomBytes(12).toString('hex'),
-      name: input.name.trim(),
-      email,
-      phone: input.phone.trim(),
-      role: input.role,
-      status: 'Ativo',
-      password: input.password,
-    });
-    this.accounts.push(account);
-    return this.toPublic(account);
-  }
-
-  update(id: string, input: UpdateUserInput): PublicUser {
-    const account = this.getInternalById(id);
-    const nextEmail = input.email?.trim().toLowerCase();
-    if (nextEmail) {
-      const duplicate = this.findInternalByEmail(nextEmail);
-      if (duplicate && duplicate.id !== id) {
-        throw new ConflictException('Já existe uma conta com este e-mail.');
-      }
-      account.email = nextEmail;
-    }
-
-    if (input.name !== undefined) account.name = input.name.trim();
-    if (input.phone !== undefined) account.phone = input.phone.trim();
-    if (input.role !== undefined) account.role = input.role;
-    if (input.status !== undefined) account.status = input.status;
-    if (input.password) {
-      account.passwordSalt = randomBytes(16).toString('hex');
-      account.passwordHash = this.hashPassword(input.password, account.passwordSalt);
-    }
-    return this.toPublic(account);
-  }
-
-  remove(id: string): void {
-    const index = this.accounts.findIndex((account) => account.id === id);
-    if (index < 0) throw new NotFoundException('Conta não encontrada.');
-    this.accounts.splice(index, 1);
-  }
-
-  private getInternalById(id: string): InternalUser {
-    const account = this.accounts.find((entry) => entry.id === id);
-    if (!account) throw new NotFoundException('Conta não encontrada.');
-    return account;
-  }
-
-  private makeSeed(
-    id: string,
-    name: string,
-    email: string,
-    phone: string,
-    role: UserRole,
-    status: AccountStatus,
-    password: string,
-  ): InternalUser {
-    return this.makeAccount({ id, name, email, phone, role, status, password });
-  }
-
-  private makeAccount(data: {
-    id: string;
-    name: string;
-    email: string;
-    phone: string;
-    role: UserRole;
-    status: AccountStatus;
-    password: string;
-  }): InternalUser {
-    const passwordSalt = randomBytes(16).toString('hex');
-    return {
-      id: data.id,
-      name: data.name,
-      email: data.email,
-      phone: data.phone,
-      role: data.role,
-      status: data.status,
-      createdAt: new Date().toISOString(),
-      passwordSalt,
-      passwordHash: this.hashPassword(data.password, passwordSalt),
-    };
-  }
-
-  private hashPassword(password: string, salt: string): string {
-    return scryptSync(password, salt, 64).toString('hex');
+    throw error;
   }
 
   private toPublic(account: InternalUser): PublicUser {
-    const { passwordHash: _hash, passwordSalt: _salt, ...safeUser } = account;
-    return safeUser;
+    const { passwordHash: _hash, passwordSalt: _salt, ...user } = account;
+    return { ...user, createdAt: new Date(user.createdAt).toISOString() };
   }
 }

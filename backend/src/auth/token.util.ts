@@ -1,5 +1,6 @@
 import {
   createHmac,
+  randomUUID,
   timingSafeEqual,
 } from 'node:crypto';
 import type { AccessTokenPayload } from './auth.types.js';
@@ -25,6 +26,7 @@ export function createAccessToken(user: PublicUser, lifetimeSeconds = 60 * 60): 
   const now = Math.floor(Date.now() / 1000);
   const header = encode({ alg: 'HS256', typ: 'JWT' });
   const payload: AccessTokenPayload = {
+    jti: randomUUID(),
     sub: user.id,
     email: user.email,
     role: user.role,
@@ -51,6 +53,8 @@ export function verifyAccessToken(token: string): AccessTokenPayload | null {
 
     const payload = JSON.parse(Buffer.from(payloadPart, 'base64url').toString('utf8')) as AccessTokenPayload;
     if (
+      typeof payload.jti !== 'string' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payload.jti) ||
       typeof payload.sub !== 'string' ||
       typeof payload.email !== 'string' ||
       typeof payload.role !== 'string' ||

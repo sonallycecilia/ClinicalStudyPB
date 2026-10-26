@@ -70,7 +70,7 @@ function Field({ label, children, wide = false }: { label: string; children: Rea
 }
 
 export function StudiesPage() {
-  const { user, accessToken, demoMode } = useAuth();
+  const { user, accessToken, request } = useAuth();
   const [studies, setStudies] = useState<Study[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -97,15 +97,15 @@ export function StudiesPage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    if (!accessToken || demoMode) {
+    if (!accessToken || !user) {
       setStudies([]);
       setIsLoading(false);
-      setLoadError('Entre usando a API para consultar e gerenciar estudos. O modo demonstração não salva estudos.');
+      setLoadError('Entre para consultar e gerenciar estudos.');
       return () => controller.abort();
     }
     setIsLoading(true);
     setLoadError('');
-    void studiesApi.list(accessToken, controller.signal)
+    void studiesApi.list(request, controller.signal)
       .then((response) => {
         if (!controller.signal.aborted) setStudies(response);
       })
@@ -119,7 +119,7 @@ export function StudiesPage() {
         if (!controller.signal.aborted) setIsLoading(false);
       });
     return () => controller.abort();
-  }, [accessToken, demoMode]);
+  }, [accessToken, request, user]);
 
   useEffect(() => {
     if (!dialogMode) return;
@@ -191,7 +191,7 @@ export function StudiesPage() {
     if (isSaving) return;
     setFormError('');
     setFormErrorField(null);
-    if (!accessToken || demoMode) return setFormError('Entre pela API para salvar estudos.');
+    if (!accessToken) return setFormError('Entre novamente para salvar estudos.');
     const participantLimit = form.participantLimit === '' ? NaN : Number(form.participantLimit);
     const participantsLinked = form.participantsLinked === '' ? NaN : Number(form.participantsLinked);
     if (form.title.trim().length < 3) {
@@ -218,8 +218,8 @@ export function StudiesPage() {
     setIsSaving(true);
     try {
       const saved = isEdit && editingStudy
-        ? await studiesApi.update(accessToken, editingStudy.id, payload)
-        : await studiesApi.create(accessToken, payload);
+        ? await studiesApi.update(request, editingStudy.id, payload)
+        : await studiesApi.create(request, payload);
       setStudies((current) => isEdit
         ? current.map((item) => item.id === saved.id ? saved : item)
         : [...current, saved]);
@@ -246,14 +246,14 @@ export function StudiesPage() {
 
   async function startDetails(study: Study) {
     setOpenActionsFor(null);
-    if (!accessToken || demoMode) {
-      setLoadError('Entre pela API para consultar os detalhes.');
+    if (!accessToken) {
+      setLoadError('Entre novamente para consultar os detalhes.');
       return;
     }
     setIsLoadingDetail(true);
     setLoadError('');
     try {
-      const detail = await studiesApi.detail(accessToken, study.id);
+      const detail = await studiesApi.detail(request, study.id);
       setStudies((current) => current.map((item) => item.id === detail.id ? detail : item));
       setSelectedId(detail.id);
       setViewMode('detail');

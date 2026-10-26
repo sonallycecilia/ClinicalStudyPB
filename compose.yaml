@@ -1,0 +1,58 @@
+services:
+  postgres:
+    image: postgres:17-bookworm
+    environment:
+      POSTGRES_DB: clinicalstudypb
+      POSTGRES_USER: clinicalstudy
+      POSTGRES_PASSWORD: clinicalstudy_local
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clinicalstudy -d clinicalstudypb"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  backend:
+    build: ./backend
+    init: true
+    command: ["sh", "-c", "npm run db:migrate && npm run db:seed:demo && npm run start:dev"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      PORT: "3000"
+      ALLOW_DEMO_SEED: "true"
+      DATABASE_URL: postgresql://clinicalstudy:clinicalstudy_local@postgres:5432/clinicalstudypb
+      WEB_ORIGIN: http://localhost:5173
+      TSC_WATCHFILE: FixedPollingInterval
+    volumes:
+      - ./backend/src:/app/src:ro
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      start_period: 30s
+      retries: 12
+
+  web:
+    build: ./web
+    init: true
+    ports:
+      - "127.0.0.1:5173:5173"
+    environment:
+      VITE_API_URL: http://localhost:3000
+      WATCH_USE_POLLING: "true"
+    volumes:
+      - ./web/src:/app/src:ro
+      - ./web/index.html:/app/index.html:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

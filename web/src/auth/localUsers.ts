@@ -1,3 +1,4 @@
+/** @deprecated Utilitário legado de demonstração. O fluxo ativo usa AuthContext e a API; não importar para autenticação/CRUD de produção. */
 import type { AccountStatus, User, UserRole } from '../types';
 
 const STORAGE_KEY = 'clinicalstudy.demo-users';

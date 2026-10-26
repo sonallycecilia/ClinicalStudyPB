@@ -1,12 +1,57 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
+import type { QueryResultRow } from 'pg';
+import { DatabaseService } from '../database/database.service.js';
 import { UsersService } from '../users/users.service.js';
+import type { PublicUser } from '../users/user.types.js';
 import type { Study, StudyInput, StudyStatus } from './study.types.js';
+
+interface StudyRow extends QueryResultRow {
+  id: string;
+  code: string;
+  title: string;
+  objective: string;
+  researcherId: string;
+  researcher?: string;
+  startDate: string | Date;
+  endDate: string | Date;
+  participantLimit: number;
+  participantsLinked: number;
+  kind: Study['kind'];
+  symbol: Study['symbol'];
+}
+
+const SELECT_STUDY_COLUMNS = `
+  e.id_estudo::text AS id,
+  e.codigo AS code,
+  e.titulo AS title,
+  e.objetivo AS objective,
+  e.id_pesquisador::text AS "researcherId",
+  u.nome AS researcher,
+  e.data_inicio::text AS "startDate",
+  e.data_fim::text AS "endDate",
+  e.limite_participantes AS "participantLimit",
+  e.participantes_vinculados AS "participantsLinked",
+  e.tipo AS kind,
+  e.simbolo AS symbol`;
+
+const RETURNING_STUDY_COLUMNS = `
+  id_estudo::text AS id,
+  codigo AS code,
+  titulo AS title,
+  objetivo AS objective,
+  id_pesquisador::text AS "researcherId",
+  data_inicio::text AS "startDate",
+  data_fim::text AS "endDate",
+  limite_participantes AS "participantLimit",
+  participantes_vinculados AS "participantsLinked",
+  tipo AS kind,
+  simbolo AS symbol`;
 
 function todayISO(): string {
   // Estudos do ClinicalStudyPB usam a data civil de Campina Grande/PB.
@@ -32,104 +77,134 @@ function validISODate(date: unknown): date is string {
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(`${date}T`);
 }
 
+function normalizeDate(value: string | Date): string {
+  return value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
+}
+
+function toStudy(row: StudyRow, researcherName = row.researcher ?? ''): Study {
+  const startDate = normalizeDate(row.startDate);
+  const endDate = normalizeDate(row.endDate);
+  return {
+    id: row.id,
+    code: row.code,
+    title: row.title,
+    objective: row.objective,
+    researcherId: row.researcherId,
+    researcher: researcherName,
+    startDate,
+    endDate,
+    participantLimit: Number(row.participantLimit),
+    participantsLinked: Number(row.participantsLinked),
+    status: statusFor(startDate, endDate),
+    kind: row.kind,
+    symbol: row.symbol,
+  };
+}
+
 @Injectable()
 export class StudiesService {
-  // Etapa intermediária da Sprint 1: em memória, seguindo UsersService.
-  // A migração para PostgreSQL pertence à tarefa T16-A e ainda é necessária.
-  private readonly studies: Study[] = [
-    {
-      id: 'study-1', code: 'EST-001', title: 'Qualidade do sono',
-      objective: 'Investigar padrões de sono e acompanhar indicadores da qualidade do sono dos participantes.',
-      researcherId: 'usr-researcher', researcher: 'Marina Costa',
-      startDate: '2026-04-01', endDate: '2026-11-28',
-      participantLimit: 30, participantsLinked: 18,
-      status: statusFor('2026-04-01', '2026-11-28'), kind: 'Estudo observacional', symbol: 'moon',
-    },
-    {
-      id: 'study-2', code: 'EST-002', title: 'Acomp. da pressão arterial',
-      objective: 'Acompanhar indicadores de pressão arterial e observar alterações ao longo do período do estudo.',
-      researcherId: 'usr-researcher', researcher: 'Marina Costa',
-      startDate: '2026-05-06', endDate: '2026-12-30',
-      participantLimit: 25, participantsLinked: 11,
-      status: statusFor('2026-05-06', '2026-12-30'), kind: 'Estudo longitudinal', symbol: 'heart',
-    },
-    {
-      id: 'study-3', code: 'EST-003', title: 'Hábitos de atividade física',
-      objective: 'Avaliar hábitos de atividade física e acompanhar padrões de atividade ao longo do período.',
-      researcherId: 'usr-researcher', researcher: 'Marina Costa',
-      startDate: '2027-01-11', endDate: '2027-06-30',
-      participantLimit: 20, participantsLinked: 0,
-      status: statusFor('2027-01-11', '2027-06-30'), kind: 'Estudo observacional', symbol: 'activity',
-    },
-  ];
-  private sequence = 3;
+  constructor(
+    private readonly database: DatabaseService,
+    private readonly usersService: UsersService,
+  ) {}
 
-  constructor(private readonly usersService: UsersService) {}
-
-  listForResearcher(researcherId: string): Study[] {
-    this.assertResearcher(researcherId);
-    return this.studies
-      .filter((study) => study.researcherId === researcherId)
-      .map((study) => ({ ...study, status: statusFor(study.startDate, study.endDate) }));
+  async listForResearcher(researcherId: string): Promise<Study[]> {
+    await this.assertResearcher(researcherId);
+    const { rows } = await this.database.query<StudyRow>(
+      `SELECT ${SELECT_STUDY_COLUMNS}
+       FROM estudos e JOIN usuarios u ON u.id_usuario = e.id_pesquisador
+       WHERE e.id_pesquisador = $1
+       ORDER BY e.data_inicio, e.criado_em, e.id_estudo`,
+      [researcherId],
+    );
+    return rows.map((row) => toStudy(row));
   }
 
-  findById(id: string, researcherId: string): Study {
-    this.assertResearcher(researcherId);
-    const found = this.findOwned(id, researcherId);
-    return { ...found, status: statusFor(found.startDate, found.endDate) };
-  }
-
-  create(input: StudyInput, researcherId: string): Study {
-    const researcherName = this.assertResearcher(researcherId);
-    const data = this.validateInput(input);
-    this.sequence += 1;
-    const study: Study = {
-      id: randomUUID(),
-      code: `EST-${String(this.sequence).padStart(3, '0')}`,
-      ...data,
-      researcherId,
-      researcher: researcherName,
-      status: statusFor(data.startDate, data.endDate),
-      kind: 'Estudo observacional',
-      symbol: 'activity',
-    };
-    this.studies.push(study);
-    return { ...study };
-  }
-
-  update(id: string, input: Partial<StudyInput>, researcherId: string): Study {
-    this.assertResearcher(researcherId);
-    if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).length === 0) {
-      throw new BadRequestException('Informe ao menos um campo para alterar.');
-    }
-    const study = this.findOwned(id, researcherId);
-    const data = this.validateInput({
-      title: input?.title ?? study.title,
-      objective: input?.objective ?? study.objective,
-      startDate: input?.startDate ?? study.startDate,
-      endDate: input?.endDate ?? study.endDate,
-      participantLimit: input?.participantLimit ?? study.participantLimit,
-      participantsLinked: input?.participantsLinked ?? study.participantsLinked,
-    });
-    Object.assign(study, data, { status: statusFor(data.startDate, data.endDate) });
-    return { ...study };
-  }
-
-  private findOwned(id: string, researcherId: string): Study {
-    const study = this.studies.find((entry) => entry.id === id);
-    if (!study) throw new NotFoundException('Estudo não encontrado.');
+  async findById(id: string, researcherId: string): Promise<Study> {
+    await this.assertResearcher(researcherId);
+    const study = await this.findByIdForOwnerCheck(id);
     if (study.researcherId !== researcherId) {
       throw new ForbiddenException('Você não tem permissão para acessar este estudo.');
     }
     return study;
   }
 
-  private assertResearcher(researcherId: string): string {
-    const user = this.usersService.findById(researcherId);
+  async create(input: StudyInput, researcherId: string): Promise<Study> {
+    const researcher = await this.assertResearcher(researcherId);
+    const data = this.validateInput(input);
+    try {
+      const { rows } = await this.database.query<StudyRow>(
+        `INSERT INTO estudos
+          (codigo, titulo, objetivo, id_pesquisador, data_inicio, data_fim,
+           limite_participantes, participantes_vinculados, tipo, simbolo)
+         VALUES (
+           'EST-' || lpad(nextval('estudos_codigo_seq')::text, 3, '0'),
+           $1, $2, $3, $4::date, $5::date, $6, $7, 'Estudo observacional', 'activity'
+         )
+         RETURNING ${RETURNING_STUDY_COLUMNS}`,
+        [data.title, data.objective, researcherId, data.startDate, data.endDate,
+          data.participantLimit, data.participantsLinked],
+      );
+      if (!rows[0]) throw new Error('O banco não retornou o estudo cadastrado.');
+      return toStudy(rows[0], researcher.name);
+    } catch (error) {
+      if ((error as { code?: string }).code === '23505') {
+        throw new ConflictException('Não foi possível gerar um código único para o estudo. Tente novamente.');
+      }
+      throw error;
+    }
+  }
+
+  async update(id: string, input: Partial<StudyInput>, researcherId: string): Promise<Study> {
+    const researcher = await this.assertResearcher(researcherId);
+    if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).length === 0) {
+      throw new BadRequestException('Informe ao menos um campo para alterar.');
+    }
+    const allowedKeys = new Set(['title', 'objective', 'startDate', 'endDate', 'participantLimit', 'participantsLinked']);
+    if (Object.keys(input).some((key) => !allowedKeys.has(key))) {
+      throw new BadRequestException('A alteração contém campos não permitidos.');
+    }
+    const current = await this.findByIdForOwnerCheck(id);
+    if (current.researcherId !== researcherId) {
+      throw new ForbiddenException('Você não tem permissão para alterar este estudo.');
+    }
+    const data = this.validateInput({
+      title: input.title ?? current.title,
+      objective: input.objective ?? current.objective,
+      startDate: input.startDate ?? current.startDate,
+      endDate: input.endDate ?? current.endDate,
+      participantLimit: input.participantLimit ?? current.participantLimit,
+      participantsLinked: input.participantsLinked ?? current.participantsLinked,
+    });
+    const { rows } = await this.database.query<StudyRow>(
+      `UPDATE estudos SET titulo = $3, objetivo = $4, data_inicio = $5::date,
+        data_fim = $6::date, limite_participantes = $7, participantes_vinculados = $8
+       WHERE id_estudo = $1 AND id_pesquisador = $2
+       RETURNING ${RETURNING_STUDY_COLUMNS}`,
+      [id, researcherId, data.title, data.objective, data.startDate, data.endDate,
+        data.participantLimit, data.participantsLinked],
+    );
+    if (!rows[0]) throw new NotFoundException('Estudo não encontrado.');
+    return toStudy(rows[0], researcher.name);
+  }
+
+  private async findByIdForOwnerCheck(id: string): Promise<Study> {
+    const { rows } = await this.database.query<StudyRow>(
+      `SELECT ${SELECT_STUDY_COLUMNS}
+       FROM estudos e JOIN usuarios u ON u.id_usuario = e.id_pesquisador
+       WHERE e.id_estudo = $1`,
+      [id],
+    );
+    if (!rows[0]) throw new NotFoundException('Estudo não encontrado.');
+    return toStudy(rows[0]);
+  }
+
+  private async assertResearcher(researcherId: string): Promise<PublicUser> {
+    const user = await this.usersService.findById(researcherId);
     if (user.role !== 'Pesquisador' || user.status !== 'Ativo') {
       throw new ForbiddenException('Apenas pesquisadores ativos podem gerenciar seus estudos.');
     }
-    return user.name;
+    return user;
   }
 
   private validateInput(input: StudyInput): StudyInput {
