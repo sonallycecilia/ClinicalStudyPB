@@ -1,0 +1,14 @@
+{
+  "name": "clinicalstudypb",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "setup": "npm ci --prefix backend && npm install --prefix web",
+    "dev": "concurrently --kill-others --names backend,web --prefix-colors blue,green \"npm run dev:backend\" \"npm run dev:web\"",
+    "dev:backend": "npm --prefix backend run start:dev",
+    "dev:web": "npm --prefix web run dev -- --port 5173 --strictPort"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.6"
+  }
+}

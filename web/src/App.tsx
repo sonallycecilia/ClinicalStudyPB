@@ -10,7 +10,8 @@ import { getHomeForRole } from './security/access';
 import {CoordinatorDashboardPage, CoordinatorCandidatesPage, CoordinatorVisitsPage, CoordinatorReschedulesPage, CoordinatorReportsPage } from './pages/coordenatorPage';
 
 function LandingRedirect() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+  if (loading) return <p role="status">Validando sessão…</p>;
   return <Navigate to={user ? getHomeForRole(user.role) : '/login'} replace />;
 }
 

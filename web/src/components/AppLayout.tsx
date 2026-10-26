@@ -6,7 +6,16 @@ import { getHomeForRole, menuForRole } from '../security/access';
 
 export function AppLayout() {
   const [isSidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [logoutError, setLogoutError] = useState('');
+  const [loggingOut, setLoggingOut] = useState(false);
   const { user, logout } = useAuth();
+  async function handleLogout() {
+    setLoggingOut(true);
+    setLogoutError('');
+    try { await logout(); }
+    catch { setLogoutError('Não foi possível encerrar a sessão. Tente novamente.'); }
+    finally { setLoggingOut(false); }
+  }
   if (!user) return null;
   const menuItems = menuForRole(user.role);
 
@@ -19,7 +28,8 @@ export function AppLayout() {
         </NavLink>
         <div className="topbar-actions">
           <button className="round-icon" type="button" aria-label="Notificações" title="Notificações"><Bell size={18} /></button>
-          <button className="logout-button" type="button" onClick={logout} aria-label="Sair da conta" title="Sair da conta"><LogOut size={16} /><span>Sair</span></button>
+          {logoutError && <p role="alert" className="logout-error">{logoutError}</p>}
+          <button className="logout-button" type="button" onClick={() => void handleLogout()} disabled={loggingOut} aria-label="Sair da conta" title="Sair da conta"><LogOut size={16} /><span>{loggingOut ? 'Saindo…' : 'Sair'}</span></button>
         </div>
       </header>
       <div className="workspace">
