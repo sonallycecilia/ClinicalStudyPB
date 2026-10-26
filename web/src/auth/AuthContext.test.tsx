@@ -55,9 +55,10 @@ describe('AuthContext — integração de sessão com a API', () => {
     expect(JSON.parse(localStorage.getItem('clinicalstudy.session') ?? '{}').accessToken).toBe('new-token');
     fireEvent.click(screen.getByText('logout'));
     await waitFor(() => expect(screen.getByTestId('user').textContent).toBe('sem sessão'));
-    expect(fetch).toHaveBeenLastCalledWith('http://localhost:3000/auth/logout', expect.objectContaining({
-      method: 'POST', headers: { Authorization: 'Bearer new-token' },
-    }));
+    const logoutCall = vi.mocked(fetch).mock.calls.at(-1);
+    expect(logoutCall?.[0]).toBe('http://localhost:3000/auth/logout');
+    expect(logoutCall?.[1]?.method).toBe('POST');
+    expect(new Headers(logoutCall?.[1]?.headers).get('Authorization')).toBe('Bearer new-token');
     expect(localStorage.getItem('clinicalstudy.session')).toBeNull();
   });
 
