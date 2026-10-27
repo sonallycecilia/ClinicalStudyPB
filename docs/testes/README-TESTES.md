@@ -80,6 +80,8 @@ docker compose up --build
 
 O Compose aguarda o PostgreSQL, executa `npm run db:migrate` e `npm run db:seed:demo` no backend e inicia a API e o web. Aguarde os serviços estarem disponíveis nas URLs acima; em outro terminal, execute `npm --prefix web run cypress:run`. O Compose publica o PostgreSQL na porta `5433` do host para acesso local; o backend no Compose o acessa pela porta `5432` na rede interna. Evite iniciar outro Vite usando a porta `5173`.
 
+Para detalhes dos cenários E2E e das tasks 3209 e 3210, consulte [`docs/cypress-tasks-3209-3210.md`](docs/cypress-tasks-3209-3210.md).
+
 ### Resultados registrados
 
 Estes resultados foram confirmados em execuções anteriores ou informados pela equipe. Não foram reexecutados durante esta consolidação.
@@ -114,11 +116,11 @@ O módulo utiliza Jest, `jest-expo` e React Native Testing Library. Há testes p
 
 Os testes verificam aspectos básicos da renderização das telas. A cobertura de cenários adicionais poderá ser ampliada conforme novas funcionalidades forem desenvolvidas.
 
-Localização dos arquivos: os testes estão associados às telas correspondentes dentro da estrutura do aplicativo mobile.
+Localização dos arquivos: os testes estão associados às telas correspondentes dentro da estrutura do aplicativo mobile, em `mobile/src/screens/__tests__/`.
 
 ### Pré-requisitos, instalação e comandos
 
-São necessários Node.js em versão compatível com o CI e npm. Execute os comandos dentro de `mobile/`:
+São necessários Node.js 22, conforme `.github/workflows/mobile-ci.yml`, e npm. Execute os comandos dentro de `mobile/`:
 
 ```bat
 npm.cmd ci
@@ -131,17 +133,22 @@ Para gerar relatório de cobertura e executar sequencialmente:
 npm.cmd test -- --coverage --runInBand
 ```
 
-Verificações complementares:
+Verificações complementares do módulo:
 
 ```bat
 npm.cmd run lint
-npx.cmd tsc --noEmit
+npm.cmd run typecheck
+```
+
+Para verificar espaços em branco nas alterações do Git, execute na raiz do repositório:
+
+```bat
 git diff --check
 ```
 
 ### Workflow, resultados e cobertura
 
-A pipeline de CI está definida em `.github/workflows/mobile-ci.yml`. Ela prepara a versão de Node.js, instala as dependências pelo lockfile, executa os testes e realiza verificações adicionais configuradas no workflow.
+A pipeline em `.github/workflows/mobile-ci.yml` é acionada em `push` e `pull_request` quando há alterações em `mobile/**` ou no próprio workflow. Em Ubuntu, configura Node.js 22, instala dependências com `npm ci` usando `mobile/package-lock.json`, executa `npm test -- --runInBand`, `npm run lint`, `npm run typecheck` e exporta bundles Expo para todas as plataformas com `npx expo export --platform all`. A exportação direciona os arquivos para um diretório temporário do runner. O workflow não executa cobertura; a medição de cobertura é local.
 
 O resultado de `npm.cmd test -- --runInBand` foi de **2 suítes aprovadas e 2 testes aprovados**, sem falhas. A execução de cobertura com `npm.cmd test -- --coverage --runInBand` foi concluída com sucesso, com **100% de cobertura para o código contemplado pela configuração atual**.
 
