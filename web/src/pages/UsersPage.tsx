@@ -182,6 +182,7 @@ export function UsersPage() {
         <div><p className="eyebrow">CLINICALSTUDYPB / ADMINISTRAÇÃO</p><h1>Administração de usuários</h1><p>Gerencie as contas e os perfis de acesso ao sistema.</p></div>
         <button className="button button-primary new-user-button" type="button" onClick={openCreate}><Plus size={16} /> Novo usuário</button>
       </section>
+      <div className="page-content-offset">
       {notice && <div className="notice" role="status"><span>{notice}</span><button type="button" aria-label="Fechar aviso" onClick={() => setNotice('')}><X size={15} /></button></div>}
       <section className="stat-grid" aria-label="Resumo de contas">
         <article className="stat-card"><div className="stat-icon"><UserRound size={18} /></div><div><p>Contas cadastradas</p><strong>{String(users.length).padStart(2, '0')}</strong></div></article>
@@ -211,6 +212,7 @@ export function UsersPage() {
         </div>
         <footer className="table-footer"><span>Exibindo {filteredUsers.length} de {users.length} contas</span><span>Os perfis determinam os menus e as rotas disponíveis.</span></footer>
       </section>
+      </div>
       {modalOpen && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeModal(); }}>
         <section className="user-modal" role="dialog" aria-modal="true" aria-labelledby="user-modal-title">
           <header className="modal-header"><div><p className="eyebrow">CONTA DE ACESSO</p><h2 id="user-modal-title">{editing ? 'Informações da conta' : 'Novo usuário'}</h2><p>{editing ? 'Atualize as informações e as permissões desta conta.' : 'Preencha os dados para cadastrar um novo usuário.'}</p></div><button type="button" className="icon-button close-modal" aria-label="Fechar formulário" onClick={closeModal}><X size={20} /></button></header>
