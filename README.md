@@ -10,12 +10,12 @@ O sistema utiliza dados fictícios e não realiza diagnósticos ou decisões cl�
 
 | Papel | Integrante | Responsabilidade |
 | --- | --- | --- |
-| Líder técnico / Gerente | Marcella | Arquitetura, integração e planejamento |
-| Backend | Sonally | Dados e regras de negócio |
-| Web 1 | Lethycia | Estudos, protocolos e usuários |
-| Web 2 | Zeton | Recrutamento, visitas e relatórios |
-| Mobile | Leticia | Aplicativo do participante e protótipos |
-| QA / DevOps | Laryssa | Pipeline e coordenação da qualidade |
+| Líder técnico / Gerente | Laryssa | Arquitetura, integração e planejamento |
+| Backend | Leticia| Dados e regras de negócio |
+| Web 1 | Zeton | Estudos, protocolos e usuários |
+| Web 2 | Lethycia | Recrutamento, visitas e relatórios |
+| Mobile | Sonally | Aplicativo do participante e protótipos |
+| QA / DevOps | Marcella | Pipeline e coordenação da qualidade |
 
 ## 3. Tecnologias utilizadas
 
