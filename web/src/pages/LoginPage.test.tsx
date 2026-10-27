@@ -55,7 +55,7 @@ describe('LoginPage', () => {
     expect(screen.getByLabelText('Senha').getAttribute('autocomplete')).toBe('current-password');
     expect(screen.getByLabelText('Senha').hasAttribute('required')).toBe(true);
     expect(screen.getByRole('button', { name: 'Entrar' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Criar uma conta' })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Criar uma conta' })).toBeNull();
     expect(screen.getByText('Acesso restrito a usuários autorizados')).toBeTruthy();
   });
 
