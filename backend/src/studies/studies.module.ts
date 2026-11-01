@@ -4,6 +4,8 @@ import { AccessTokenGuard } from '../auth/access-token.guard.js';
 import { RolesGuard } from '../auth/roles.guard.js';
 import { DatabaseModule } from '../database/database.module.js';
 import { UsersModule } from '../users/users.module.js';
+import { CriteriaController } from './criteria.controller.js';
+import { CriteriaService } from './criteria.service.js';
 import { StudiesController } from './studies.controller.js';
 import { StudiesService } from './studies.service.js';
 
@@ -12,8 +14,8 @@ import { StudiesService } from './studies.service.js';
   // are made available through the exported SessionsService (AuthModule) and
   // UsersService (UsersModule).
   imports: [DatabaseModule, AuthModule, UsersModule],
-  controllers: [StudiesController],
-  providers: [StudiesService, AccessTokenGuard, RolesGuard],
+  controllers: [StudiesController, CriteriaController],
+  providers: [StudiesService, CriteriaService, AccessTokenGuard, RolesGuard],
   exports: [StudiesService],
 })
 export class StudiesModule {}

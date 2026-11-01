@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { USER_ROLES } from '../users/user.types.js';
 import type { AccountStatus, UserRole } from '../users/user.types.js';
 import type { StudyStatus, StudyKind, StudySymbol } from '../studies/study.types.js';
+import type { CriterionType } from '../studies/criteria.types.js';
 
 export class ApiErrorResponseDto {
   @ApiProperty({ example: 400, description: 'Código HTTP da resposta.' })
@@ -180,4 +181,43 @@ export class StudyResponseDto {
 
   @ApiProperty({ enum: ['moon', 'heart', 'activity'], example: 'activity' })
   symbol!: StudySymbol;
+}
+
+export class CreateCriterionRequestDto {
+  @ApiProperty({ enum: ['Inclusão', 'Exclusão'], example: 'Inclusão' })
+  type!: CriterionType;
+
+  @ApiProperty({ minLength: 1, maxLength: 2000, example: 'Ter idade igual ou superior a 18 anos.' })
+  description!: string;
+
+  @ApiPropertyOptional({ default: true, example: true })
+  active?: boolean;
+}
+
+export class UpdateCriterionRequestDto {
+  @ApiPropertyOptional({ enum: ['Inclusão', 'Exclusão'], example: 'Exclusão' })
+  type?: CriterionType;
+
+  @ApiPropertyOptional({ minLength: 1, maxLength: 2000, example: 'Ter idade igual ou superior a 18 anos.' })
+  description?: string;
+
+  @ApiPropertyOptional({ example: false })
+  active?: boolean;
+}
+
+export class EligibilityCriterionResponseDto {
+  @ApiProperty({ format: 'uuid' })
+  id!: string;
+
+  @ApiProperty({ format: 'uuid' })
+  studyId!: string;
+
+  @ApiProperty({ enum: ['Inclusão', 'Exclusão'], example: 'Inclusão' })
+  type!: CriterionType;
+
+  @ApiProperty({ example: 'Ter idade igual ou superior a 18 anos.' })
+  description!: string;
+
+  @ApiProperty({ example: true })
+  active!: boolean;
 }

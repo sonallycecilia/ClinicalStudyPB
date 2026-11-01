@@ -86,6 +86,62 @@ describe('Estudos clínicos com PostgreSQL (E2E)', () => {
       .set('Authorization', bearer(otherResearcherToken)).send({ title: 'Tentativa indevida' }).expect(403);
   });
 
+  it('cadastra, consulta e atualiza critérios vinculados ao estudo do pesquisador', async () => {
+    const study = await request(api()).post('/studies')
+      .set('Authorization', bearer(researcherToken)).send({ ...sample, title: 'Estudo com critérios' }).expect(201);
+    const created = await request(api()).post(`/studies/${study.body.id}/criteria`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ type: 'Inclusão', description: 'Ter idade igual ou superior a 18 anos.' })
+      .expect(201);
+
+    expect(created.body).toMatchObject({
+      studyId: study.body.id,
+      type: 'Inclusão',
+      description: 'Ter idade igual ou superior a 18 anos.',
+      active: true,
+    });
+
+    await request(api()).get(`/studies/${study.body.id}/criteria`)
+      .set('Authorization', bearer(researcherToken)).expect(200)
+      .expect(({ body }) => expect(body).toEqual([created.body]));
+    await request(api()).get(`/studies/${study.body.id}/criteria/${created.body.id}`)
+      .set('Authorization', bearer(researcherToken)).expect(200)
+      .expect(({ body }) => expect(body.id).toBe(created.body.id));
+    await request(api()).patch(`/studies/${study.body.id}/criteria/${created.body.id}`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ type: 'Exclusão', active: false })
+      .expect(200)
+      .expect(({ body }) => expect(body).toMatchObject({ type: 'Exclusão', active: false }));
+    await request(api()).get(`/studies/${study.body.id}/criteria/${created.body.id}`)
+      .set('Authorization', bearer(researcherToken)).expect(200)
+      .expect(({ body }) => expect(body.type).toBe('Exclusão'));
+  });
+
+  it('valida critérios e impede acesso a critérios fora do estudo ou de outro pesquisador', async () => {
+    const study = await request(api()).post('/studies')
+      .set('Authorization', bearer(researcherToken)).send({ ...sample, title: 'Estudo com validação' }).expect(201);
+    const otherStudy = await request(api()).post('/studies')
+      .set('Authorization', bearer(otherResearcherToken)).send({ ...sample, title: 'Estudo de outra pessoa' }).expect(201);
+
+    await request(api()).post(`/studies/${study.body.id}/criteria`)
+      .set('Authorization', bearer(researcherToken)).send({ type: 'Outro', description: 'Descrição válida' }).expect(400);
+    await request(api()).post(`/studies/${study.body.id}/criteria`)
+      .set('Authorization', bearer(researcherToken)).send({ type: 'Inclusão', description: '   ' }).expect(400);
+    await request(api()).post(`/studies/${otherStudy.body.id}/criteria`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ type: 'Inclusão', description: 'Descrição válida' }).expect(403);
+
+    const criterion = await request(api()).post(`/studies/${study.body.id}/criteria`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ type: 'Inclusão', description: 'Descrição válida' }).expect(201);
+    await request(api()).patch(`/studies/${study.body.id}/criteria/${criterion.body.id}`)
+      .set('Authorization', bearer(researcherToken)).send({ active: 'false' }).expect(400);
+    await request(api()).get(`/studies/${otherStudy.body.id}/criteria/${criterion.body.id}`)
+      .set('Authorization', bearer(otherResearcherToken)).expect(404);
+    await request(api()).patch(`/studies/${study.body.id}/criteria/${criterion.body.id}`)
+      .set('Authorization', bearer(researcherToken)).send({ unexpected: true }).expect(400);
+  });
+
   it('persiste os estudos após reiniciar a aplicação', async () => {
     const created = await request(api()).post('/studies')
       .set('Authorization', bearer(researcherToken)).send({ ...sample, title: 'Estudo persistente' }).expect(201);
