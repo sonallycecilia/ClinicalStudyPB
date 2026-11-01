@@ -14,6 +14,7 @@
   --surface: #ffffff;
   --page-bg: #f3f7f8;
   --danger: #c8393d;
+  --page-content-indent: 35px;
 }
 
 * { box-sizing: border-box; }
@@ -54,7 +55,7 @@ input, select { min-width: 0; }
 .login-glow-two { width: 390px; height: 390px; right: -100px; bottom: -230px; background: #2e8d9b; }
 .login-card { width: min(100%, 390px); border-radius: 12px; background: rgba(255,255,255,.98); padding: 22px 22px 20px; box-shadow: 0 18px 55px #194f5c1a; text-align: center; }
 .login-symbol { display: none; margin: 0 auto 12px; height: 34px; width: 34px; align-items: center; justify-content: center; border-radius: 10px; background: #e5f8f7; color: var(--teal); }
-.login-card h1 { margin: 0; font-size: 14px; color: #188b9c; font-weight: 700; }
+.login-card h1 { transform: translateY(-8px); margin: 0; font-size: 14px; color: #188b9c; font-weight: 700; }
 .login-form { display: grid; gap: 9px; }
 .field-with-icon { height: 35px; display: flex; align-items: center; gap: 8px; padding: 0 9px; color: #7a8d95; border: 1px solid #e0e8ea; border-radius: 5px; background: white; }
 .field-with-icon:focus-within { border-color: #82c8ce; box-shadow: 0 0 0 3px #d7f1f3; }
@@ -112,7 +113,7 @@ input, select { min-width: 0; }
 }
 .main-content { flex: 1; min-width: 0; padding: 22px 24px 32px; }
 .page-wrap { max-width: 1300px; margin: 0 auto; }
-.page-content-offset { width: calc(100% - 25px); min-width: 0; margin-left: 25px; }
+.page-content-offset { width: calc(100% - var(--page-content-indent)); min-width: 0; margin-left: var(--page-content-indent); }
 .page-heading { min-height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 21px; background: white; border: 1px solid #edf2f3; border-radius: 2px; }
 .page-heading h1 { margin: 0; font-size: 21px; font-weight: 700; letter-spacing: -.45px; color: #087c73; }
 .page-heading p:not(.eyebrow) { margin: 6px 0 0; color: #76909a; font-size: 11px; }
@@ -249,6 +250,7 @@ body:has(.modal-backdrop), body:has(.study-dialog-backdrop) { overflow: hidden; 
 }
 
 @media (max-width: 700px) {
+  :root { --page-content-indent: 30px; }
   .topbar { height: 62px; padding: 0 13px; }
   .topbar .brand { font-size: 20px; gap: 7px; letter-spacing: -.5px; }
   .topbar .brand svg { width: 29px; height: 29px; }

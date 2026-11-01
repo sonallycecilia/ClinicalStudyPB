@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { Activity, Eye, EyeOff, HeartPulse, LockKeyhole, Mail, UserRoundPlus } from 'lucide-react';
+import { Activity, Eye, EyeOff, HeartPulse, LockKeyhole, Mail } from 'lucide-react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { getHomeForRole } from '../security/access';
@@ -66,10 +66,6 @@ export function LoginPage() {
               {loading ? 'Entrando…' : 'Entrar'}
             </button>
           </form>
-          <div className="login-separator"><span />ou<span /></div>
-          <Link className="button button-soft button-full" to="/criar-conta" onClick={(event) => { event.preventDefault(); setError('O cadastro público ficará desabilitado nesta etapa. Solicite uma conta a um administrador.'); }}>
-            <UserRoundPlus size={16} /> Criar uma conta
-          </Link>
         </section>
         <p className="login-footer">Acesso restrito a usuários autorizados</p>
       </main>
