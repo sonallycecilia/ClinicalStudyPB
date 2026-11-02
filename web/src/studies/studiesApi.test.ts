@@ -48,6 +48,11 @@ describe('Studies API', () => {
     await expect(studiesApi.list(request)).rejects.toThrow('Data inválida.');
   });
 
+  it('não expõe a mensagem técnica de erros do servidor', async () => {
+    const request = vi.fn().mockResolvedValue(errorResponse(500, 'Internal server error'));
+    await expect(studiesApi.create(request, input)).rejects.toThrow('Ocorreu um erro inesperado no servidor.');
+  });
+
   it('traduz falha de conexão para uma mensagem compreensível', async () => {
     const request = vi.fn().mockRejectedValue(new Error('network error'));
     await expect(studiesApi.list(request)).rejects.toThrow('Não foi possível conectar à API de estudos.');

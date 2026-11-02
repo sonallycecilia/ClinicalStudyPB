@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import {
-  Activity, ArrowLeft, CalendarDays, ChevronDown, CircleCheck,
-  Eye, HeartPulse, MoreVertical, Moon, Pencil, Search, UsersRound,
+  Activity, ArrowLeft, CalendarDays, ChevronDown, CircleAlert, CircleCheck,
+  Eye, HeartPulse, MoreVertical, Moon, Pencil, Search, UsersRound, X,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
+import { StudyCriteriaEditor, StudyCriteriaSection, StudyCriteriaSummary } from '../components/StudyCriteriaSection';
+import { CriteriaApiError, UNEXPECTED_LOAD_ERROR, applyCriteriaChanges, criteriaApi, planCriteriaChanges } from '../studies/criteriaApi';
+import type { CriteriaChange, CriterionDraft, CriterionType, EligibilityCriterion } from '../studies/criteriaApi';
 import { studiesApi } from '../studies/studiesApi';
 import { onlyDigits } from '../studies/studyForm';
 import type { Study } from '../studies/studiesApi';
@@ -20,7 +23,23 @@ interface StudyForm {
 }
 
 type ViewMode = 'list' | 'detail';
-type DialogMode = 'create' | 'edit' | 'success' | null;
+type DialogMode = 'create' | 'edit' | 'success' | 'criteria-recovery' | null;
+
+/** Alterações de critérios de um estudo já salvo. */
+interface CriteriaPersistence {
+  studyId: string;
+  origin: 'create' | 'edit';
+  pending: CriteriaChange[];
+  total: number;
+  knownIds: string[];
+}
+
+interface CriteriaRecovery extends CriteriaPersistence {
+  error: CriteriaApiError;
+}
+
+const PENDING_CRITERIA_ERROR = 'Há um critério em preenchimento. Adicione-o, conclua a edição ou apague o texto antes de salvar o estudo.';
+const CHANGE_LABELS: Record<CriteriaChange['kind'], string> = { create: 'Adicionar', update: 'Editar', remove: 'Remover' };
 
 const EMPTY_FORM: StudyForm = {
   title: '', objective: '', researcher: '', startDate: '', endDate: '',
@@ -88,6 +107,16 @@ export function StudiesPage() {
   const [statusFilter, setStatusFilter] = useState('Todos');
   const [openActionsFor, setOpenActionsFor] = useState<string | null>(null);
   const [successTitle, setSuccessTitle] = useState('');
+  const [criteriaDrafts, setCriteriaDrafts] = useState<CriterionDraft[]>([]);
+  const [savedCriteriaCount, setSavedCriteriaCount] = useState(0);
+  const [criteriaRecovery, setCriteriaRecovery] = useState<CriteriaRecovery | null>(null);
+  const [existingCriteria, setExistingCriteria] = useState<EligibilityCriterion[]>([]);
+  const [isLoadingCriteria, setIsLoadingCriteria] = useState(false);
+  const [criteriaLoadError, setCriteriaLoadError] = useState<CriteriaApiError | null>(null);
+  const [criteriaLoadAttempt, setCriteriaLoadAttempt] = useState(0);
+  const [criteriaVersions, setCriteriaVersions] = useState<Record<string, number>>({});
+  const [notice, setNotice] = useState('');
+  const pendingCriteria = useRef(new Set<CriterionType>());
   const studyStats = useMemo(() => ({
     total: studies.length,
     inProgress: studies.filter((item) => item.status === 'Em andamento').length,
@@ -124,7 +153,8 @@ export function StudiesPage() {
   useEffect(() => {
     if (!dialogMode) return;
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape' && !isSaving) {
+      // A recuperação exige uma decisão explícita: fechar descartaria os critérios pendentes.
+      if (event.key === 'Escape' && !isSaving && dialogMode !== 'criteria-recovery') {
         setDialogMode(null);
         setFormError('');
       }
@@ -132,6 +162,42 @@ export function StudiesPage() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [dialogMode, isSaving]);
+
+  // Com os critérios, o formulário fica longo e o botão de envio pode estar longe do campo inválido.
+  useEffect(() => {
+    if (formErrorField) document.querySelector<HTMLElement>('.study-form [aria-invalid="true"]')?.focus();
+  }, [formErrorField]);
+
+  // Critérios inativos foram removidos e não voltam ao formulário.
+  useEffect(() => {
+    if (dialogMode !== 'edit' || !editingId) return;
+    const controller = new AbortController();
+    setIsLoadingCriteria(true);
+    setCriteriaLoadError(null);
+    void criteriaApi.list(request, editingId, controller.signal)
+      .then((response) => {
+        if (controller.signal.aborted) return;
+        const active = response.filter((item) => item.active);
+        setExistingCriteria(active);
+        setCriteriaDrafts(active.map(({ id, type, description }) => ({ id, type, description })));
+      })
+      .catch((reason: unknown) => {
+        if (!controller.signal.aborted) setCriteriaLoadError(reason instanceof CriteriaApiError ? reason : new CriteriaApiError(UNEXPECTED_LOAD_ERROR, true));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsLoadingCriteria(false);
+      });
+    return () => controller.abort();
+  }, [dialogMode, editingId, request, criteriaLoadAttempt]);
+
+  const handlePendingCriteria = useCallback((type: CriterionType, isPending: boolean) => {
+    if (isPending) {
+      pendingCriteria.current.add(type);
+      return;
+    }
+    pendingCriteria.current.delete(type);
+    if (pendingCriteria.current.size === 0) setFormError((current) => current === PENDING_CRITERIA_ERROR ? '' : current);
+  }, []);
 
   const selectedStudy = studies.find((study) => study.id === selectedId) ?? studies[0];
   const editingStudy = editingId ? studies.find((study) => study.id === editingId) : undefined;
@@ -157,9 +223,15 @@ export function StudiesPage() {
   function openCreate() {
     setEditingId(null);
     setForm({ ...EMPTY_FORM, researcher: researcherOptions[0] ?? user?.name ?? '' });
+    setCriteriaDrafts([]);
+    setExistingCriteria([]);
+    setIsLoadingCriteria(false);
+    setCriteriaLoadError(null);
+    pendingCriteria.current.clear();
     setFormError('');
     setFormErrorField(null);
     setSuccessTitle('');
+    setNotice('');
     setDialogMode('create');
     setOpenActionsFor(null);
   }
@@ -167,6 +239,12 @@ export function StudiesPage() {
   function openEdit(study: Study) {
     setEditOrigin(viewMode);
     setEditingId(study.id);
+    setNotice('');
+    setCriteriaDrafts([]);
+    setExistingCriteria([]);
+    setIsLoadingCriteria(true);
+    setCriteriaLoadError(null);
+    pendingCriteria.current.clear();
     setForm(toForm(study));
     setFormError('');
     setFormErrorField(null);
@@ -208,6 +286,7 @@ export function StudiesPage() {
     if (!Number.isInteger(participantLimit) || participantLimit < 1) return setFormError('O limite de participantes deve ser pelo menos 1.');
     if (!Number.isInteger(participantsLinked) || participantsLinked < 0) return setFormError('Informe uma quantidade válida de participantes vinculados.');
     if (participantsLinked > participantLimit) return setFormError('Os participantes vinculados não podem ultrapassar o limite definido.');
+    if (pendingCriteria.current.size > 0) return setFormError(PENDING_CRITERIA_ERROR);
 
     const payload = {
       title: form.title.trim(), objective: form.objective.trim(),
@@ -224,18 +303,20 @@ export function StudiesPage() {
         ? current.map((item) => item.id === saved.id ? saved : item)
         : [...current, saved]);
       setSelectedId(saved.id);
-      setEditingId(null);
       setFormError('');
+      setSuccessTitle(saved.title);
+      // Sem os critérios carregados não há base de comparação: salva somente os dados do estudo.
+      const pending = isLoadingCriteria || criteriaLoadError ? [] : planCriteriaChanges(existingCriteria, criteriaDrafts);
+      const persistence: CriteriaPersistence = { studyId: saved.id, origin: isEdit ? 'edit' : 'create', pending, total: pending.length, knownIds: existingCriteria.map((item) => item.id) };
       if (isEdit) {
-        setDialogMode(null);
         setViewMode(editOrigin);
       } else {
-        setSuccessTitle(saved.title);
-        setDialogMode('success');
         setViewMode('list');
         setSearch('');
         setStatusFilter('Todos');
       }
+      await persistCriteria(persistence);
+      setEditingId(null);
     } catch (reason) {
       setFormErrorField(null);
       setFormError(reason instanceof Error ? reason.message : 'Não foi possível salvar o estudo na API.');
@@ -244,7 +325,58 @@ export function StudiesPage() {
     }
   }
 
+  // Remonta o resumo do cartão e a seção de detalhes do estudo, que voltam a consultar a API.
+  function refreshCriteria(studyId: string) {
+    setCriteriaVersions((current) => ({ ...current, [studyId]: (current[studyId] ?? 0) + 1 }));
+  }
+
+  function finishCriteria({ studyId, origin, total }: CriteriaPersistence) {
+    setCriteriaRecovery(null);
+    if (total > 0) refreshCriteria(studyId);
+    if (origin === 'edit') {
+      setNotice(total > 0 ? 'Estudo e critérios atualizados com sucesso.' : 'Estudo atualizado com sucesso.');
+      setDialogMode(null);
+      return;
+    }
+    setSavedCriteriaCount(total);
+    setDialogMode('success');
+  }
+
+  // applyCriteriaChanges não rejeita: uma falha aqui nunca volta ao formulário nem salva o estudo de novo.
+  async function persistCriteria(persistence: CriteriaPersistence, isRetry = false) {
+    if (persistence.pending.length === 0) return finishCriteria(persistence);
+    const { pending, createdIds, error } = await applyCriteriaChanges(request, persistence.studyId, persistence.pending, isRetry ? persistence.knownIds : undefined);
+    if (error) {
+      setCriteriaRecovery({ ...persistence, pending, knownIds: [...persistence.knownIds, ...createdIds], error });
+      setDialogMode('criteria-recovery');
+      return;
+    }
+    finishCriteria(persistence);
+  }
+
+  async function retryCriteria() {
+    if (!criteriaRecovery || isSaving) return;
+    setIsSaving(true);
+    try {
+      await persistCriteria(criteriaRecovery, true);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  function dismissCriteriaRecovery() {
+    const origin = criteriaRecovery?.origin;
+    if (criteriaRecovery) refreshCriteria(criteriaRecovery.studyId);
+    setCriteriaRecovery(null);
+    if (origin === 'edit') {
+      setDialogMode(null);
+      return;
+    }
+    backToStudies();
+  }
+
   async function startDetails(study: Study) {
+    setNotice('');
     setOpenActionsFor(null);
     if (!accessToken) {
       setLoadError('Entre novamente para consultar os detalhes.');
@@ -265,6 +397,7 @@ export function StudiesPage() {
   }
 
   function backToStudies() {
+    setNotice('');
     setViewMode('list');
     setDialogMode(null);
     setOpenActionsFor(null);
@@ -299,6 +432,7 @@ export function StudiesPage() {
               <Field label="Limite de participantes"><input type="text" inputMode="numeric" pattern="[0-9]*" value={form.participantLimit} onChange={(event) => updateField('participantLimit', onlyDigits(event.target.value))} placeholder="Ex.: 30" required /></Field>
               <Field label="Participantes já vinculados"><input type="text" inputMode="numeric" pattern="[0-9]*" value={form.participantsLinked} onChange={(event) => updateField('participantsLinked', onlyDigits(event.target.value))} placeholder="Ex.: 18" required /></Field>
             </div>
+            <StudyCriteriaEditor drafts={criteriaDrafts} onChange={setCriteriaDrafts} onPendingChange={handlePendingCriteria} disabled={isSaving} loading={isLoadingCriteria} loadError={criteriaLoadError} onRetryLoad={() => setCriteriaLoadAttempt((attempt) => attempt + 1)} />
             {formError && !formErrorField && <p className="form-error study-form-error" role="alert">{formError}</p>}
             <div className="study-form-actions">
               {isEdit ? <button className="button button-outline" type="button" onClick={undoAndClose} disabled={isSaving}>Desfazer alterações</button> : <button className="button button-outline" type="button" onClick={closeDialog} disabled={isSaving}>Cancelar</button>}
@@ -316,11 +450,41 @@ export function StudiesPage() {
         <section className="study-success-card" role="dialog" aria-modal="true" aria-labelledby="study-success-title">
           <div className="study-success-icon"><CircleCheck size={33} strokeWidth={2.5} /></div>
           <h2 id="study-success-title">Estudo cadastrado com sucesso!</h2>
-          <p>Os dados iniciais do protocolo foram registrados.</p>
+          <p>Os dados iniciais do protocolo foram registrados.{savedCriteriaCount > 0 && ` ${savedCriteriaCount} ${savedCriteriaCount === 1 ? 'critério foi salvo' : 'critérios foram salvos'}.`}</p>
           <div className="study-success-summary"><span>TÍTULO DO ESTUDO</span><strong>{successTitle}</strong></div>
           <div className="study-success-actions">
             <button className="button button-outline" type="button" onClick={openCreate}>Cadastrar outro</button>
             <button className="button button-primary" type="button" onClick={backToStudies}>Ver estudos</button>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  function renderNotice() {
+    return notice && <div className="notice" role="status"><span>{notice}</span><button type="button" aria-label="Fechar aviso" onClick={() => setNotice('')}><X size={15} /></button></div>;
+  }
+
+  function renderCriteriaRecoveryDialog() {
+    if (!criteriaRecovery) return null;
+    const { origin, pending, total, error } = criteriaRecovery;
+    const isEditOrigin = origin === 'edit';
+    return (
+      <div className="study-dialog-backdrop study-success-mode" role="presentation">
+        <section className="study-success-card" role="dialog" aria-modal="true" aria-labelledby="study-recovery-title">
+          <div className="study-success-icon study-recovery-icon"><CircleAlert size={33} strokeWidth={2.5} /></div>
+          <h2 id="study-recovery-title">{isEditOrigin ? 'Estudo salvo, mas faltam alterações nos critérios' : 'Estudo cadastrado, mas faltam critérios'}</h2>
+          <p>{isEditOrigin
+            ? `${total - pending.length} de ${total} alterações nos critérios foram salvas. Uma nova tentativa envia somente as alterações pendentes.`
+            : `${total - pending.length} de ${total} critérios foram salvos. O estudo não será criado novamente: uma nova tentativa envia somente os critérios pendentes.`}</p>
+          <div className="study-success-summary"><span>TÍTULO DO ESTUDO</span><strong>{successTitle}</strong></div>
+          <ul className="study-recovery-list" aria-label={isEditOrigin ? 'Alterações não salvas' : 'Critérios não salvos'}>
+            {pending.map((item) => <li key={`${item.kind}-${item.id}`}><strong>{isEditOrigin ? `${CHANGE_LABELS[item.kind]} • ${item.type}` : item.type}</strong>{item.description}</li>)}
+          </ul>
+          <p className="form-error" role="alert">{error.message}</p>
+          <div className="study-success-actions">
+            <button className="button button-outline" type="button" onClick={dismissCriteriaRecovery} disabled={isSaving}>{isEditOrigin ? 'Continuar sem estas alterações' : 'Continuar sem estes critérios'}</button>
+            {error.retryable && <button className="button button-primary" type="button" onClick={() => void retryCriteria()} disabled={isSaving}>{isSaving ? 'Salvando...' : 'Tentar novamente'}</button>}
           </div>
         </section>
       </div>
@@ -334,6 +498,7 @@ export function StudiesPage() {
         <div className="study-breadcrumb">
           <button type="button" onClick={backToStudies}><ArrowLeft size={15} /> Voltar aos estudos</button>
         </div>
+        {renderNotice()}
         <section className="study-detail-sheet">
           <header className="study-detail-hero">
             <div><h1>{selectedStudy.title}</h1><p>{selectedStudy.kind} <span>•</span> Código {selectedStudy.code}</p></div>
@@ -354,7 +519,7 @@ export function StudiesPage() {
                 </div>
               </section>
               <section className="study-detail-section study-objective-card"><h2>Objetivo do estudo</h2><p>{selectedStudy.objective}</p></section>
-              <section className="study-detail-section study-about-card"><h2>Sobre o acompanhamento</h2><p>Este painel reúne as informações gerais do estudo. Critérios de elegibilidade e visitas previstas serão definidos nas próximas etapas.</p></section>
+              <section className="study-detail-section study-about-card"><h2>Sobre o acompanhamento</h2><p>Este painel reúne as informações gerais do estudo. As visitas previstas serão definidas nas próximas etapas.</p></section>
             </div>
             <aside className="study-detail-side-column">
               <section className="study-detail-section study-summary-card">
@@ -365,8 +530,10 @@ export function StudiesPage() {
               </section>
             </aside>
           </div>
+          <StudyCriteriaSection key={`${selectedStudy.id}-${criteriaVersions[selectedStudy.id] ?? 0}`} studyId={selectedStudy.id} />
         </section>
         {dialogMode === 'edit' && renderStudyForm(true)}
+        {dialogMode === 'criteria-recovery' && renderCriteriaRecoveryDialog()}
       </div>
     );
   }
@@ -378,6 +545,7 @@ export function StudiesPage() {
         {loadError && <p role="alert" className="form-error">{loadError}</p>}
         {isLoading && <p role="status">Carregando estudos da API...</p>}
         {isLoadingDetail && <p role="status">Consultando detalhes...</p>}
+        {renderNotice()}
         <section className="study-stat-grid" aria-label="Resumo dos estudos">
           <article className="study-stat-card"><p>Estudos cadastrados</p><strong>{String(studyStats.total).padStart(2, '0')}</strong></article>
           <article className="study-stat-card"><p>Em andamento</p><strong>{String(studyStats.inProgress).padStart(2, '0')}</strong></article>
@@ -399,6 +567,7 @@ export function StudiesPage() {
                 <div className="study-card-body">
                   <div className="study-meta-line"><CalendarDays size={14} /><div><span>Período</span><strong>{dateRange(study)}</strong></div></div>
                   <div className="study-meta-line"><UsersRound size={14} /><div><span>Participantes</span><strong>{study.participantsLinked} de {study.participantLimit} participantes</strong></div></div>
+                  <StudyCriteriaSummary key={criteriaVersions[study.id] ?? 0} studyId={study.id} studyTitle={study.title} />
                   <div className="study-progress-label"><span>Ocupação das vagas</span><strong>{progress}%</strong></div>
                   <div className="study-progress-track"><span style={{ width: `${progress}%` }} /></div>
                 </div>
@@ -411,6 +580,7 @@ export function StudiesPage() {
       {dialogMode === 'create' && renderStudyForm(false)}
       {dialogMode === 'edit' && renderStudyForm(true)}
       {dialogMode === 'success' && renderSuccessDialog()}
+      {dialogMode === 'criteria-recovery' && renderCriteriaRecoveryDialog()}
     </div>
   );
 }

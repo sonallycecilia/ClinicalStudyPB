@@ -26,6 +26,7 @@ async function studiesRequest<T>(request: AuthenticatedRequest, path: string, in
   } catch {
     throw new Error('Não foi possível conectar à API de estudos. Verifique se o backend está ligado.');
   }
+  if (response.status >= 500) throw new Error('Ocorreu um erro inesperado no servidor. Tente novamente em alguns instantes.');
   if (!response.ok) {
     const body = await response.json().catch(() => null) as { message?: string | string[] } | null;
     const detail = Array.isArray(body?.message) ? body.message.join(' ') : body?.message;
