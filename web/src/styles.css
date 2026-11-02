@@ -379,6 +379,39 @@ body:has(.modal-backdrop), body:has(.study-dialog-backdrop) { overflow: hidden; 
 .study-field input::placeholder { color: #8099a3; }
 .study-field-hint { margin-top: -5px; color: #78939d; font-size: 10px; font-weight: 400; }
 .study-field-error { margin-top: -4px; color: #b82c35; font-size: 11px; font-weight: 500; }
+.candidate-form-panel { max-width: 780px; min-height: 0; margin: 24px auto; }
+.candidate-form { min-height: 0; }
+.candidate-fields { display: flex; flex-direction: column; gap: 22px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.candidate-form .study-field { font-size: 12px; }
+.candidate-form .study-field-hint, .candidate-form .study-field-error { font-size: 12px; line-height: 1.5; }
+.candidate-form .study-field-hint { color: #506975; }
+.candidate-form .study-field-hint.candidate-study-error { color: #b82c35; }
+.candidate-form .study-field label b { color: #c84d50; font-weight: 600; }
+.candidate-form .study-field input, .candidate-form .study-field select { font-size: 13px; }
+.candidate-form select { width: 100%; min-width: 0; height: 42px; padding: 0 11px; border: 1px solid #dce8eb; border-radius: 8px; color: #193943; background: #fff; }
+.candidate-form select[aria-invalid='true'] { border-color: #c8393d; }
+.candidate-form :is(input, select, button):focus-visible, .candidate-form-page .coord-page-heading a:focus-visible { outline: 2px solid var(--teal-dark); outline-offset: 3px; }
+.candidate-form select:disabled { color: #667f89; background: #f3f7f8; }
+.candidate-form button:disabled { cursor: not-allowed; opacity: 1; }
+.candidate-form .button-primary:disabled { color: #506975; background: #e3ecee; border-color: #cbdade; transform: none; }
+.candidate-form[aria-busy='true'] button:disabled { cursor: progress; }
+.candidate-integration-note { margin: 0; color: #506975; font-size: 12px; line-height: 1.6; }
+.candidate-integration-note { padding-top: 4px; }
+.candidate-notice { margin: 0 0 18px; padding: 12px; border: 1px solid #dce8eb; border-radius: 8px; color: #24444f; background: #f3fafa; font-size: 12px; line-height: 1.6; }
+.candidate-form-page .coord-page-heading h1 { font-size: clamp(15px, 2vw, 21px); }
+.candidate-form-page .coord-page-heading a { color: inherit; }
+.candidate-form .study-form-actions { flex-wrap: wrap; }
+.candidate-form .study-form-actions .button { min-height: 44px; font-size: 12px; }
+@media (max-width: 700px) {
+  .candidate-form .study-field input, .candidate-form .study-field select { min-height: 44px; font-size: 16px; }
+}
+@media (max-width: 400px) {
+  .candidate-form .study-form-actions { flex-direction: column; align-items: stretch; }
+  .candidate-form .study-form-actions .button { flex: auto; width: 100%; }
+}
+.candidate-tags { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.candidate-tags li { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border: 1px solid #dce8eb; border-radius: 16px; color: #24444f; background: #f3fafa; font-size: 12px; }
+.candidate-tags .icon-button { width: 22px; height: 22px; }
 .study-field input[aria-invalid='true'] { border-color: #c8393d; }
 .study-field input:focus, .study-select-wrap select:focus { border-color: #83c7c4; box-shadow: 0 0 0 3px #e2f4f3; }
 .study-select-wrap { position: relative; display: block; }

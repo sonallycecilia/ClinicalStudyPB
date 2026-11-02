@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import {
   CoordinatorCandidatesPage,
   CoordinatorDashboardPage,
@@ -65,21 +65,15 @@ describe('CoordinatorCandidatesPage', () => {
     expect(within(candidateRow).getByText('Participante ativo')).toBeTruthy();
   });
 
-  it('cadastra candidato localmente e permite cancelar sem adicionar', () => {
-    renderCoordinator(<CoordinatorCandidatesPage />);
+  it('abre a página própria de cadastro em vez de adicionar candidato localmente', () => {
+    render(<MemoryRouter initialEntries={['/coordenador/candidatos']}><Routes>
+      <Route path="/coordenador/candidatos" element={<CoordinatorCandidatesPage />} />
+      <Route path="/coordenador/candidatos/novo" element={<p>Página de cadastro de candidato</p>} />
+    </Routes></MemoryRouter>);
+    expect(screen.getByRole('status').textContent).toContain('dados demonstrativos');
     fireEvent.click(screen.getByRole('button', { name: 'Novo candidato' }));
-    fireEvent.change(screen.getByPlaceholderText('Nome do candidato'), {
-      target: { value: 'Candidato Local' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Cadastrar candidato' }));
-    expect(screen.getByText('Candidato Local')).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Novo candidato' }));
-    fireEvent.change(screen.getByPlaceholderText('Nome do candidato'), {
-      target: { value: 'Não cadastrado' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
-    expect(screen.queryByText('Não cadastrado')).toBeNull();
+    expect(screen.getByText('Página de cadastro de candidato')).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 });
 

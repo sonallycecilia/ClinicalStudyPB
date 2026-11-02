@@ -186,23 +186,12 @@ export function CoordinatorDashboardPage() {
 }
 
 export function CoordinatorCandidatesPage() {
+  const navigate = useNavigate();
   const [candidates, setCandidates] = useState(initialCandidates);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('Todos os status');
   const [activeCandidate, setActiveCandidate] = useState<CandidateRow | null>(null);
-  const [showNew, setShowNew] = useState(false);
-  const [name, setName] = useState('');
-  const [study, setStudy] = useState('Qualidade do sono');
   const visible = candidates.filter((candidate) => candidate.name.toLowerCase().includes(search.toLowerCase()) && (statusFilter === 'Todos os status' || candidate.status === statusFilter));
-
-  function addCandidate(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const candidateName = name.trim();
-    if (!candidateName) return;
-    setCandidates((current) => [...current, { id: Date.now(), name: candidateName, initials: initialsFormName(candidateName), study, enrollmentDate: new Date().toLocaleDateString('pt-BR'), status: 'Pendente de avaliação' }]);
-    setName('');
-    setShowNew(false);
-  }
 
   function setCandidateStatus(status: CandidateStatus) {
     if (!activeCandidate) return;
@@ -211,8 +200,9 @@ export function CoordinatorCandidatesPage() {
   }
 
   return <div className="coord-page coord-candidates-page">
-    <PageHeader title="Candidatos e participantes" action="Novo candidato" onAction={() => setShowNew(true)} />
+    <PageHeader title="Candidatos e participantes" action="Novo candidato" onAction={() => navigate('/coordenador/candidatos/novo')} />
     <div className="page-content-offset">
+    <p className="candidate-notice" role="status">Esta listagem contém dados demonstrativos. As alterações de situação ficam apenas nesta tela; a consulta e o cadastro persistidos de candidatos ainda não estão disponíveis.</p>
     <StatCards items={[{ title: 'Candidatos para avaliar', value: String(candidates.filter((item) => item.status === 'Pendente de avaliação').length + 2).padStart(2, '0') }, { title: 'Participantes ativos', value: String(candidates.filter((item) => item.status === 'Participante ativo').length + 16).padStart(2, '0') }, { title: 'Inscrições este mês', value: '07' }]} />
     <section className="table-card coord-panel coord-list-panel">
       <div className="study-list-heading coord-panel-heading"><h2>Lista de candidatos e participantes</h2><div className="study-list-tools coord-table-tools"><SearchField value={search} onChange={setSearch} placeholder="Buscar por nome..." /><FilterSelect value={statusFilter} onChange={setStatusFilter} label="Filtrar por status" options={['Todos os status', 'Pendente de avaliação', 'Participante ativo', 'Consentimento pendente', 'Não elegível']} /></div></div>
@@ -221,7 +211,6 @@ export function CoordinatorCandidatesPage() {
       </tbody></table></div>
     </section>
     </div>
-    {showNew && <Modal title="Novo candidato" description="Cadastre um candidato para acompanhar sua elegibilidade." onClose={() => setShowNew(false)}><form className="coord-form" onSubmit={addCandidate}><Field label="Nome completo" wide><input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Nome do candidato" /></Field><Field label="Estudo de interesse" wide><select value={study} onChange={(event) => setStudy(event.target.value)}><option>Qualidade do sono</option><option>Pressão arterial</option><option>Atividade física</option></select></Field><div className="modal-actions coord-modal-actions"><button type="button" className="button button-outline coord-secondary-button" onClick={() => setShowNew(false)}>Cancelar</button><button className="button button-primary coord-primary-button" type="submit"><Plus size={13} /> Cadastrar candidato</button></div></form></Modal>}
     {activeCandidate && <Modal title="Detalhes do candidato" description={activeCandidate.name} onClose={() => setActiveCandidate(null)}><div className="coord-detail-list"><div><span>Estudo de interesse</span><strong>{activeCandidate.study}</strong></div><div><span>Data de inscrição</span><strong>{activeCandidate.enrollmentDate}</strong></div><div><span>Status atual</span><StatusBadge status={activeCandidate.status} /></div></div><p className="coord-help-copy">Altere o status conforme o avanço do processo de elegibilidade e consentimento.</p><div className="modal-actions coord-modal-actions coord-wrap-actions"><button type="button" className="button button-outline coord-secondary-button" onClick={() => setCandidateStatus('Pendente de avaliação')}>Pendente</button><button type="button" className="button button-outline coord-secondary-button" onClick={() => setCandidateStatus('Consentimento pendente')}>Consentimento</button><button type="button" className="button button-primary coord-primary-button" onClick={() => setCandidateStatus('Participante ativo')}><Check size={13} /> Tornar ativo</button><button type="button" className="button coord-danger-button" onClick={() => setCandidateStatus('Não elegível')}>Não elegível</button></div></Modal>}
   </div>;
 }
