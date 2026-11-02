@@ -1,1 +1,1 @@
-export { default } from '../routes/LoginRoute';
+export { default } from '../routes/HomeRoute';
