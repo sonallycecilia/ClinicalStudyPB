@@ -395,8 +395,6 @@ body:has(.modal-backdrop), body:has(.study-dialog-backdrop) { overflow: hidden; 
 .candidate-form button:disabled { cursor: not-allowed; opacity: 1; }
 .candidate-form .button-primary:disabled { color: #506975; background: #e3ecee; border-color: #cbdade; transform: none; }
 .candidate-form[aria-busy='true'] button:disabled { cursor: progress; }
-.candidate-integration-note { margin: 0; color: #506975; font-size: 12px; line-height: 1.6; }
-.candidate-integration-note { padding-top: 4px; }
 .candidate-notice { margin: 0 0 18px; padding: 12px; border: 1px solid #dce8eb; border-radius: 8px; color: #24444f; background: #f3fafa; font-size: 12px; line-height: 1.6; }
 .candidate-form-page .coord-page-heading h1 { font-size: clamp(15px, 2vw, 21px); }
 .candidate-form-page .coord-page-heading a { color: inherit; }
@@ -733,6 +731,7 @@ body:has(.modal-backdrop), body:has(.study-dialog-backdrop) { overflow: hidden; 
 .coord-modal-header p { margin: 6px 0 0; color: #78939d; font-size: 12px; line-height: 1.45; }
 .coord-icon-button { min-width: 32px; min-height: 32px; color: #688792; padding: 5px; }
 .coord-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding-top: 18px; }
+.coord-modal .candidate-form { padding-top: 18px; }
 .coord-field { gap: 8px; color: #173843; font-size: 12px; }
 .coord-field-wide { grid-column: 1 / -1; }
 .coord-field input, .coord-field select { display: block; width: 100%; min-width: 0; height: 42px; padding: 0 11px; border: 1px solid #dce8eb; border-radius: 8px; color: #193943; background: #fff; font-size: 11px; font-weight: 400; }

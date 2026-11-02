@@ -29,7 +29,6 @@ export function CandidateForm({ studies, accounts, onSubmit, onCancel }: Candida
   const submitting = useRef(false);
   const studyOptions = studies.status === 'ready' ? studies.options : [];
   const canSelectStudy = studyOptions.length > 0;
-  const integrationMessage = 'O envio do cadastro estará disponível após a integração com o sistema.';
   const studyHint = studies.status === 'loading'
     ? 'Carregando estudos…'
     : studies.status === 'error'
@@ -136,7 +135,7 @@ export function CandidateForm({ studies, accounts, onSubmit, onCancel }: Candida
       </div>
     </fieldset>
     {feedback && <p className={saved ? 'candidate-notice' : 'form-error'} role={saved ? 'status' : 'alert'}>{feedback}</p>}
-    {!onSubmit && <p id="candidate-integration-hint" className="candidate-integration-note" role="status">{integrationMessage}</p>}
+    {!onSubmit && <span id="candidate-integration-hint" className="sr-only">Cadastro indisponível.</span>}
     <div className="study-form-actions">
       <button type="button" className="button button-outline" disabled={saving} onClick={onCancel}>{saved ? 'Voltar à listagem' : 'Cancelar'}</button>
       <button type="submit" className="button button-primary" disabled={!onSubmit || !canSelectStudy || saving || saved} aria-describedby={!onSubmit ? 'candidate-integration-hint' : !canSelectStudy ? 'candidate-study-hint' : undefined}>{saving ? 'Cadastrando…' : 'Cadastrar candidato'}</button>

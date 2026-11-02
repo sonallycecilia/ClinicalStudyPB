@@ -59,20 +59,20 @@ describe('CandidateForm', () => {
     const button = screen.getByRole('button', { name: 'Cadastrar candidato' }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
     expect(button.getAttribute('aria-describedby')).toBe('candidate-integration-hint');
-    expect(document.getElementById('candidate-integration-hint')?.textContent).toBe('O envio do cadastro estará disponível após a integração com o sistema.');
+    expect(document.getElementById('candidate-integration-hint')?.textContent).toBe('Cadastro indisponível.');
     submit();
     fireEvent.submit(screen.getByRole('form'));
     expect(screen.queryByRole('alert')).toBeNull();
     expect(screen.queryByText('Candidato cadastrado com sucesso.')).toBeNull();
   });
 
-  it('remove a mensagem e habilita o envio quando a persistência se torna disponível', async () => {
+  it('remove o motivo de indisponibilidade e habilita o envio quando a persistência se torna disponível', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     const onCancel = vi.fn();
     const { rerender } = render(<CandidateForm studies={studies} onCancel={onCancel} />);
     fillValid();
     rerender(<CandidateForm studies={studies} onSubmit={onSubmit} onCancel={onCancel} />);
-    expect(screen.queryByText('O envio do cadastro estará disponível após a integração com o sistema.')).toBeNull();
+    expect(screen.queryByText('Cadastro indisponível.')).toBeNull();
     expect((screen.getByRole('button', { name: 'Cadastrar candidato' }) as HTMLButtonElement).disabled).toBe(false);
     submit();
     await screen.findByText('Candidato cadastrado com sucesso.');

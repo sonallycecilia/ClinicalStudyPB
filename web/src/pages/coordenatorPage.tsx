@@ -1,5 +1,7 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { CandidateForm } from '../candidates/CandidateForm';
+import { useRecruitmentStudies } from '../candidates/useRecruitmentStudies';
 import {
   CalendarDays,
   Check,
@@ -139,6 +141,47 @@ function initialsFormName(value: string) {
   return value.trim() ? initials(value) : '??';
 }
 
+function CandidateRegistrationModal({ onClose }: { onClose: () => void }) {
+  const studies = useRecruitmentStudies();
+
+  useEffect(() => {
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const name = document.getElementById('candidate-name');
+    const dialog = name?.closest<HTMLElement>('[role="dialog"]');
+    dialog?.querySelector<HTMLButtonElement>('button[aria-label="Fechar"]')?.focus();
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+      } else if (event.key === 'Tab' && dialog) {
+        const controls = Array.from(dialog.querySelectorAll<HTMLElement>('button, input, select, textarea, a[href], [tabindex]'))
+          .filter((element) => !element.matches(':disabled') && element.tabIndex >= 0);
+        const first = controls[0];
+        const last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last?.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first?.focus();
+        }
+      }
+    }
+
+    dialog?.addEventListener('keydown', handleKeyDown);
+    return () => {
+      dialog?.removeEventListener('keydown', handleKeyDown);
+      previousFocus?.focus();
+    };
+  }, [onClose]);
+
+  return <Modal title="Cadastrar candidato" description="Informe os dados do candidato e selecione o estudo de interesse." onClose={onClose}>
+    <CandidateForm studies={studies} onCancel={onClose} />
+  </Modal>;
+}
+
 export function CoordinatorDashboardPage() {
   const [visits, setVisits] = useState(initialVisits);
   const [search, setSearch] = useState('');
@@ -186,7 +229,7 @@ export function CoordinatorDashboardPage() {
 }
 
 export function CoordinatorCandidatesPage() {
-  const navigate = useNavigate();
+  const [showNew, setShowNew] = useState(false);
   const [candidates, setCandidates] = useState(initialCandidates);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('Todos os status');
@@ -200,9 +243,9 @@ export function CoordinatorCandidatesPage() {
   }
 
   return <div className="coord-page coord-candidates-page">
-    <PageHeader title="Candidatos e participantes" action="Novo candidato" onAction={() => navigate('/coordenador/candidatos/novo')} />
+    <PageHeader title="Candidatos e participantes" action="Novo candidato" onAction={() => setShowNew(true)} />
+    {showNew && <CandidateRegistrationModal onClose={() => setShowNew(false)} />}
     <div className="page-content-offset">
-    <p className="candidate-notice" role="status">Esta listagem contém dados demonstrativos. As alterações de situação ficam apenas nesta tela; a consulta e o cadastro persistidos de candidatos ainda não estão disponíveis.</p>
     <StatCards items={[{ title: 'Candidatos para avaliar', value: String(candidates.filter((item) => item.status === 'Pendente de avaliação').length + 2).padStart(2, '0') }, { title: 'Participantes ativos', value: String(candidates.filter((item) => item.status === 'Participante ativo').length + 16).padStart(2, '0') }, { title: 'Inscrições este mês', value: '07' }]} />
     <section className="table-card coord-panel coord-list-panel">
       <div className="study-list-heading coord-panel-heading"><h2>Lista de candidatos e participantes</h2><div className="study-list-tools coord-table-tools"><SearchField value={search} onChange={setSearch} placeholder="Buscar por nome..." /><FilterSelect value={statusFilter} onChange={setStatusFilter} label="Filtrar por status" options={['Todos os status', 'Pendente de avaliação', 'Participante ativo', 'Consentimento pendente', 'Não elegível']} /></div></div>

@@ -33,7 +33,7 @@ describe('página e rotas de cadastro de candidato no App', () => {
     const menu = screen.getByRole('navigation', { name: 'Menu do perfil Coordenador' });
     expect(menu.querySelector('a[aria-current="page"]')?.getAttribute('href')).toBe('/coordenador/candidatos');
     expect(screen.getByRole('link', { name: 'ClinicalStudyPB início' })).toBeTruthy();
-    expect(screen.getByText('O envio do cadastro estará disponível após a integração com o sistema.')).toBeTruthy();
+    expect(screen.queryByText('O envio do cadastro estará disponível após a integração com o sistema.')).toBeNull();
     await screen.findByRole('option', { name: 'Estudo em recrutamento' });
     const study = screen.getByLabelText(/^Estudo/) as HTMLSelectElement;
     expect(study.disabled).toBe(false);
@@ -54,14 +54,16 @@ describe('página e rotas de cadastro de candidato no App', () => {
     expect(screen.queryByText('Candidato cadastrado com sucesso.')).toBeNull();
   });
 
-  it('navega da listagem para o formulário e cancela sem criar registros', () => {
+  it('abre o modal a partir da listagem e cancela sem navegar ou criar registros', () => {
     window.history.replaceState({}, '', '/coordenador/candidatos');
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: 'Novo candidato' }));
-    expect(window.location.pathname).toBe('/coordenador/candidatos/novo');
+    expect(window.location.pathname).toBe('/coordenador/candidatos');
+    expect(screen.getByRole('dialog', { name: 'Cadastrar candidato' })).toBeTruthy();
     fireEvent.change(screen.getByLabelText(/Nome completo/), { target: { value: 'Pessoa não salva' } });
     fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
     expect(window.location.pathname).toBe('/coordenador/candidatos');
+    expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.getByRole('heading', { name: 'Lista de candidatos e participantes' })).toBeTruthy();
     expect(screen.queryByText('Pessoa não salva')).toBeNull();
     expect(request).toHaveBeenCalledOnce();

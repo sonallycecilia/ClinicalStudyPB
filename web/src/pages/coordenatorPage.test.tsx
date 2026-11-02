@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import type { ReactNode } from 'react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { StrictMode, type ReactNode } from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import {
   CoordinatorCandidatesPage,
   CoordinatorDashboardPage,
@@ -9,6 +9,14 @@ import {
   CoordinatorReschedulesPage,
   CoordinatorVisitsPage,
 } from './coordenatorPage';
+
+const { mockRequest } = vi.hoisted(() => ({ mockRequest: vi.fn() }));
+vi.mock('../auth/AuthContext', () => ({ useAuth: () => ({ request: mockRequest }) }));
+
+const studyOptions = [{ id: 'study-1', title: 'Estudo em recrutamento' }];
+beforeEach(() => {
+  mockRequest.mockReset().mockResolvedValue({ ok: true, status: 200, json: async () => studyOptions } as Response);
+});
 
 function renderCoordinator(element: ReactNode) {
   return render(<MemoryRouter>{element}</MemoryRouter>);
@@ -65,15 +73,113 @@ describe('CoordinatorCandidatesPage', () => {
     expect(within(candidateRow).getByText('Participante ativo')).toBeTruthy();
   });
 
-  it('abre a página própria de cadastro em vez de adicionar candidato localmente', () => {
-    render(<MemoryRouter initialEntries={['/coordenador/candidatos']}><Routes>
-      <Route path="/coordenador/candidatos" element={<CoordinatorCandidatesPage />} />
-      <Route path="/coordenador/candidatos/novo" element={<p>Página de cadastro de candidato</p>} />
-    </Routes></MemoryRouter>);
-    expect(screen.getByRole('status').textContent).toContain('dados demonstrativos');
+  it('abre o formulário compartilhado em um modal e consulta os estudos somente ao abrir', async () => {
+    renderCoordinator(<CoordinatorCandidatesPage />);
+    expect(mockRequest).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Novo candidato' }));
-    expect(screen.getByText('Página de cadastro de candidato')).toBeTruthy();
+    const dialog = screen.getByRole('dialog', { name: 'Cadastrar candidato' });
+    expect(within(dialog).getByRole('form', { name: 'Cadastro de candidato' })).toBeTruthy();
+    expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Fechar' }));
+    await within(dialog).findByRole('option', { name: 'Estudo em recrutamento' });
+    const study = within(dialog).getByLabelText(/^Estudo/) as HTMLSelectElement;
+    fireEvent.change(study, { target: { value: 'study-1' } });
+    expect(study.value).toBe('study-1');
+    expect(study.required).toBe(true);
+    expect((within(dialog).getByRole('button', { name: 'Cadastrar candidato' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(mockRequest).toHaveBeenCalledOnce();
+    expect(mockRequest).toHaveBeenCalledWith('/studies/disponiveis-recrutamento', { signal: expect.any(AbortSignal) });
+  });
+
+  it('preserva as validações de nome e e-mail dentro do modal', async () => {
+    renderCoordinator(<CoordinatorCandidatesPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Novo candidato' }));
+    const dialog = screen.getByRole('dialog', { name: 'Cadastrar candidato' });
+    await within(dialog).findByRole('option', { name: 'Estudo em recrutamento' });
+    const name = within(dialog).getByLabelText(/Nome completo/) as HTMLInputElement;
+    fireEvent.change(name, { target: { value: '   ' } });
+    fireEvent.blur(name);
+    expect(within(dialog).getByText('Informe o nome completo do candidato.')).toBeTruthy();
+    const email = within(dialog).getByLabelText('E-mail (opcional)') as HTMLInputElement;
+    fireEvent.change(email, { target: { value: 'invalido' } });
+    fireEvent.blur(email);
+    expect(within(dialog).getByText('Informe um e-mail válido com até 254 caracteres.')).toBeTruthy();
+    expect(name.value).toBe('   ');
+    expect(email.value).toBe('invalido');
+  });
+
+  it('abre e reabre o modal sem erros em campos intocados no modo de desenvolvimento', async () => {
+    mockRequest.mockResolvedValue({ ok: true, status: 200, json: async () => [] } as Response);
+    render(<StrictMode><MemoryRouter><CoordinatorCandidatesPage /></MemoryRouter></StrictMode>);
+    const trigger = screen.getByRole('button', { name: 'Novo candidato' });
+    trigger.focus();
+    for (let attempt = 0; attempt < 2; attempt++) {
+      fireEvent.click(trigger);
+      const dialog = screen.getByRole('dialog', { name: 'Cadastrar candidato' });
+      expect(within(dialog).queryByRole('alert')).toBeNull();
+      await within(dialog).findByText('Nenhum estudo disponível para associação.');
+      expect(within(dialog).queryByRole('alert')).toBeNull();
+      expect(within(dialog).getByLabelText(/Nome completo/).getAttribute('aria-invalid')).toBe('false');
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Fechar' }));
+      expect(document.activeElement).toBe(trigger);
+    }
+  });
+
+  it('cancela sem adicionar candidato e preserva os filtros da listagem', () => {
+    renderCoordinator(<CoordinatorCandidatesPage />);
+    fireEvent.change(screen.getByPlaceholderText('Buscar por nome...'), { target: { value: 'Lucas Martins' } });
+    const trigger = screen.getByRole('button', { name: 'Novo candidato' });
+    trigger.focus();
+    fireEvent.click(trigger);
+    fireEvent.change(screen.getByLabelText(/Nome completo/), { target: { value: 'Pessoa não salva' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
     expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByText('Pessoa não salva')).toBeNull();
+    expect((screen.getByPlaceholderText('Buscar por nome...') as HTMLInputElement).value).toBe('Lucas Martins');
+    expect(screen.getByText('Lucas Martins')).toBeTruthy();
+    expect(document.activeElement).toBe(trigger);
+    expect((mockRequest.mock.calls[0][1] as RequestInit).signal?.aborted).toBe(true);
+    fireEvent.click(trigger);
+    expect((screen.getByLabelText(/Nome completo/) as HTMLInputElement).value).toBe('');
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+  });
+
+  it('mantém Tab dentro do modal e fecha com Escape, devolvendo o foco', () => {
+    renderCoordinator(<CoordinatorCandidatesPage />);
+    const trigger = screen.getByRole('button', { name: 'Novo candidato' });
+    trigger.focus();
+    fireEvent.click(trigger);
+    const close = screen.getByRole('button', { name: 'Fechar' });
+    const cancel = screen.getByRole('button', { name: 'Cancelar' });
+    act(() => cancel.focus());
+    fireEvent.keyDown(cancel, { key: 'Tab' });
+    expect(document.activeElement).toBe(close);
+    fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(cancel);
+    fireEvent.keyDown(cancel, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it.each(['botão', 'fundo'])('fecha o modal pelo %s sem salvar', (method) => {
+    renderCoordinator(<CoordinatorCandidatesPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Novo candidato' }));
+    const dialog = screen.getByRole('dialog', { name: 'Cadastrar candidato' });
+    if (method === 'botão') fireEvent.click(within(dialog).getByRole('button', { name: 'Fechar' }));
+    else fireEvent.mouseDown(dialog.parentElement!);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it.each(['vazio', 'erro'])('reutiliza o estado de consulta de estudos no modal: %s', async (state) => {
+    if (state === 'vazio') mockRequest.mockResolvedValue({ ok: true, status: 200, json: async () => [] } as Response);
+    else mockRequest.mockRejectedValue(new Error('Falha de conexão'));
+    renderCoordinator(<CoordinatorCandidatesPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Novo candidato' }));
+    await screen.findByText(state === 'vazio'
+      ? 'Nenhum estudo disponível para associação.'
+      : 'Não foi possível carregar os estudos. Tente novamente mais tarde.');
+    expect((screen.getByLabelText(/^Estudo/) as HTMLSelectElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Cadastrar candidato' }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
 
