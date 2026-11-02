@@ -45,6 +45,20 @@ export class StudiesController {
     return this.studiesService.listForResearcher(request.user!.sub);
   }
 
+  @Get('disponiveis-recrutamento')
+  @Roles('Coordenador')
+  @ApiOperation({ summary: 'Listar estudos na fase de recrutamento para vinculação de candidatos' })
+  @ApiOkResponse({ description: 'Somente ID e título dos estudos com fase Recrutamento.', schema: {
+    type: 'array', items: { type: 'object', properties: {
+      id: { type: 'string', format: 'uuid' }, title: { type: 'string' },
+    } },
+  } })
+  @ApiUnauthorizedResponse({ description: 'Sessão ausente ou inválida.', type: ApiErrorResponseDto })
+  @ApiForbiddenResponse({ description: 'Consulta restrita ao Coordenador.', type: ApiErrorResponseDto })
+  listAvailableForRecruitment() {
+    return this.studiesService.listAvailableForRecruitment();
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Consultar um estudo pelo identificador' })
   @ApiParam({ name: 'id', description: 'UUID do estudo.', format: 'uuid', example: 'e34e7889-4221-4a63-9f15-5e4d60c5955b' })
