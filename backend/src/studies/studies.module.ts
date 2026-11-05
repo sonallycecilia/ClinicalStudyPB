@@ -8,14 +8,15 @@ import { CriteriaController } from './criteria.controller.js';
 import { CriteriaService } from './criteria.service.js';
 import { StudiesController } from './studies.controller.js';
 import { StudiesService } from './studies.service.js';
+import { VisitsController } from './visits.controller.js';
+import { VisitsService } from './visits.service.js';
 
 @Module({
-  // StudiesController applies these guards locally. The guard's dependencies
-  // are made available through the exported SessionsService (AuthModule) and
-  // UsersService (UsersModule).
+  // Controllers apply these guards locally. Their dependencies are made
+  // available through AuthModule and UsersModule.
   imports: [DatabaseModule, AuthModule, UsersModule],
-  controllers: [StudiesController, CriteriaController],
-  providers: [StudiesService, CriteriaService, AccessTokenGuard, RolesGuard],
+  controllers: [StudiesController, CriteriaController, VisitsController],
+  providers: [StudiesService, CriteriaService, VisitsService, AccessTokenGuard, RolesGuard],
   exports: [StudiesService],
 })
 export class StudiesModule {}

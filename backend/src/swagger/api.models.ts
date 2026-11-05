@@ -1,8 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
+import { IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 import { USER_ROLES } from '../users/user.types.js';
 import type { AccountStatus, UserRole } from '../users/user.types.js';
 import type { StudyStatus, StudyKind, StudySymbol } from '../studies/study.types.js';
 import type { CriterionType } from '../studies/criteria.types.js';
+import type { CreatePlannedVisitInput, CreateVisitActivityInput } from '../studies/visits.types.js';
 
 export class ApiErrorResponseDto {
   @ApiProperty({ example: 400, description: 'Código HTTP da resposta.' })
@@ -220,4 +223,91 @@ export class EligibilityCriterionResponseDto {
 
   @ApiProperty({ example: true })
   active!: boolean;
+}
+
+export class CreatePlannedVisitRequestDto implements CreatePlannedVisitInput {
+  @ApiProperty({ minLength: 1, maxLength: 150, example: 'Consulta inicial' })
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(150)
+  name!: string;
+
+  @ApiProperty({ type: 'integer', minimum: 1, example: 1 })
+  @IsInt()
+  @Min(1)
+  order!: number;
+
+  @ApiPropertyOptional({ type: 'integer', minimum: 0, nullable: true, example: 14 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  intervalDays?: number | null;
+
+  @ApiPropertyOptional({ maxLength: 2000, nullable: true, example: 'Realizada após a inclusão.' })
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() || null : value)
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  description?: string | null;
+}
+
+export class CreateVisitActivityRequestDto implements CreateVisitActivityInput {
+  @ApiProperty({ minLength: 1, maxLength: 150, example: 'Coleta de sinais vitais' })
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(150)
+  name!: string;
+
+  @ApiPropertyOptional({ maxLength: 2000, nullable: true, example: 'Aferir pressão arterial e frequência cardíaca.' })
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() || null : value)
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  description?: string | null;
+
+  @ApiProperty({ minLength: 1, maxLength: 50, example: 'Exame' })
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(50)
+  type!: string;
+}
+
+export class PlannedVisitResponseDto {
+  @ApiProperty({ format: 'uuid' })
+  id!: string;
+
+  @ApiProperty({ format: 'uuid' })
+  studyId!: string;
+
+  @ApiProperty({ example: 'Consulta inicial' })
+  name!: string;
+
+  @ApiProperty({ type: 'integer', example: 1 })
+  order!: number;
+
+  @ApiProperty({ type: 'integer', nullable: true, example: 14 })
+  intervalDays!: number | null;
+
+  @ApiProperty({ nullable: true, example: 'Realizada após a inclusão.' })
+  description!: string | null;
+}
+
+export class VisitActivityResponseDto {
+  @ApiProperty({ format: 'uuid' })
+  id!: string;
+
+  @ApiProperty({ format: 'uuid' })
+  visitId!: string;
+
+  @ApiProperty({ example: 'Coleta de sinais vitais' })
+  name!: string;
+
+  @ApiProperty({ nullable: true, example: 'Aferir pressão arterial e frequência cardíaca.' })
+  description!: string | null;
+
+  @ApiProperty({ example: 'Exame' })
+  type!: string;
 }
