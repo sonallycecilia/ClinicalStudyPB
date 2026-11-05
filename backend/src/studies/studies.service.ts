@@ -9,7 +9,8 @@ import type { QueryResultRow } from 'pg';
 import { DatabaseService } from '../database/database.service.js';
 import { UsersService } from '../users/users.service.js';
 import type { PublicUser } from '../users/user.types.js';
-import type { Study, StudyInput, StudyStatus } from './study.types.js';
+import { StudyStatus } from './study.types.js';
+import type { Study, StudyInput } from './study.types.js';
 
 interface StudyRow extends QueryResultRow {
   id: string;
@@ -18,6 +19,7 @@ interface StudyRow extends QueryResultRow {
   objective: string;
   researcherId: string;
   researcher?: string;
+  status: StudyStatus;
   startDate: string | Date;
   endDate: string | Date;
   participantLimit: number;
@@ -33,6 +35,7 @@ const SELECT_STUDY_COLUMNS = `
   e.objetivo AS objective,
   e.id_pesquisador::text AS "researcherId",
   u.nome AS researcher,
+  e.status AS status,
   e.data_inicio::text AS "startDate",
   e.data_fim::text AS "endDate",
   e.limite_participantes AS "participantLimit",
@@ -46,30 +49,13 @@ const RETURNING_STUDY_COLUMNS = `
   titulo AS title,
   objetivo AS objective,
   id_pesquisador::text AS "researcherId",
+  status AS status,
   data_inicio::text AS "startDate",
   data_fim::text AS "endDate",
   limite_participantes AS "participantLimit",
   participantes_vinculados AS "participantsLinked",
   tipo AS kind,
   simbolo AS symbol`;
-
-function todayISO(): string {
-  // Estudos do ClinicalStudyPB usam a data civil de Campina Grande/PB.
-  // Evita encerrar o estudo horas antes por causa da virada do dia em UTC.
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Fortaleza', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).formatToParts(new Date());
-  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? '';
-  return `${get('year')}-${get('month')}-${get('day')}`;
-}
-
-// Classificação provisória por datas. O fluxo completo do RF07
-// (planejamento, recrutamento, execução e encerrado) ainda terá etapas próprias.
-export function statusFor(startDate: string, endDate: string): StudyStatus {
-  const today = todayISO();
-  if (endDate < today) return 'Encerrado';
-  return startDate > today ? 'Planejado' : 'Em andamento';
-}
 
 function validISODate(date: unknown): date is string {
   if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
@@ -95,7 +81,7 @@ function toStudy(row: StudyRow, researcherName = row.researcher ?? ''): Study {
     endDate,
     participantLimit: Number(row.participantLimit),
     participantsLinked: Number(row.participantsLinked),
-    status: statusFor(startDate, endDate),
+    status: row.status,
     kind: row.kind,
     symbol: row.symbol,
   };
@@ -156,7 +142,6 @@ export class StudiesService {
   }
 
   async update(id: string, input: Partial<StudyInput>, researcherId: string): Promise<Study> {
-    const researcher = await this.assertResearcher(researcherId);
     if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).length === 0) {
       throw new BadRequestException('Informe ao menos um campo para alterar.');
     }
@@ -164,10 +149,7 @@ export class StudiesService {
     if (Object.keys(input).some((key) => !allowedKeys.has(key))) {
       throw new BadRequestException('A alteração contém campos não permitidos.');
     }
-    const current = await this.findByIdForOwnerCheck(id);
-    if (current.researcherId !== researcherId) {
-      throw new ForbiddenException('Você não tem permissão para alterar este estudo.');
-    }
+    const current = await this.assertStudyCanBeModified(id, researcherId);
     const data = this.validateInput({
       title: input.title ?? current.title,
       objective: input.objective ?? current.objective,
@@ -185,7 +167,57 @@ export class StudiesService {
         data.participantLimit, data.participantsLinked],
     );
     if (!rows[0]) throw new NotFoundException('Estudo não encontrado.');
+    return toStudy(rows[0], current.researcher);
+  }
+
+  async transitionStatus(
+    id: string,
+    nextStatus: StudyStatus,
+    researcherId: string,
+  ): Promise<Study> {
+    if (!Object.values(StudyStatus).includes(nextStatus)) {
+      throw new BadRequestException('Estado de estudo desconhecido.');
+    }
+    const researcher = await this.assertResearcher(researcherId);
+    const current = await this.findByIdForOwnerCheck(id);
+    if (current.researcherId !== researcherId) {
+      throw new ForbiddenException('Você não tem permissão para alterar este estudo.');
+    }
+
+    const allowedNextStatus: Partial<Record<StudyStatus, StudyStatus>> = {
+      [StudyStatus.Planejamento]: StudyStatus.Recrutamento,
+      [StudyStatus.Recrutamento]: StudyStatus.Execucao,
+      [StudyStatus.Execucao]: StudyStatus.Encerrado,
+    };
+    if (allowedNextStatus[current.status] !== nextStatus) {
+      throw new BadRequestException(
+        `Transição de "${current.status}" para "${nextStatus}" não permitida.`,
+      );
+    }
+
+    const { rows } = await this.database.query<StudyRow>(
+      `UPDATE estudos
+       SET status = $4
+       WHERE id_estudo = $1 AND id_pesquisador = $2 AND status = $3
+       RETURNING ${RETURNING_STUDY_COLUMNS}`,
+      [id, researcherId, current.status, nextStatus],
+    );
+    if (!rows[0]) {
+      throw new BadRequestException('O estado do estudo foi alterado por outra solicitação. Tente novamente.');
+    }
     return toStudy(rows[0], researcher.name);
+  }
+
+  async assertStudyCanBeModified(id: string, researcherId: string): Promise<Study> {
+    await this.assertResearcher(researcherId);
+    const study = await this.findByIdForOwnerCheck(id);
+    if (study.researcherId !== researcherId) {
+      throw new ForbiddenException('Você não tem permissão para alterar este estudo.');
+    }
+    if (study.status === StudyStatus.Encerrado) {
+      throw new BadRequestException('Não é possível alterar um estudo encerrado.');
+    }
+    return study;
   }
 
   private async findByIdForOwnerCheck(id: string): Promise<Study> {

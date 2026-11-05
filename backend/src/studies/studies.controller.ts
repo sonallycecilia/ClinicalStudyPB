@@ -1,4 +1,16 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards, ParseUUIDPipe } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Req,
+  UseGuards,
+  UsePipes,
+  ValidationPipe,
+} from '@nestjs/common';
 import { AccessTokenGuard } from '../auth/access-token.guard.js';
 import { Roles } from '../auth/roles.decorator.js';
 import { RolesGuard } from '../auth/roles.guard.js';
@@ -23,6 +35,7 @@ import {
 import {
   ApiErrorResponseDto,
   StudyInputRequestDto,
+  StudyStatusRequestDto,
   StudyResponseDto,
   UpdateStudyRequestDto,
 } from '../swagger/api.models.js';
@@ -80,5 +93,23 @@ export class StudiesController {
   @ApiNotFoundResponse({ description: 'Estudo não encontrado.', type: ApiErrorResponseDto })
   update(@Param('id', new ParseUUIDPipe()) id: string, @Body() input: Partial<StudyInput>, @Req() request: AuthenticatedRequest) {
     return this.studiesService.update(id, input, request.user!.sub);
+  }
+
+  @Patch(':id/status')
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }))
+  @ApiOperation({ summary: 'Avançar o estado de um estudo próprio' })
+  @ApiParam({ name: 'id', description: 'UUID do estudo.', format: 'uuid' })
+  @ApiBody({ type: StudyStatusRequestDto })
+  @ApiOkResponse({ description: 'Estado do estudo atualizado.', type: StudyResponseDto })
+  @ApiBadRequestResponse({ description: 'Estado desconhecido, transição inválida ou estudo encerrado.', type: ApiErrorResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Token ausente, inválido ou expirado.', type: ApiErrorResponseDto })
+  @ApiForbiddenResponse({ description: 'O perfil não é Pesquisador ou o estudo pertence a outro pesquisador.', type: ApiErrorResponseDto })
+  @ApiNotFoundResponse({ description: 'Estudo não encontrado.', type: ApiErrorResponseDto })
+  transitionStatus(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() input: StudyStatusRequestDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.studiesService.transitionStatus(id, input.status, request.user!.sub);
   }
 }

@@ -191,6 +191,59 @@ describe('Estudos clínicos com PostgreSQL (E2E)', () => {
       .set('Authorization', bearer(otherResearcherToken)).expect(403);
   });
 
+  it('persiste estados do estudo e permite somente transições sequenciais', async () => {
+    const study = await request(api()).post('/studies')
+      .set('Authorization', bearer(researcherToken)).send({ ...sample, title: 'Estudo com estados' }).expect(201);
+    expect(study.body.status).toBe('planejamento');
+
+    await request(api()).patch(`/studies/${study.body.id}/status`)
+      .set('Authorization', bearer(researcherToken)).send({ status: 'execução' }).expect(400);
+    await request(api()).patch(`/studies/${study.body.id}/status`)
+      .set('Authorization', bearer(researcherToken)).send({ status: 'desconhecido' }).expect(400);
+
+    for (const status of ['recrutamento', 'execução', 'encerrado']) {
+      await request(api()).patch(`/studies/${study.body.id}/status`)
+        .set('Authorization', bearer(researcherToken)).send({ status }).expect(200)
+        .expect(({ body }) => expect(body.status).toBe(status));
+    }
+
+    await request(api()).patch(`/studies/${study.body.id}/status`)
+      .set('Authorization', bearer(researcherToken)).send({ status: 'planejamento' }).expect(400);
+    await request(api()).patch(`/studies/${study.body.id}`)
+      .set('Authorization', bearer(researcherToken)).send({ title: 'Alteração após encerramento' }).expect(400);
+    await request(api()).get(`/studies/${study.body.id}`)
+      .set('Authorization', bearer(researcherToken)).expect(200)
+      .expect(({ body }) => expect(body.status).toBe('encerrado'));
+  });
+
+  it('cadastra e consulta candidatos vinculados a um estudo próprio', async () => {
+    const study = await request(api()).post('/studies')
+      .set('Authorization', bearer(researcherToken)).send({ ...sample, title: 'Estudo com candidatos' }).expect(201);
+
+    const created = await request(api()).post(`/studies/${study.body.id}/candidates`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ name: '  Lucas Martins  ', email: 'lucas@example.test' })
+      .expect(201);
+    expect(created.body).toMatchObject({
+      studyId: study.body.id,
+      name: 'Lucas Martins',
+      email: 'lucas@example.test',
+      status: 'Em avaliação',
+    });
+
+    await request(api()).post(`/studies/${study.body.id}/candidates`)
+      .set('Authorization', bearer(researcherToken)).send({ email: 'lucas@example.test' }).expect(400);
+
+    await request(api()).get(`/studies/${study.body.id}/candidates`)
+      .set('Authorization', bearer(researcherToken)).expect(200)
+      .expect(({ body }) => expect(body).toEqual([created.body]));
+
+    await request(api()).post('/studies/00000000-0000-4000-8000-000000000099/candidates')
+      .set('Authorization', bearer(researcherToken)).send({ name: 'Estudo inexistente' }).expect(404);
+    await request(api()).get(`/studies/${study.body.id}/candidates`)
+      .set('Authorization', bearer(otherResearcherToken)).expect(403);
+  });
+
   it('persiste os estudos após reiniciar a aplicação', async () => {
     const created = await request(api()).post('/studies')
       .set('Authorization', bearer(researcherToken)).send({ ...sample, title: 'Estudo persistente' }).expect(201);

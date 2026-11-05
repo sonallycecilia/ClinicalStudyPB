@@ -4,6 +4,7 @@ import { DatabaseService } from '../database/database.service.js';
 import { StudiesService } from './studies.service.js';
 import { CriteriaService } from './criteria.service.js';
 import type { EligibilityCriterion } from './criteria.types.js';
+import { StudyStatus } from './study.types.js';
 
 const studyId = '00000000-0000-4000-8000-000000000003';
 const criterionId = '00000000-0000-4000-8000-000000000004';
@@ -22,7 +23,10 @@ describe('CriteriaService', () => {
       (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount: number | null }>
     >;
   };
-  let studies: { findById: jest.Mock<(id: string, ownerId: string) => Promise<unknown>> };
+  let studies: {
+    findById: jest.Mock<(id: string, ownerId: string) => Promise<unknown>>;
+    assertStudyCanBeModified: jest.Mock<(id: string, ownerId: string) => Promise<unknown>>;
+  };
   let service: CriteriaService;
 
   beforeEach(() => {
@@ -31,7 +35,11 @@ describe('CriteriaService', () => {
         (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount: number | null }>
       >(),
     };
-    studies = { findById: jest.fn<(id: string, ownerId: string) => Promise<unknown>>() };
+    studies = {
+      findById: jest.fn<(id: string, ownerId: string) => Promise<unknown>>(),
+      assertStudyCanBeModified: jest.fn<(id: string, ownerId: string) => Promise<unknown>>()
+        .mockResolvedValue({ status: StudyStatus.Planejamento }),
+    };
     service = new CriteriaService(database as unknown as DatabaseService, studies as unknown as StudiesService);
   });
 
@@ -43,7 +51,7 @@ describe('CriteriaService', () => {
     }, researcherId);
 
     expect(result).toEqual(criterion);
-    expect(studies.findById).toHaveBeenCalledWith(studyId, researcherId);
+    expect(studies.assertStudyCanBeModified).toHaveBeenCalledWith(studyId, researcherId);
     expect(database.query.mock.calls[0]?.[1]).toEqual([
       studyId, 'Inclusão', criterion.description, true,
     ]);
@@ -86,6 +94,15 @@ describe('CriteriaService', () => {
   it('rejeita atualização vazia ou inválida', async () => {
     await expect(service.update(studyId, criterionId, {}, researcherId)).rejects.toThrow(BadRequestException);
     await expect(service.update(studyId, criterionId, { active: 'false' as never }, researcherId))
+      .rejects.toThrow(BadRequestException);
+    expect(database.query).not.toHaveBeenCalled();
+  });
+
+  it('impede criar ou atualizar critérios em estudos encerrados', async () => {
+    studies.assertStudyCanBeModified.mockRejectedValue(new BadRequestException());
+    await expect(service.create(studyId, { type: 'Inclusão', description: 'Descrição válida' }, researcherId))
+      .rejects.toThrow(BadRequestException);
+    await expect(service.update(studyId, criterionId, { active: false }, researcherId))
       .rejects.toThrow(BadRequestException);
     expect(database.query).not.toHaveBeenCalled();
   });

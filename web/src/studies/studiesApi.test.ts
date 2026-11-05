@@ -6,7 +6,7 @@ const study = {
   objective: 'Avaliar os padrões de sono em participantes fictícios.',
   researcherId: 'd8d77e38-f240-4a1d-a17f-b0e918a548f3', researcher: 'Marina Costa',
   startDate: '2026-10-24', endDate: '2026-12-10', participantLimit: 20,
-  participantsLinked: 0, status: 'Em andamento' as const,
+  participantsLinked: 0, status: 'execução' as const,
   kind: 'Estudo observacional' as const, symbol: 'activity' as const,
 };
 

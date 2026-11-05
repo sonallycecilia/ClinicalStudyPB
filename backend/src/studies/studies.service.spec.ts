@@ -3,8 +3,9 @@ import { BadRequestException, ForbiddenException, NotFoundException } from '@nes
 import { DatabaseService } from '../database/database.service.js';
 import { UsersService } from '../users/users.service.js';
 import type { PublicUser } from '../users/user.types.js';
-import { StudiesService, statusFor } from './studies.service.js';
+import { StudiesService } from './studies.service.js';
 import type { Study } from './study.types.js';
+import { StudyStatus } from './study.types.js';
 
 const researcherId = '00000000-0000-4000-8000-000000000002';
 const adminId = '00000000-0000-4000-8000-000000000001';
@@ -24,6 +25,7 @@ const researcher: PublicUser = {
 const baseStudyRow = {
   id: studyId, code: 'EST-007', title: payload.title, objective: payload.objective,
   researcherId, researcher: researcher.name, startDate: payload.startDate, endDate: payload.endDate,
+  status: StudyStatus.Planejamento,
   participantLimit: payload.participantLimit, participantsLinked: payload.participantsLinked,
   kind: 'Estudo observacional' as const, symbol: 'activity' as const,
 };
@@ -31,7 +33,6 @@ const baseStudyRow = {
 function makeStudy(row: typeof baseStudyRow = baseStudyRow): Study {
   return {
     ...row,
-    status: 'Planejado',
   };
 }
 
@@ -54,7 +55,7 @@ describe('StudiesService com PostgreSQL', () => {
     service = new StudiesService(database as unknown as DatabaseService, users as unknown as UsersService);
   });
 
-  it('lista apenas os estudos do pesquisador autenticado e converte as datas/status', async () => {
+  it('lista apenas os estudos do pesquisador autenticado e retorna o status persistido', async () => {
     database.query.mockResolvedValue({ rows: [baseStudyRow], rowCount: 1 });
     const result = await service.listForResearcher(researcherId);
     expect(result).toEqual([makeStudy()]);
@@ -112,9 +113,54 @@ describe('StudiesService com PostgreSQL', () => {
     await expect(service.listForResearcher(adminId)).rejects.toThrow(ForbiddenException);
   });
 
-  it('classifica estudos encerrados, planejados e em andamento usando a data local do projeto', () => {
-    expect(statusFor('2020-01-10', '2020-04-10')).toBe('Encerrado');
-    expect(statusFor('2099-01-10', '2099-04-10')).toBe('Planejado');
-    expect(statusFor('2020-01-10', '2099-04-10')).toBe('Em andamento');
+  it('permite avançar sequencialmente por todos os estados e persiste cada transição', async () => {
+    const recruitment = { ...baseStudyRow, status: StudyStatus.Recrutamento };
+    const execution = { ...baseStudyRow, status: StudyStatus.Execucao };
+    const closed = { ...baseStudyRow, status: StudyStatus.Encerrado };
+    database.query
+      .mockResolvedValueOnce({ rows: [baseStudyRow], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [recruitment], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [recruitment], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [execution], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [execution], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [closed], rowCount: 1 });
+
+    await expect(service.transitionStatus(studyId, StudyStatus.Recrutamento, researcherId))
+      .resolves.toMatchObject({ status: StudyStatus.Recrutamento });
+    await expect(service.transitionStatus(studyId, StudyStatus.Execucao, researcherId))
+      .resolves.toMatchObject({ status: StudyStatus.Execucao });
+    await expect(service.transitionStatus(studyId, StudyStatus.Encerrado, researcherId))
+      .resolves.toMatchObject({ status: StudyStatus.Encerrado });
+    expect(database.query.mock.calls.filter(([sql]) => sql.includes('SET status = $4'))).toHaveLength(3);
+  });
+
+  it.each([
+    [StudyStatus.Planejamento, StudyStatus.Execucao],
+    [StudyStatus.Recrutamento, StudyStatus.Planejamento],
+    [StudyStatus.Encerrado, StudyStatus.Planejamento],
+  ])('rejeita a transição inválida de %s para %s', async (currentStatus, nextStatus) => {
+    database.query.mockResolvedValue({
+      rows: [{ ...baseStudyRow, status: currentStatus }],
+      rowCount: 1,
+    });
+    await expect(service.transitionStatus(studyId, nextStatus, researcherId))
+      .rejects.toThrow(BadRequestException);
+    expect(database.query).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejeita estados desconhecidos sem consultar o banco', async () => {
+    await expect(service.transitionStatus(studyId, 'desconhecido' as StudyStatus, researcherId))
+      .rejects.toThrow(BadRequestException);
+    expect(database.query).not.toHaveBeenCalled();
+  });
+
+  it('bloqueia atualizações de dados em estudos encerrados', async () => {
+    database.query.mockResolvedValue({
+      rows: [{ ...baseStudyRow, status: StudyStatus.Encerrado }],
+      rowCount: 1,
+    });
+    await expect(service.update(studyId, { title: 'Título alterado' }, researcherId))
+      .rejects.toThrow(BadRequestException);
+    expect(database.query).toHaveBeenCalledTimes(1);
   });
 });

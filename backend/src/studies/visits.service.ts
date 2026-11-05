@@ -72,7 +72,7 @@ export class VisitsService {
     input: CreatePlannedVisitInput,
     researcherId: string,
   ): Promise<PlannedVisit> {
-    await this.assertStudyAccess(studyId, researcherId);
+    await this.studiesService.assertStudyCanBeModified(studyId, researcherId);
     try {
       const { rows } = await this.database.query<PlannedVisitRow>(
         `INSERT INTO visitas_previstas (id_estudo, nome, ordem, intervalo_dias, descricao)
@@ -119,7 +119,10 @@ export class VisitsService {
     input: CreateVisitActivityInput,
     researcherId: string,
   ): Promise<VisitActivity> {
-    await this.find(studyId, visitId, researcherId);
+    await this.studiesService.assertStudyCanBeModified(studyId, researcherId);
+    if (!await this.findForStudy(studyId, visitId)) {
+      throw new NotFoundException('Visita prevista não encontrada neste estudo.');
+    }
     const { rows } = await this.database.query<VisitActivityRow>(
       `INSERT INTO atividades_visita (id_visita_prevista, nome, descricao, tipo)
        VALUES ($1, $2, $3, $4)

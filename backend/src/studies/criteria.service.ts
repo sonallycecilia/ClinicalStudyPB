@@ -57,7 +57,7 @@ export class CriteriaService {
     input: CreateCriterionInput,
     researcherId: string,
   ): Promise<EligibilityCriterion> {
-    await this.assertStudyAccess(studyId, researcherId);
+    await this.studiesService.assertStudyCanBeModified(studyId, researcherId);
     const data = this.validateCreateInput(input);
     const { rows } = await this.database.query<CriterionRow>(
       `INSERT INTO criterios_elegibilidade (id_estudo, tipo, descricao, ativo)
@@ -75,7 +75,7 @@ export class CriteriaService {
     input: UpdateCriterionInput,
     researcherId: string,
   ): Promise<EligibilityCriterion> {
-    await this.assertStudyAccess(studyId, researcherId);
+    await this.studiesService.assertStudyCanBeModified(studyId, researcherId);
     const data = this.validateUpdateInput(input);
     const current = await this.findForStudy(studyId, criterionId);
     if (!current) throw new NotFoundException('Critério não encontrado neste estudo.');

@@ -48,7 +48,7 @@ const studies: Study[] = [
     endDate: '2026-12-31',
     participantLimit: 20,
     participantsLinked: 5,
-    status: 'Em andamento',
+    status: 'execução',
     kind: 'Estudo observacional',
     symbol: 'moon',
   },
@@ -63,7 +63,7 @@ const studies: Study[] = [
     endDate: '2027-06-30',
     participantLimit: 12,
     participantsLinked: 0,
-    status: 'Planejado',
+    status: 'planejamento',
     kind: 'Estudo longitudinal',
     symbol: 'activity',
   },
@@ -104,7 +104,7 @@ describe('StudiesPage', () => {
     expect(screen.queryByRole('heading', { name: 'Atividade física' })).toBeNull();
 
     fireEvent.change(screen.getByLabelText('Filtrar estudos'), {
-      target: { value: 'Encerrado' },
+      target: { value: 'encerrado' },
     });
     expect(screen.getByText('Nenhum estudo corresponde à busca.')).toBeTruthy();
   });
@@ -115,6 +115,20 @@ describe('StudiesPage', () => {
 
     expect((await screen.findByRole('alert')).textContent).toContain('API indisponível');
     expect((screen.getByRole('button', { name: /Cadastrar estudo/ }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('não oferece edição para estudos encerrados', async () => {
+    const closedStudy = { ...studies[0]!, status: 'encerrado' as const };
+    mockList.mockResolvedValue([closedStudy]);
+    mockDetail.mockResolvedValue(closedStudy);
+    renderStudies();
+    expect(await screen.findByRole('heading', { name: 'Qualidade do sono' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ações de Qualidade do sono' }));
+    expect(screen.queryByRole('button', { name: 'Editar estudo' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Ver detalhes/ }));
+    expect(await screen.findByRole('heading', { name: 'Qualidade do sono' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Editar estudo' })).toBeNull();
   });
 
   it('informa quando não há usuário autenticado e não chama a API', async () => {
