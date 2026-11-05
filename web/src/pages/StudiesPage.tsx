@@ -90,10 +90,16 @@ export function StudiesPage() {
   const [successTitle, setSuccessTitle] = useState('');
   const studyStats = useMemo(() => ({
     total: studies.length,
-    inProgress: studies.filter((item) => item.status === 'Em andamento').length,
-    planned: studies.filter((item) => item.status === 'Planejado').length,
-    closed: studies.filter((item) => item.status === 'Encerrado').length,
+    inProgress: studies.filter((item) => item.status === 'recrutamento' || item.status === 'execução').length,
+    planned: studies.filter((item) => item.status === 'planejamento').length,
+    closed: studies.filter((item) => item.status === 'encerrado').length,
   }), [studies]);
+  const statusClass: Record<Study['status'], string> = {
+    planejamento: 'status-planejamento',
+    recrutamento: 'status-recrutamento',
+    execução: 'status-execucao',
+    encerrado: 'status-encerrado',
+  };
 
   useEffect(() => {
     const controller = new AbortController();
@@ -165,6 +171,7 @@ export function StudiesPage() {
   }
 
   function openEdit(study: Study) {
+    if (study.status === 'encerrado') return;
     setEditOrigin(viewMode);
     setEditingId(study.id);
     setForm(toForm(study));
@@ -277,7 +284,7 @@ export function StudiesPage() {
         <section className="study-form-panel" role="dialog" aria-modal="true" aria-labelledby="study-form-title">
           <div className="study-form-heading">
             <h2 id="study-form-title">{isEdit ? 'Editar estudo' : 'Informações do estudo'}</h2>
-            {isEditingCurrent && <span className={`study-status status-${(editingStudy?.status ?? 'Planejado').toLowerCase().replace(' ', '-')}`}><i />{editingStudy?.status}</span>}
+            {isEditingCurrent && editingStudy && <span className={`study-status ${statusClass[editingStudy.status]}`}><i />{editingStudy.status}</span>}
           </div>
           <form className="study-form" noValidate onSubmit={(event) => void saveStudy(event)}>
             <Field label="Título do estudo" wide>
@@ -338,8 +345,8 @@ export function StudiesPage() {
           <header className="study-detail-hero">
             <div><h1>{selectedStudy.title}</h1><p>{selectedStudy.kind} <span>•</span> Código {selectedStudy.code}</p></div>
             <div className="study-detail-hero-actions">
-              <span className={`study-status status-${selectedStudy.status.toLowerCase().replace(' ', '-')}`}><i />{selectedStudy.status}</span>
-              <button className="button button-primary" type="button" onClick={() => openEdit(selectedStudy)}><Pencil size={14} /> Editar estudo</button>
+              <span className={`study-status ${statusClass[selectedStudy.status]}`}><i />{selectedStudy.status}</span>
+              {selectedStudy.status !== 'encerrado' && <button className="button button-primary" type="button" onClick={() => openEdit(selectedStudy)}><Pencil size={14} /> Editar estudo</button>}
             </div>
           </header>
           <div className="study-detail-grid">
@@ -381,11 +388,11 @@ export function StudiesPage() {
         <section className="study-stat-grid" aria-label="Resumo dos estudos">
           <article className="study-stat-card"><p>Estudos cadastrados</p><strong>{String(studyStats.total).padStart(2, '0')}</strong></article>
           <article className="study-stat-card"><p>Em andamento</p><strong>{String(studyStats.inProgress).padStart(2, '0')}</strong></article>
-          <article className="study-stat-card"><p>Planejados</p><strong>{String(studyStats.planned).padStart(2, '0')}</strong></article>
+          <article className="study-stat-card"><p>Em planejamento</p><strong>{String(studyStats.planned).padStart(2, '0')}</strong></article>
           <article className="study-stat-card"><p>Encerrados</p><strong>{String(studyStats.closed).padStart(2, '0')}</strong></article>
         </section>
         <section className="study-list-panel">
-          <div className="study-list-heading"><h2>Meus estudos</h2><div className="study-list-tools"><label className="study-search"><Search size={15} /><span className="sr-only">Buscar estudo</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar estudo..." /></label><label className="study-filter"><span className="sr-only">Filtrar estudos</span><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option>Todos</option><option>Em andamento</option><option>Planejado</option><option>Encerrado</option></select><ChevronDown size={13} /></label></div></div>
+          <div className="study-list-heading"><h2>Meus estudos</h2><div className="study-list-tools"><label className="study-search"><Search size={15} /><span className="sr-only">Buscar estudo</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar estudo..." /></label><label className="study-filter"><span className="sr-only">Filtrar estudos</span><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option>Todos</option><option>planejamento</option><option>recrutamento</option><option>execução</option><option>encerrado</option></select><ChevronDown size={13} /></label></div></div>
           <div className="study-cards-grid">
             {visibleStudies.map((study) => {
               const progress = progressFor(study);
@@ -393,8 +400,8 @@ export function StudiesPage() {
                 <div className="study-card-top">
                   <div className="study-card-symbol">{studyIcon(study.symbol, 18)}</div>
                   <div className="study-card-title"><h3>{study.title}</h3><p>{study.kind}</p></div>
-                  <div className="study-card-menu-wrap"><button className="study-menu-trigger" type="button" aria-label={`Ações de ${study.title}`} aria-expanded={openActionsFor === study.id} onClick={() => setOpenActionsFor((current) => current === study.id ? null : study.id)}><MoreVertical size={17} /></button>{openActionsFor === study.id && <div className="study-action-menu"><button type="button" onClick={() => void startDetails(study)}><Eye size={14} />Ver detalhes</button><button type="button" onClick={() => openEdit(study)}><Pencil size={14} />Editar estudo</button></div>}</div>
-                  <span className={`study-status status-${study.status.toLowerCase().replace(' ', '-')}`}><i />{study.status}</span>
+                  <div className="study-card-menu-wrap"><button className="study-menu-trigger" type="button" aria-label={`Ações de ${study.title}`} aria-expanded={openActionsFor === study.id} onClick={() => setOpenActionsFor((current) => current === study.id ? null : study.id)}><MoreVertical size={17} /></button>{openActionsFor === study.id && <div className="study-action-menu"><button type="button" onClick={() => void startDetails(study)}><Eye size={14} />Ver detalhes</button>{study.status !== 'encerrado' && <button type="button" onClick={() => openEdit(study)}><Pencil size={14} />Editar estudo</button>}</div>}</div>
+                  <span className={`study-status ${statusClass[study.status]}`}><i />{study.status}</span>
                 </div>
                 <div className="study-card-body">
                   <div className="study-meta-line"><CalendarDays size={14} /><div><span>Período</span><strong>{dateRange(study)}</strong></div></div>

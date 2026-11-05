@@ -41,7 +41,7 @@ const study: Study = {
   endDate: '2026-12-31',
   participantLimit: 20,
   participantsLinked: 5,
-  status: 'Em andamento',
+  status: 'execução',
   kind: 'Estudo observacional',
   symbol: 'moon',
 };

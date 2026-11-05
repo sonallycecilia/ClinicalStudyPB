@@ -365,7 +365,7 @@ Os valores abaixo são validados por `CHECK` no banco e devem ser usados exatame
 | `usuarios.status` | `Ativo`, `Inativo` |
 | `estudos.tipo` | `Estudo observacional`, `Estudo longitudinal` |
 | `estudos.simbolo` | `moon`, `heart`, `activity` |
-| `estudos.status` | `Planejamento` (padrão), `Recrutamento`, `Execução`, `Encerrado` |
+| `estudos.status` | `planejamento` (padrão), `recrutamento`, `execução`, `encerrado` |
 | `criterios_elegibilidade.tipo` | `Inclusão`, `Exclusão` |
 | `candidatos.status_recrutamento` | `Novo`, `Em avaliação` (padrão), `Elegível`, `Inelegível`, `Incluído`, `Desistiu` |
 | `avaliacoes_elegibilidade.resultado` | `Atende`, `Não atende`, `Pendente` |
@@ -426,6 +426,7 @@ As migrations ficam em `backend/migrations/` e são aplicadas em ordem alfabéti
 | `013_resultados_avaliacao.sql` | Tabela `resultados_avaliacao` |
 | `014_create_solicitacoes_visita.sql` | Tabela `solicitacoes_visita` |
 | `015_create_auditoria.sql` | Tabela `auditoria` |
+| `016_normalize_status_estudos.sql` | Normaliza e valida os estados do estudo |
 
 ### Como o script de migração funciona
 

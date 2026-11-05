@@ -1,9 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 import { USER_ROLES } from '../users/user.types.js';
 import type { AccountStatus, UserRole } from '../users/user.types.js';
-import type { StudyStatus, StudyKind, StudySymbol } from '../studies/study.types.js';
+import { StudyStatus } from '../studies/study.types.js';
+import type { StudyKind, StudySymbol } from '../studies/study.types.js';
 import type { CriterionType } from '../studies/criteria.types.js';
 import type { CreatePlannedVisitInput, CreateVisitActivityInput } from '../studies/visits.types.js';
 
@@ -145,6 +146,12 @@ export class UpdateStudyRequestDto {
   participantsLinked?: number;
 }
 
+export class StudyStatusRequestDto {
+  @ApiProperty({ enum: Object.values(StudyStatus), example: StudyStatus.Recrutamento })
+  @IsEnum(StudyStatus)
+  status!: StudyStatus;
+}
+
 export class StudyResponseDto {
   @ApiProperty({ format: 'uuid', example: 'e34e7889-4221-4a63-9f15-5e4d60c5955b' })
   id!: string;
@@ -176,7 +183,7 @@ export class StudyResponseDto {
   @ApiProperty({ type: 'integer', example: 0 })
   participantsLinked!: number;
 
-  @ApiProperty({ enum: ['Planejado', 'Em andamento', 'Encerrado'], example: 'Planejado' })
+  @ApiProperty({ enum: Object.values(StudyStatus), example: StudyStatus.Planejamento })
   status!: StudyStatus;
 
   @ApiProperty({ enum: ['Estudo observacional', 'Estudo longitudinal'], example: 'Estudo observacional' })

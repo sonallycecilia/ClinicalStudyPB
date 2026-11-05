@@ -1,9 +1,10 @@
 import { jest } from '@jest/globals';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service.js';
 import { StudiesService } from './studies.service.js';
 import { VisitsService } from './visits.service.js';
 import type { PlannedVisit, VisitActivity } from './visits.types.js';
+import { StudyStatus } from './study.types.js';
 
 const studyId = '00000000-0000-4000-8000-000000000003';
 const visitId = '00000000-0000-4000-8000-000000000004';
@@ -30,7 +31,10 @@ describe('VisitsService', () => {
       (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount: number | null }>
     >;
   };
-  let studies: { findById: jest.Mock<(id: string, ownerId: string) => Promise<unknown>> };
+  let studies: {
+    findById: jest.Mock<(id: string, ownerId: string) => Promise<unknown>>;
+    assertStudyCanBeModified: jest.Mock<(id: string, ownerId: string) => Promise<unknown>>;
+  };
   let service: VisitsService;
 
   beforeEach(() => {
@@ -39,14 +43,18 @@ describe('VisitsService', () => {
         (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount: number | null }>
       >(),
     };
-    studies = { findById: jest.fn<(id: string, ownerId: string) => Promise<unknown>>() };
+    studies = {
+      findById: jest.fn<(id: string, ownerId: string) => Promise<unknown>>(),
+      assertStudyCanBeModified: jest.fn<(id: string, ownerId: string) => Promise<unknown>>()
+        .mockResolvedValue({ status: StudyStatus.Planejamento }),
+    };
     service = new VisitsService(database as unknown as DatabaseService, studies as unknown as StudiesService);
   });
 
   it('cadastra uma visita no estudo validado e aplica nulos aos campos opcionais ausentes', async () => {
     database.query.mockResolvedValue({ rows: [visit], rowCount: 1 });
     await expect(service.create(studyId, { name: 'Consulta inicial', order: 1 }, researcherId)).resolves.toEqual(visit);
-    expect(studies.findById).toHaveBeenCalledWith(studyId, researcherId);
+    expect(studies.assertStudyCanBeModified).toHaveBeenCalledWith(studyId, researcherId);
     expect(database.query.mock.calls[0]?.[1]).toEqual([studyId, 'Consulta inicial', 1, null, null]);
   });
 
@@ -92,5 +100,14 @@ describe('VisitsService', () => {
     database.query.mockResolvedValue({ rows: [], rowCount: 0 });
     studies.findById.mockRejectedValue(new NotFoundException());
     await expect(service.listActivities(studyId, visitId, researcherId)).rejects.toThrow(NotFoundException);
+  });
+
+  it('impede criar visitas ou atividades em estudos encerrados', async () => {
+    studies.assertStudyCanBeModified.mockRejectedValue(new BadRequestException());
+    await expect(service.create(studyId, { name: 'Consulta', order: 1 }, researcherId))
+      .rejects.toThrow(BadRequestException);
+    await expect(service.createActivity(studyId, visitId, { name: 'Atividade', type: 'Exame' }, researcherId))
+      .rejects.toThrow(BadRequestException);
+    expect(database.query).not.toHaveBeenCalled();
   });
 });

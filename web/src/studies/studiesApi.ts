@@ -1,5 +1,5 @@
 /** Formatos compatíveis com o Study retornado pelo backend NestJS. */
-export type StudyStatus = 'Em andamento' | 'Planejado' | 'Encerrado';
+export type StudyStatus = 'planejamento' | 'recrutamento' | 'execução' | 'encerrado';
 export type StudyKind = 'Estudo observacional' | 'Estudo longitudinal';
 export interface Study {
   id: string;

@@ -96,3 +96,7 @@ As rotas abaixo exigem autenticação de pesquisador e aceitam apenas estudos pe
 
 O identificador do estudo e o identificador da visita são validados como UUIDs. A ordem da visita deve ser única dentro do estudo, e a atividade só pode ser associada a uma visita do estudo informado.
 Os corpos de cadastro são validados pelos DTOs com `class-validator` e `class-transformer`, usando `ValidationPipe` local às rotas de criação. Campos desconhecidos são rejeitados; textos são removidos de espaços nas pontas antes da validação.
+
+## Estados do estudo (RF07)
+
+Os estudos iniciam em `planejamento` e persistem um dos estados `planejamento`, `recrutamento`, `execução` ou `encerrado`. O endpoint `PATCH /studies/:id/status` recebe `{ "status": "recrutamento" }` e permite somente avanços sequenciais: planejamento → recrutamento → execução → encerrado. Estados desconhecidos ou transições inválidas retornam `400`; estudos encerrados continuam consultáveis, mas não podem ser atualizados nem receber novos critérios, visitas ou atividades.
