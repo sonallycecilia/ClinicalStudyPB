@@ -84,7 +84,7 @@ function CriteriaEditorGroup({ type, drafts, disabled, onAdd, onUpdate, onRemove
     <article className="study-criteria-group" aria-labelledby={headingId}>
       <div className="study-criteria-group-heading">
         <h4 id={headingId}>Critérios de {typeLabel}</h4>
-        <span className="study-status status-planejado">{countLabel(drafts.length)}</span>
+        <span className="study-status status-planejamento">{countLabel(drafts.length)}</span>
       </div>
       {drafts.length === 0
         ? <div className="study-empty-state">Nenhum critério de {typeLabel} adicionado.</div>
@@ -188,7 +188,7 @@ function CriteriaGroup({ type, criteria }: { type: CriterionType; criteria: Elig
     <article className="study-criteria-group" aria-labelledby={headingId}>
       <div className="study-criteria-group-heading">
         <h3 id={headingId}>Critérios de {typeLabel}</h3>
-        <span className="study-status status-planejado">{countLabel(criteria.length)}</span>
+        <span className="study-status status-planejamento">{countLabel(criteria.length)}</span>
       </div>
       {criteria.length === 0
         ? <div className="study-empty-state">Nenhum critério de {typeLabel} cadastrado.</div>

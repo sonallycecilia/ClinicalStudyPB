@@ -37,7 +37,7 @@ const study: Study = {
   endDate: '2026-12-31',
   participantLimit: 20,
   participantsLinked: 5,
-  status: 'Em andamento',
+  status: 'execução',
   kind: 'Estudo observacional',
   symbol: 'moon',
 };
@@ -780,6 +780,7 @@ describe('edição de estudo com critérios', () => {
         if (row) Object.assign(row, body);
         return jsonResponse(row);
       }
+      if (path.startsWith(`${studyPath}/visits`)) return jsonResponse([]);
       throw new Error(`Requisição inesperada: ${method} ${path}`);
     });
     return rows;

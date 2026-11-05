@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { StudyCriteriaEditor, StudyCriteriaSection, StudyCriteriaSummary } from '../components/StudyCriteriaSection';
+import { StudyVisitsSection } from '../components/StudyVisitsSection';
 import { CriteriaApiError, UNEXPECTED_LOAD_ERROR, applyCriteriaChanges, criteriaApi, planCriteriaChanges } from '../studies/criteriaApi';
 import type { CriteriaChange, CriterionDraft, CriterionType, EligibilityCriterion } from '../studies/criteriaApi';
 import { studiesApi } from '../studies/studiesApi';
@@ -526,7 +527,7 @@ export function StudiesPage() {
                 </div>
               </section>
               <section className="study-detail-section study-objective-card"><h2>Objetivo do estudo</h2><p>{selectedStudy.objective}</p></section>
-              <section className="study-detail-section study-about-card"><h2>Sobre o acompanhamento</h2><p>Este painel reúne as informações gerais do estudo. As visitas previstas serão definidas nas próximas etapas.</p></section>
+              <section className="study-detail-section study-about-card"><h2>Sobre o acompanhamento</h2><p>Este painel reúne as informações gerais do estudo. As visitas previstas e suas atividades estão listadas abaixo, na seção Visitas previstas.</p></section>
             </div>
             <aside className="study-detail-side-column">
               <section className="study-detail-section study-summary-card">
@@ -538,6 +539,7 @@ export function StudiesPage() {
             </aside>
           </div>
           <StudyCriteriaSection key={`${selectedStudy.id}-${criteriaVersions[selectedStudy.id] ?? 0}`} studyId={selectedStudy.id} />
+          <StudyVisitsSection key={selectedStudy.id} studyId={selectedStudy.id} readOnly={selectedStudy.status === 'encerrado'} />
         </section>
         {dialogMode === 'edit' && renderStudyForm(true)}
         {dialogMode === 'criteria-recovery' && renderCriteriaRecoveryDialog()}
