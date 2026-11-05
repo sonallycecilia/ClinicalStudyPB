@@ -8,6 +8,20 @@ import type { StudyKind, StudySymbol } from '../studies/study.types.js';
 import type { CriterionType } from '../studies/criteria.types.js';
 import type { CreatePlannedVisitInput, CreateVisitActivityInput } from '../studies/visits.types.js';
 import type { Candidate, CreateCandidateInput } from '../studies/candidates.types.js';
+import type {
+  CandidateEligibilityAssessment,
+  CriterionEvaluationInput,
+  EvaluateCandidateInput,
+  EligibilityEvaluation,
+} from '../studies/candidates.types.js';
+import {
+  ArrayMinSize,
+  IsArray,
+  IsIn,
+  IsUUID,
+  ValidateNested,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class ApiErrorResponseDto {
   @ApiProperty({ example: 400, description: 'Código HTTP da resposta.' })
@@ -357,4 +371,70 @@ export class CandidateResponseDto implements Candidate {
 
   @ApiProperty({ format: 'date-time' })
   registeredAt!: string;
+}
+
+export class CriterionEvaluationRequestDto implements CriterionEvaluationInput {
+  @ApiProperty({ format: 'uuid', description: 'Critério ativo pertencente ao estudo informado.' })
+  @IsUUID()
+  criterionId!: string;
+
+  @ApiProperty({ enum: ['Atende', 'Não atende', 'Pendente'] })
+  @IsIn(['Atende', 'Não atende', 'Pendente'])
+  result!: CriterionEvaluationInput['result'];
+
+  @ApiPropertyOptional({ maxLength: 2000, nullable: true })
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() || null : value)
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  observation?: string | null;
+}
+
+export class EvaluateCandidateRequestDto implements EvaluateCandidateInput {
+  @ApiProperty({ type: CriterionEvaluationRequestDto, isArray: true, minItems: 1 })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => CriterionEvaluationRequestDto)
+  evaluations!: CriterionEvaluationRequestDto[];
+}
+
+export class EligibilityEvaluationResponseDto implements EligibilityEvaluation {
+  @ApiProperty({ format: 'uuid' })
+  id!: string;
+
+  @ApiProperty({ format: 'uuid' })
+  criterionId!: string;
+
+  @ApiProperty({ enum: ['Inclusão', 'Exclusão'] })
+  criterionType!: 'Inclusão' | 'Exclusão';
+
+  @ApiProperty()
+  criterionDescription!: string;
+
+  @ApiProperty({ enum: ['Atende', 'Não atende', 'Pendente'] })
+  result!: EligibilityEvaluation['result'];
+
+  @ApiProperty({ nullable: true })
+  observation!: string | null;
+
+  @ApiProperty({ format: 'uuid' })
+  evaluatorId!: string;
+
+  @ApiProperty({ format: 'date-time' })
+  evaluatedAt!: string;
+}
+
+export class CandidateEligibilityAssessmentResponseDto implements CandidateEligibilityAssessment {
+  @ApiProperty({ format: 'uuid' })
+  candidateId!: string;
+
+  @ApiProperty({ format: 'uuid' })
+  studyId!: string;
+
+  @ApiProperty({ enum: ['Novo', 'Em avaliação', 'Elegível', 'Inelegível', 'Incluído', 'Desistiu'] })
+  status!: Candidate['status'];
+
+  @ApiProperty({ type: EligibilityEvaluationResponseDto, isArray: true })
+  evaluations!: EligibilityEvaluationResponseDto[];
 }

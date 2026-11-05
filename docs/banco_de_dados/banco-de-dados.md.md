@@ -430,6 +430,8 @@ As migrations ficam em `backend/migrations/` e são aplicadas em ordem alfabéti
 
 A tabela `candidatos` é criada pela migration `008_create_candidatos.sql`. O backend expõe o cadastro e a listagem por estudo em `POST` e `GET /studies/:studyId/candidates`, exigindo que o pesquisador autenticado seja proprietário do estudo.
 
+As avaliações de elegibilidade usam `avaliacoes_elegibilidade`, criada pela migration `009_avaliacoes_elegibilidade.sql`. A API verifica o vínculo de candidato e critério ao mesmo estudo, persiste as respostas de critérios ativos em transação e atualiza o status do candidato conforme os resultados.
+
 ### Como o script de migração funciona
 
 1. Abre uma transação e obtém um *advisory lock*, para que duas execuções simultâneas não colidam.

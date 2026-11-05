@@ -244,6 +244,70 @@ describe('Estudos clínicos com PostgreSQL (E2E)', () => {
       .set('Authorization', bearer(otherResearcherToken)).expect(403);
   });
 
+  it('avalia os critérios do candidato e persiste elegibilidade ou inelegibilidade', async () => {
+    const study = await request(api()).post('/studies')
+      .set('Authorization', bearer(researcherToken)).send({ ...sample, title: 'Estudo para elegibilidade' }).expect(201);
+    const otherStudy = await request(api()).post('/studies')
+      .set('Authorization', bearer(researcherToken)).send({ ...sample, title: 'Outro estudo para critérios' }).expect(201);
+
+    const inclusion = await request(api()).post(`/studies/${study.body.id}/criteria`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ type: 'Inclusão', description: 'Ter 18 anos ou mais.' }).expect(201);
+    const exclusion = await request(api()).post(`/studies/${study.body.id}/criteria`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ type: 'Exclusão', description: 'Possuir contraindicação.' }).expect(201);
+    const foreignCriterion = await request(api()).post(`/studies/${otherStudy.body.id}/criteria`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ type: 'Inclusão', description: 'Critério de outro estudo.' }).expect(201);
+    const candidate = await request(api()).post(`/studies/${study.body.id}/candidates`)
+      .set('Authorization', bearer(researcherToken)).send({ name: 'Pessoa elegível' }).expect(201);
+
+    const assessmentInput = {
+      evaluations: [
+        { criterionId: inclusion.body.id, result: 'Atende' },
+        { criterionId: exclusion.body.id, result: 'Não atende' },
+      ],
+    };
+    const assessment = await request(api())
+      .post(`/studies/${study.body.id}/candidates/${candidate.body.id}/eligibility-assessments`)
+      .set('Authorization', bearer(researcherToken)).send(assessmentInput).expect(201);
+    expect(assessment.body).toMatchObject({
+      candidateId: candidate.body.id,
+      studyId: study.body.id,
+      status: 'Elegível',
+    });
+    expect(assessment.body.evaluations).toHaveLength(2);
+
+    await request(api()).get(`/studies/${study.body.id}/candidates/${candidate.body.id}/eligibility-assessments`)
+      .set('Authorization', bearer(researcherToken)).expect(200)
+      .expect(({ body }) => expect(body).toMatchObject({ status: 'Elegível', evaluations: assessment.body.evaluations }));
+
+    await request(api())
+      .post(`/studies/${study.body.id}/candidates/${candidate.body.id}/eligibility-assessments`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ evaluations: [
+        { criterionId: inclusion.body.id, result: 'Não atende' },
+        { criterionId: exclusion.body.id, result: 'Não atende' },
+      ] })
+      .expect(201)
+      .expect(({ body }) => expect(body.status).toBe('Inelegível'));
+
+    await request(api())
+      .post(`/studies/${study.body.id}/candidates/${candidate.body.id}/eligibility-assessments`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ evaluations: [
+        { criterionId: inclusion.body.id, result: 'Atende' },
+        { criterionId: foreignCriterion.body.id, result: 'Atende' },
+      ] })
+      .expect(400);
+
+    await request(api())
+      .post(`/studies/${study.body.id}/candidates/${candidate.body.id}/eligibility-assessments`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ evaluations: [{ criterionId: inclusion.body.id, result: 'Atende' }] })
+      .expect(400);
+  });
+
   it('persiste os estudos após reiniciar a aplicação', async () => {
     const created = await request(api()).post('/studies')
       .set('Authorization', bearer(researcherToken)).send({ ...sample, title: 'Estudo persistente' }).expect(201);
