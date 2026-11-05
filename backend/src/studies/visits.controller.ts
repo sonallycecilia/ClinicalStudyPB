@@ -1,4 +1,15 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Req,
+  UseGuards,
+  UsePipes,
+  ValidationPipe,
+} from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -25,8 +36,13 @@ import {
   PlannedVisitResponseDto,
   VisitActivityResponseDto,
 } from '../swagger/api.models.js';
-import type { CreatePlannedVisitInput, CreateVisitActivityInput } from './visits.types.js';
 import { VisitsService } from './visits.service.js';
+
+const visitBodyValidationPipe = new ValidationPipe({
+  transform: true,
+  whitelist: true,
+  forbidNonWhitelisted: true,
+});
 
 @Controller('studies/:studyId/visits')
 @UseGuards(AccessTokenGuard, RolesGuard)
@@ -76,9 +92,10 @@ export class VisitsController {
   @ApiForbiddenResponse({ description: 'Somente o pesquisador proprietário pode cadastrar visitas.', type: ApiErrorResponseDto })
   @ApiNotFoundResponse({ description: 'Estudo não encontrado.', type: ApiErrorResponseDto })
   @ApiConflictResponse({ description: 'Já existe uma visita com essa ordem neste estudo.', type: ApiErrorResponseDto })
+  @UsePipes(visitBodyValidationPipe)
   create(
     @Param('studyId', new ParseUUIDPipe()) studyId: string,
-    @Body() input: CreatePlannedVisitInput,
+    @Body() input: CreatePlannedVisitRequestDto,
     @Req() request: AuthenticatedRequest,
   ) {
     return this.visitsService.create(studyId, input, request.user!.sub);
@@ -111,10 +128,11 @@ export class VisitsController {
   @ApiUnauthorizedResponse({ description: 'Token ausente, inválido ou expirado.', type: ApiErrorResponseDto })
   @ApiForbiddenResponse({ description: 'Somente o pesquisador proprietário pode cadastrar atividades.', type: ApiErrorResponseDto })
   @ApiNotFoundResponse({ description: 'Estudo ou visita prevista não encontrada neste estudo.', type: ApiErrorResponseDto })
+  @UsePipes(visitBodyValidationPipe)
   createActivity(
     @Param('studyId', new ParseUUIDPipe()) studyId: string,
     @Param('visitId', new ParseUUIDPipe()) visitId: string,
-    @Body() input: CreateVisitActivityInput,
+    @Body() input: CreateVisitActivityRequestDto,
     @Req() request: AuthenticatedRequest,
   ) {
     return this.visitsService.createActivity(studyId, visitId, input, request.user!.sub);

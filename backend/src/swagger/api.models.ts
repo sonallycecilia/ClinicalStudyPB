@@ -1,4 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
+import { IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 import { USER_ROLES } from '../users/user.types.js';
 import type { AccountStatus, UserRole } from '../users/user.types.js';
 import type { StudyStatus, StudyKind, StudySymbol } from '../studies/study.types.js';
@@ -225,26 +227,51 @@ export class EligibilityCriterionResponseDto {
 
 export class CreatePlannedVisitRequestDto implements CreatePlannedVisitInput {
   @ApiProperty({ minLength: 1, maxLength: 150, example: 'Consulta inicial' })
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(150)
   name!: string;
 
   @ApiProperty({ type: 'integer', minimum: 1, example: 1 })
+  @IsInt()
+  @Min(1)
   order!: number;
 
   @ApiPropertyOptional({ type: 'integer', minimum: 0, nullable: true, example: 14 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
   intervalDays?: number | null;
 
   @ApiPropertyOptional({ maxLength: 2000, nullable: true, example: 'Realizada após a inclusão.' })
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() || null : value)
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
   description?: string | null;
 }
 
 export class CreateVisitActivityRequestDto implements CreateVisitActivityInput {
   @ApiProperty({ minLength: 1, maxLength: 150, example: 'Coleta de sinais vitais' })
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(150)
   name!: string;
 
   @ApiPropertyOptional({ maxLength: 2000, nullable: true, example: 'Aferir pressão arterial e frequência cardíaca.' })
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() || null : value)
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
   description?: string | null;
 
   @ApiProperty({ minLength: 1, maxLength: 50, example: 'Exame' })
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(50)
   type!: string;
 }
 

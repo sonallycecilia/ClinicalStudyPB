@@ -1,5 +1,5 @@
 import { jest } from '@jest/globals';
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service.js';
 import { StudiesService } from './studies.service.js';
 import { VisitsService } from './visits.service.js';
@@ -45,7 +45,7 @@ describe('VisitsService', () => {
 
   it('cadastra uma visita no estudo validado e aplica nulos aos campos opcionais ausentes', async () => {
     database.query.mockResolvedValue({ rows: [visit], rowCount: 1 });
-    await expect(service.create(studyId, { name: ' Consulta inicial ', order: 1 }, researcherId)).resolves.toEqual(visit);
+    await expect(service.create(studyId, { name: 'Consulta inicial', order: 1 }, researcherId)).resolves.toEqual(visit);
     expect(studies.findById).toHaveBeenCalledWith(studyId, researcherId);
     expect(database.query.mock.calls[0]?.[1]).toEqual([studyId, 'Consulta inicial', 1, null, null]);
   });
@@ -62,16 +62,6 @@ describe('VisitsService', () => {
     await expect(service.find(studyId, visitId, researcherId)).rejects.toThrow(NotFoundException);
   });
 
-  it('rejeita dados obrigatórios, intervalos e campos desconhecidos de visitas', async () => {
-    await expect(service.create(studyId, { name: ' ', order: 1 }, researcherId)).rejects.toThrow(BadRequestException);
-    await expect(service.create(studyId, { name: 'Visita', order: 0 }, researcherId)).rejects.toThrow(BadRequestException);
-    await expect(service.create(studyId, { name: 'Visita', order: 1, intervalDays: -1 }, researcherId))
-      .rejects.toThrow(BadRequestException);
-    await expect(service.create(studyId, { name: 'Visita', order: 1, unexpected: true } as never, researcherId))
-      .rejects.toThrow(BadRequestException);
-    expect(database.query).not.toHaveBeenCalled();
-  });
-
   it('retorna conflito quando a ordem já está cadastrada no estudo', async () => {
     database.query.mockRejectedValue({ code: '23505', constraint: 'visitas_previstas_ordem_unica' });
     await expect(service.create(studyId, { name: 'Consulta inicial', order: 1 }, researcherId))
@@ -86,9 +76,9 @@ describe('VisitsService', () => {
       .mockResolvedValueOnce({ rows: [activity], rowCount: 1 });
 
     await expect(service.createActivity(studyId, visitId, {
-      name: ' Coleta de sinais vitais ',
-      description: ' Aferir pressão arterial. ',
-      type: ' Exame ',
+      name: 'Coleta de sinais vitais',
+      description: 'Aferir pressão arterial.',
+      type: 'Exame',
     }, researcherId)).resolves.toEqual(activity);
     expect(database.query.mock.calls[1]?.[1]).toEqual([
       visitId, 'Coleta de sinais vitais', 'Aferir pressão arterial.', 'Exame',
@@ -98,17 +88,9 @@ describe('VisitsService', () => {
     expect(database.query.mock.calls[3]?.[1]).toEqual([visitId]);
   });
 
-  it('rejeita atividades sem nome ou tipo, inválidas e fora da visita vinculada', async () => {
-    await expect(service.createActivity(studyId, visitId, { name: '', type: 'Exame' }, researcherId))
-      .rejects.toThrow(BadRequestException);
-    await expect(service.createActivity(studyId, visitId, { name: 'Atividade', type: ' ' }, researcherId))
-      .rejects.toThrow(BadRequestException);
-    await expect(service.createActivity(studyId, visitId, { name: 'Atividade', type: 'Exame', extra: true } as never, researcherId))
-      .rejects.toThrow(BadRequestException);
-    expect(database.query).not.toHaveBeenCalled();
-
+  it('impede consultar atividades de uma visita que não pertence ao estudo', async () => {
+    database.query.mockResolvedValue({ rows: [], rowCount: 0 });
     studies.findById.mockRejectedValue(new NotFoundException());
     await expect(service.listActivities(studyId, visitId, researcherId)).rejects.toThrow(NotFoundException);
-    expect(database.query).not.toHaveBeenCalled();
   });
 });

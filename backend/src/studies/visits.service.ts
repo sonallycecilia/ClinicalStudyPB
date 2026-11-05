@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type { QueryResultRow } from 'pg';
 import { DatabaseService } from '../database/database.service.js';
 import { StudiesService } from './studies.service.js';
@@ -73,13 +73,12 @@ export class VisitsService {
     researcherId: string,
   ): Promise<PlannedVisit> {
     await this.assertStudyAccess(studyId, researcherId);
-    const data = this.validateCreateInput(input);
     try {
       const { rows } = await this.database.query<PlannedVisitRow>(
         `INSERT INTO visitas_previstas (id_estudo, nome, ordem, intervalo_dias, descricao)
          VALUES ($1, $2, $3, $4, $5)
          RETURNING ${PLANNED_VISIT_COLUMNS}`,
-        [studyId, data.name, data.order, data.intervalDays, data.description],
+        [studyId, input.name, input.order, input.intervalDays ?? null, input.description ?? null],
       );
       if (!rows[0]) throw new Error('O banco não retornou a visita prevista cadastrada.');
       return rows[0];
@@ -120,13 +119,12 @@ export class VisitsService {
     input: CreateVisitActivityInput,
     researcherId: string,
   ): Promise<VisitActivity> {
-    const data = this.validateActivityInput(input);
     await this.find(studyId, visitId, researcherId);
     const { rows } = await this.database.query<VisitActivityRow>(
       `INSERT INTO atividades_visita (id_visita_prevista, nome, descricao, tipo)
        VALUES ($1, $2, $3, $4)
        RETURNING ${VISIT_ACTIVITY_COLUMNS}`,
-      [visitId, data.name, data.description, data.type],
+      [visitId, input.name, input.description ?? null, input.type],
     );
     if (!rows[0]) throw new Error('O banco não retornou a atividade cadastrada.');
     return rows[0];
@@ -146,61 +144,4 @@ export class VisitsService {
     return rows[0];
   }
 
-  private validateCreateInput(input: CreatePlannedVisitInput): Required<CreatePlannedVisitInput> {
-    if (!input || typeof input !== 'object' || Array.isArray(input)) {
-      throw new BadRequestException('Informe os dados da visita prevista.');
-    }
-    this.rejectUnknownFields(input, ['name', 'order', 'intervalDays', 'description']);
-    const name = this.validateText(input.name, 'O nome da visita', 150);
-    if (!Number.isInteger(input.order) || input.order < 1) {
-      throw new BadRequestException('A ordem da visita deve ser um número inteiro maior que zero.');
-    }
-    if (input.intervalDays !== undefined && input.intervalDays !== null &&
-      (!Number.isInteger(input.intervalDays) || input.intervalDays < 0)) {
-      throw new BadRequestException('O intervalo em dias deve ser um número inteiro maior ou igual a zero.');
-    }
-    const description = this.validateOptionalDescription(input.description);
-    return {
-      name,
-      order: input.order,
-      intervalDays: input.intervalDays ?? null,
-      description,
-    };
-  }
-
-  private validateActivityInput(input: CreateVisitActivityInput): Required<CreateVisitActivityInput> {
-    if (!input || typeof input !== 'object' || Array.isArray(input)) {
-      throw new BadRequestException('Informe os dados da atividade.');
-    }
-    this.rejectUnknownFields(input, ['name', 'description', 'type']);
-    const name = this.validateText(input.name, 'O nome da atividade', 150);
-    const type = this.validateText(input.type, 'O tipo da atividade', 50);
-    return {
-      name,
-      description: this.validateOptionalDescription(input.description),
-      type,
-    };
-  }
-
-  private validateText(value: unknown, label: string, maxLength: number): string {
-    if (typeof value !== 'string' || value.trim().length === 0 || value.trim().length > maxLength) {
-      throw new BadRequestException(`${label} deve ter entre 1 e ${maxLength} caracteres.`);
-    }
-    return value.trim();
-  }
-
-  private validateOptionalDescription(description: unknown): string | null {
-    if (description === undefined || description === null) return null;
-    if (typeof description !== 'string' || description.trim().length > 2000) {
-      throw new BadRequestException('A descrição deve ter no máximo 2000 caracteres.');
-    }
-    return description.trim() || null;
-  }
-
-  private rejectUnknownFields(input: object, allowedFields: string[]): void {
-    const allowed = new Set(allowedFields);
-    if (Object.keys(input).some((field) => !allowed.has(field))) {
-      throw new BadRequestException('A solicitação contém campos não permitidos.');
-    }
-  }
 }
