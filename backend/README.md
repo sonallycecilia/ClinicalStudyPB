@@ -100,3 +100,7 @@ Os corpos de cadastro são validados pelos DTOs com `class-validator` e `class-t
 ## Estados do estudo (RF07)
 
 Os estudos iniciam em `planejamento` e persistem um dos estados `planejamento`, `recrutamento`, `execução` ou `encerrado`. O endpoint `PATCH /studies/:id/status` recebe `{ "status": "recrutamento" }` e permite somente avanços sequenciais: planejamento → recrutamento → execução → encerrado. Estados desconhecidos ou transições inválidas retornam `400`; estudos encerrados continuam consultáveis, mas não podem ser atualizados nem receber novos critérios, visitas ou atividades.
+
+## Candidatos (RF08)
+
+`POST /studies/:studyId/candidates` cadastra um candidato para estudo próprio com `name` obrigatório e `email` opcional. O serviço confirma a propriedade e existência do estudo antes de persistir; estudos encerrados não aceitam novos candidatos. `GET /studies/:studyId/candidates` lista os candidatos do estudo. Ambos os endpoints exigem pesquisador autenticado, e os corpos são validados pelo `ValidationPipe` com DTO, `class-validator` e `class-transformer`.

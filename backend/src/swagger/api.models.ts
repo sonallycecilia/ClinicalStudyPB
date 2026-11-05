@@ -1,12 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsEmail, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 import { USER_ROLES } from '../users/user.types.js';
 import type { AccountStatus, UserRole } from '../users/user.types.js';
 import { StudyStatus } from '../studies/study.types.js';
 import type { StudyKind, StudySymbol } from '../studies/study.types.js';
 import type { CriterionType } from '../studies/criteria.types.js';
 import type { CreatePlannedVisitInput, CreateVisitActivityInput } from '../studies/visits.types.js';
+import type { Candidate, CreateCandidateInput } from '../studies/candidates.types.js';
 
 export class ApiErrorResponseDto {
   @ApiProperty({ example: 400, description: 'Código HTTP da resposta.' })
@@ -317,4 +318,43 @@ export class VisitActivityResponseDto {
 
   @ApiProperty({ example: 'Exame' })
   type!: string;
+}
+
+export class CreateCandidateRequestDto implements CreateCandidateInput {
+  @ApiProperty({ minLength: 1, maxLength: 150, example: 'Lucas Martins' })
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(150)
+  name!: string;
+
+  @ApiPropertyOptional({ format: 'email', maxLength: 254, nullable: true, example: 'lucas@example.test' })
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() || null : value)
+  @IsOptional()
+  @IsEmail()
+  @MaxLength(254)
+  email?: string | null;
+}
+
+export class CandidateResponseDto implements Candidate {
+  @ApiProperty({ format: 'uuid' })
+  id!: string;
+
+  @ApiProperty({ format: 'uuid' })
+  studyId!: string;
+
+  @ApiProperty({ example: 'Lucas Martins' })
+  name!: string;
+
+  @ApiPropertyOptional({ format: 'email', nullable: true, example: 'lucas@example.test' })
+  email!: string | null;
+
+  @ApiProperty({
+    enum: ['Novo', 'Em avaliação', 'Elegível', 'Inelegível', 'Incluído', 'Desistiu'],
+    example: 'Em avaliação',
+  })
+  status!: Candidate['status'];
+
+  @ApiProperty({ format: 'date-time' })
+  registeredAt!: string;
 }

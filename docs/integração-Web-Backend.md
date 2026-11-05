@@ -20,7 +20,7 @@ O perfil Participante continua reconhecido pela API compartilhada para uso mobil
 - O login usa `POST /auth/login`; a restauração da sessão consulta `GET /auth/me`; o logout chama `POST /auth/logout` para revogar a sessão no servidor.
 - Os endpoints de usuários exigem perfil Administrador.
 - Os endpoints de estudos (`/studies`) exigem Pesquisador autenticado e limitam a consulta/alteração aos estudos associados ao pesquisador da sessão.
-- As telas do Coordenador estão preservadas, mas candidatos, visitas, reagendamentos e relatórios continuam sendo fluxos de interface de demonstração; ainda não possuem API/tabelas próprias nesta integração.
+- O cadastro e a consulta de candidatos já usam a API persistida (`POST` e `GET /studies/:studyId/candidates`) para estudos do pesquisador autenticado. As demais telas do Coordenador (visitas, reagendamentos e relatórios) continuam sendo fluxos de interface de demonstração.
 - As tasks Cypress 3209 e 3210 possuem testes E2E em `web/cypress/e2e/`.
 
 ## 2. Requisitos

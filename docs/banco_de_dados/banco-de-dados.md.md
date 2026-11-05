@@ -428,6 +428,8 @@ As migrations ficam em `backend/migrations/` e são aplicadas em ordem alfabéti
 | `015_create_auditoria.sql` | Tabela `auditoria` |
 | `016_normalize_status_estudos.sql` | Normaliza e valida os estados do estudo |
 
+A tabela `candidatos` é criada pela migration `008_create_candidatos.sql`. O backend expõe o cadastro e a listagem por estudo em `POST` e `GET /studies/:studyId/candidates`, exigindo que o pesquisador autenticado seja proprietário do estudo.
+
 ### Como o script de migração funciona
 
 1. Abre uma transação e obtém um *advisory lock*, para que duas execuções simultâneas não colidam.

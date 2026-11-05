@@ -216,6 +216,34 @@ describe('Estudos clínicos com PostgreSQL (E2E)', () => {
       .expect(({ body }) => expect(body.status).toBe('encerrado'));
   });
 
+  it('cadastra e consulta candidatos vinculados a um estudo próprio', async () => {
+    const study = await request(api()).post('/studies')
+      .set('Authorization', bearer(researcherToken)).send({ ...sample, title: 'Estudo com candidatos' }).expect(201);
+
+    const created = await request(api()).post(`/studies/${study.body.id}/candidates`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ name: '  Lucas Martins  ', email: 'lucas@example.test' })
+      .expect(201);
+    expect(created.body).toMatchObject({
+      studyId: study.body.id,
+      name: 'Lucas Martins',
+      email: 'lucas@example.test',
+      status: 'Em avaliação',
+    });
+
+    await request(api()).post(`/studies/${study.body.id}/candidates`)
+      .set('Authorization', bearer(researcherToken)).send({ email: 'lucas@example.test' }).expect(400);
+
+    await request(api()).get(`/studies/${study.body.id}/candidates`)
+      .set('Authorization', bearer(researcherToken)).expect(200)
+      .expect(({ body }) => expect(body).toEqual([created.body]));
+
+    await request(api()).post('/studies/00000000-0000-4000-8000-000000000099/candidates')
+      .set('Authorization', bearer(researcherToken)).send({ name: 'Estudo inexistente' }).expect(404);
+    await request(api()).get(`/studies/${study.body.id}/candidates`)
+      .set('Authorization', bearer(otherResearcherToken)).expect(403);
+  });
+
   it('persiste os estudos após reiniciar a aplicação', async () => {
     const created = await request(api()).post('/studies')
       .set('Authorization', bearer(researcherToken)).send({ ...sample, title: 'Estudo persistente' }).expect(201);
