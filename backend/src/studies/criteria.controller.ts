@@ -1,4 +1,16 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Req,
+  UseGuards,
+  UsePipes,
+  ValidationPipe,
+} from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -19,12 +31,11 @@ import { Roles } from '../auth/roles.decorator.js';
 import { RolesGuard } from '../auth/roles.guard.js';
 import {
   ApiErrorResponseDto,
-  CreateCriterionRequestDto,
+  CreateCriterionDto,
   EligibilityCriterionResponseDto,
-  UpdateCriterionRequestDto,
+  UpdateCriterionDto,
 } from '../swagger/api.models.js';
 import { CriteriaService } from './criteria.service.js';
-import type { CreateCriterionInput, UpdateCriterionInput } from './criteria.types.js';
 
 @Controller('studies/:studyId/criteria')
 @UseGuards(AccessTokenGuard, RolesGuard)
@@ -65,9 +76,10 @@ export class CriteriaController {
   }
 
   @Post()
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }))
   @ApiOperation({ summary: 'Cadastrar um critério em estudo próprio' })
   @ApiParam({ name: 'studyId', description: 'UUID do estudo.', format: 'uuid' })
-  @ApiBody({ type: CreateCriterionRequestDto })
+  @ApiBody({ type: CreateCriterionDto })
   @ApiCreatedResponse({ description: 'Critério cadastrado.', type: EligibilityCriterionResponseDto })
   @ApiBadRequestResponse({ description: 'Estudo inválido ou dados do critério inválidos.', type: ApiErrorResponseDto })
   @ApiUnauthorizedResponse({ description: 'Token ausente, inválido ou expirado.', type: ApiErrorResponseDto })
@@ -75,17 +87,18 @@ export class CriteriaController {
   @ApiNotFoundResponse({ description: 'Estudo não encontrado.', type: ApiErrorResponseDto })
   create(
     @Param('studyId', new ParseUUIDPipe()) studyId: string,
-    @Body() input: CreateCriterionInput,
+    @Body() input: CreateCriterionDto,
     @Req() request: AuthenticatedRequest,
   ) {
     return this.criteriaService.create(studyId, input, request.user!.sub);
   }
 
   @Patch(':criterionId')
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }))
   @ApiOperation({ summary: 'Atualizar um critério do estudo' })
   @ApiParam({ name: 'studyId', description: 'UUID do estudo.', format: 'uuid' })
   @ApiParam({ name: 'criterionId', description: 'UUID do critério.', format: 'uuid' })
-  @ApiBody({ type: UpdateCriterionRequestDto, description: 'Informe ao menos um campo permitido.' })
+  @ApiBody({ type: UpdateCriterionDto, description: 'Informe ao menos um campo permitido.' })
   @ApiOkResponse({ description: 'Critério atualizado.', type: EligibilityCriterionResponseDto })
   @ApiBadRequestResponse({ description: 'Parâmetros inválidos ou dados do critério inválidos.', type: ApiErrorResponseDto })
   @ApiUnauthorizedResponse({ description: 'Token ausente, inválido ou expirado.', type: ApiErrorResponseDto })
@@ -94,7 +107,7 @@ export class CriteriaController {
   update(
     @Param('studyId', new ParseUUIDPipe()) studyId: string,
     @Param('criterionId', new ParseUUIDPipe()) criterionId: string,
-    @Body() input: UpdateCriterionInput,
+    @Body() input: UpdateCriterionDto,
     @Req() request: AuthenticatedRequest,
   ) {
     return this.criteriaService.update(studyId, criterionId, input, request.user!.sub);

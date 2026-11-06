@@ -31,6 +31,33 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     return this.pool.query<T>(sql, values);
   }
 
+  async transaction<T>(operation: (client: pg.PoolClient) => Promise<T>): Promise<T> {
+    if (!this.pool) throw new Error('Conexão com PostgreSQL não configurada.');
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const result = await operation(client);
+      await client.query('COMMIT');
+      return result;
+    } catch (error) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        this.logger.error(
+          'Falha ao reverter a transação do PostgreSQL.',
+          rollbackError instanceof Error ? rollbackError.stack : String(rollbackError),
+        );
+        throw new AggregateError(
+          [error, rollbackError],
+          'A operação e a reversão da transação falharam.',
+        );
+      }
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   async onModuleDestroy(): Promise<void> {
     await this.pool?.end();
   }

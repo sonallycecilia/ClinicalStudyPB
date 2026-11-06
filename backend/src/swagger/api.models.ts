@@ -1,6 +1,17 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsEmail, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import {
+  IsEmail,
+  IsEnum,
+  IsInt,
+  IsIn,
+  IsNotEmpty,
+  IsBoolean,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import { USER_ROLES } from '../users/user.types.js';
 import type { AccountStatus, UserRole } from '../users/user.types.js';
 import { StudyStatus } from '../studies/study.types.js';
@@ -8,6 +19,22 @@ import type { StudyKind, StudySymbol } from '../studies/study.types.js';
 import type { CriterionType } from '../studies/criteria.types.js';
 import type { CreatePlannedVisitInput, CreateVisitActivityInput } from '../studies/visits.types.js';
 import type { Candidate, CreateCandidateInput } from '../studies/candidates.types.js';
+import type {
+  CandidateInclusion,
+  CandidateEligibilityAssessment,
+  CandidateConsent,
+  CriterionEvaluationInput,
+  EvaluateCandidateInput,
+  EligibilityEvaluation,
+  RegisterCandidateConsentInput,
+} from '../studies/candidates.types.js';
+import {
+  ArrayMinSize,
+  IsArray,
+  IsUUID,
+  ValidateNested,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class ApiErrorResponseDto {
   @ApiProperty({ example: 400, description: 'Código HTTP da resposta.' })
@@ -194,25 +221,43 @@ export class StudyResponseDto {
   symbol!: StudySymbol;
 }
 
-export class CreateCriterionRequestDto {
+export class CreateCriterionDto {
   @ApiProperty({ enum: ['Inclusão', 'Exclusão'], example: 'Inclusão' })
+  @IsString()
+  @IsIn(['Inclusão', 'Exclusão'])
   type!: CriterionType;
 
   @ApiProperty({ minLength: 1, maxLength: 2000, example: 'Ter idade igual ou superior a 18 anos.' })
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(2000)
   description!: string;
 
   @ApiPropertyOptional({ default: true, example: true })
+  @IsOptional()
+  @IsBoolean()
   active?: boolean;
 }
 
-export class UpdateCriterionRequestDto {
+export class UpdateCriterionDto {
   @ApiPropertyOptional({ enum: ['Inclusão', 'Exclusão'], example: 'Exclusão' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['Inclusão', 'Exclusão'])
   type?: CriterionType;
 
   @ApiPropertyOptional({ minLength: 1, maxLength: 2000, example: 'Ter idade igual ou superior a 18 anos.' })
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(2000)
   description?: string;
 
   @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
   active?: boolean;
 }
 
@@ -357,4 +402,143 @@ export class CandidateResponseDto implements Candidate {
 
   @ApiProperty({ format: 'date-time' })
   registeredAt!: string;
+}
+
+export class RegisterCandidateConsentRequestDto implements RegisterCandidateConsentInput {
+  @ApiProperty({
+    enum: ['Registrado', 'Recusado', 'Revogado'],
+    description: 'Estado do termo simulado: Registrado representa consentimento concedido.',
+  })
+  @IsIn(['Registrado', 'Recusado', 'Revogado'])
+  status!: RegisterCandidateConsentInput['status'];
+
+  @ApiProperty({ minLength: 1, maxLength: 50, example: 'simulado-v1' })
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(50)
+  termVersion!: string;
+
+  @ApiPropertyOptional({ maxLength: 2000, nullable: true })
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() || null : value)
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  observation?: string | null;
+}
+
+export class CandidateConsentResponseDto implements CandidateConsent {
+  @ApiProperty({ format: 'uuid' })
+  candidateId!: string;
+
+  @ApiProperty({ format: 'uuid' })
+  studyId!: string;
+
+  @ApiProperty({
+    enum: ['Registrado', 'Recusado', 'Revogado'],
+    nullable: true,
+    description: 'Null indica que ainda não há consentimento registrado.',
+  })
+  status!: CandidateConsent['status'];
+
+  @ApiProperty({ nullable: true, example: 'simulado-v1' })
+  termVersion!: string | null;
+
+  @ApiProperty({ format: 'date-time', nullable: true })
+  registeredAt!: string | null;
+
+  @ApiProperty({ format: 'uuid', nullable: true })
+  registrarId!: string | null;
+
+  @ApiProperty({ nullable: true })
+  observation!: string | null;
+}
+
+export class CandidateInclusionResponseDto implements CandidateInclusion {
+  @ApiProperty({ format: 'uuid' })
+  participationId!: string;
+
+  @ApiProperty({ format: 'uuid' })
+  candidateId!: string;
+
+  @ApiProperty({ format: 'uuid' })
+  studyId!: string;
+
+  @ApiProperty({ format: 'date', example: '2026-11-06' })
+  includedAt!: string;
+
+  @ApiProperty({ enum: ['Ativo'], example: 'Ativo' })
+  participationStatus!: 'Ativo';
+
+  @ApiProperty({ type: 'integer', minimum: 1, example: 5 })
+  participantsLinked!: number;
+
+  @ApiProperty({ type: 'integer', minimum: 1, example: 20 })
+  participantLimit!: number;
+}
+
+export class CriterionEvaluationRequestDto implements CriterionEvaluationInput {
+  @ApiProperty({ format: 'uuid', description: 'Critério ativo pertencente ao estudo informado.' })
+  @IsUUID()
+  criterionId!: string;
+
+  @ApiProperty({ enum: ['Atende', 'Não atende', 'Pendente'] })
+  @IsIn(['Atende', 'Não atende', 'Pendente'])
+  result!: CriterionEvaluationInput['result'];
+
+  @ApiPropertyOptional({ maxLength: 2000, nullable: true })
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() || null : value)
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  observation?: string | null;
+}
+
+export class EvaluateCandidateRequestDto implements EvaluateCandidateInput {
+  @ApiProperty({ type: CriterionEvaluationRequestDto, isArray: true, minItems: 1 })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => CriterionEvaluationRequestDto)
+  evaluations!: CriterionEvaluationRequestDto[];
+}
+
+export class EligibilityEvaluationResponseDto implements EligibilityEvaluation {
+  @ApiProperty({ format: 'uuid' })
+  id!: string;
+
+  @ApiProperty({ format: 'uuid' })
+  criterionId!: string;
+
+  @ApiProperty({ enum: ['Inclusão', 'Exclusão'] })
+  criterionType!: 'Inclusão' | 'Exclusão';
+
+  @ApiProperty()
+  criterionDescription!: string;
+
+  @ApiProperty({ enum: ['Atende', 'Não atende', 'Pendente'] })
+  result!: EligibilityEvaluation['result'];
+
+  @ApiProperty({ nullable: true })
+  observation!: string | null;
+
+  @ApiProperty({ format: 'uuid' })
+  evaluatorId!: string;
+
+  @ApiProperty({ format: 'date-time' })
+  evaluatedAt!: string;
+}
+
+export class CandidateEligibilityAssessmentResponseDto implements CandidateEligibilityAssessment {
+  @ApiProperty({ format: 'uuid' })
+  candidateId!: string;
+
+  @ApiProperty({ format: 'uuid' })
+  studyId!: string;
+
+  @ApiProperty({ enum: ['Novo', 'Em avaliação', 'Elegível', 'Inelegível', 'Incluído', 'Desistiu'] })
+  status!: Candidate['status'];
+
+  @ApiProperty({ type: EligibilityEvaluationResponseDto, isArray: true })
+  evaluations!: EligibilityEvaluationResponseDto[];
 }
