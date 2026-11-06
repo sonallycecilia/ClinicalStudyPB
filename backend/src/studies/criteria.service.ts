@@ -1,12 +1,11 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type { QueryResultRow } from 'pg';
 import { DatabaseService } from '../database/database.service.js';
+import type { CreateCriterionDto, UpdateCriterionDto } from '../swagger/api.models.js';
 import { StudiesService } from './studies.service.js';
 import type {
-  CreateCriterionInput,
   CriterionType,
   EligibilityCriterion,
-  UpdateCriterionInput,
 } from './criteria.types.js';
 
 interface CriterionRow extends QueryResultRow {
@@ -54,7 +53,7 @@ export class CriteriaService {
 
   async create(
     studyId: string,
-    input: CreateCriterionInput,
+    input: CreateCriterionDto,
     researcherId: string,
   ): Promise<EligibilityCriterion> {
     await this.studiesService.assertStudyCanBeModified(studyId, researcherId);
@@ -72,7 +71,7 @@ export class CriteriaService {
   async update(
     studyId: string,
     criterionId: string,
-    input: UpdateCriterionInput,
+    input: UpdateCriterionDto,
     researcherId: string,
   ): Promise<EligibilityCriterion> {
     await this.studiesService.assertStudyCanBeModified(studyId, researcherId);
@@ -111,7 +110,7 @@ export class CriteriaService {
     return rows[0];
   }
 
-  private validateCreateInput(input: CreateCriterionInput): Required<CreateCriterionInput> {
+  private validateCreateInput(input: CreateCriterionDto): Required<CreateCriterionDto> {
     if (!input || typeof input !== 'object' || Array.isArray(input)) {
       throw new BadRequestException('Informe os dados do critério.');
     }
@@ -126,7 +125,7 @@ export class CriteriaService {
     return { type: input.type, description, active: input.active ?? true };
   }
 
-  private validateUpdateInput(input: UpdateCriterionInput): UpdateCriterionInput {
+  private validateUpdateInput(input: UpdateCriterionDto): UpdateCriterionDto {
     if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).length === 0) {
       throw new BadRequestException('Informe ao menos um campo para alterar.');
     }

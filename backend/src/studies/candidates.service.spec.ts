@@ -224,7 +224,22 @@ describe('CandidatesService', () => {
     expect(transactionClient.query).toHaveBeenCalledTimes(3);
   });
 
-  it('bloqueia inclusão sem consentimento concedido', async () => {
+  it('bloqueia inclusão quando não há registro de consentimento', async () => {
+    transactionClient.query
+      .mockResolvedValueOnce({
+        rows: [{ status: 'recrutamento', participantLimit: 5, participantsLinked: 2 }],
+        rowCount: 1,
+      })
+      .mockResolvedValueOnce({ rows: [{ status: 'Elegível' }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ type: 'Inclusão', result: 'Atende' }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+    await expect(service.include(studyId, candidate.id, researcherId))
+      .rejects.toThrow('Consentimento ausente ou não concedido');
+    expect(transactionClient.query).toHaveBeenCalledTimes(4);
+  });
+
+  it('bloqueia inclusão quando o consentimento mais recente foi revogado', async () => {
     transactionClient.query
       .mockResolvedValueOnce({
         rows: [{ status: 'recrutamento', participantLimit: 5, participantsLinked: 2 }],

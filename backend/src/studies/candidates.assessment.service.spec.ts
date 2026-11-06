@@ -97,6 +97,19 @@ describe('CandidatesService avaliação de elegibilidade', () => {
       .toEqual([studyId, candidateId, 'Inelegível']);
   });
 
+  it('marca como inelegível quando atende a um critério de exclusão', async () => {
+    mockSuccessfulAssessment('Inelegível', []);
+    const result = await service.evaluate(studyId, candidateId, {
+      evaluations: [
+        { criterionId: inclusionId, result: 'Atende' },
+        { criterionId: exclusionId, result: 'Atende' },
+      ],
+    }, researcherId);
+    expect(result.status).toBe('Inelegível');
+    expect(txQuery.mock.calls.find(([sql]) => sql.includes('UPDATE candidatos'))?.[1])
+      .toEqual([studyId, candidateId, 'Inelegível']);
+  });
+
   it('mantém candidato em avaliação se houver respostas pendentes sem reprovação', async () => {
     mockSuccessfulAssessment('Em avaliação', []);
     await expect(service.evaluate(studyId, candidateId, {

@@ -68,6 +68,22 @@ describe('CriteriaService', () => {
     expect(database.query).not.toHaveBeenCalled();
   });
 
+  it('retorna 404 quando o estudo associado não existe', async () => {
+    const notFound = new NotFoundException('Estudo não encontrado.');
+    studies.findById.mockRejectedValue(notFound);
+    await expect(service.list(studyId, researcherId)).rejects.toThrow(NotFoundException);
+
+    studies.assertStudyCanBeModified.mockRejectedValue(notFound);
+    await expect(service.create(studyId, {
+      type: 'Inclusão',
+      description: 'Ter idade igual ou superior a 18 anos.',
+    }, researcherId)).rejects.toThrow(NotFoundException);
+    await expect(service.update(studyId, criterionId, { active: false }, researcherId))
+      .rejects.toThrow(NotFoundException);
+
+    expect(database.query).not.toHaveBeenCalled();
+  });
+
   it('lista critérios somente dentro do estudo informado', async () => {
     database.query.mockResolvedValue({ rows: [criterion], rowCount: 1 });
     await expect(service.list(studyId, researcherId)).resolves.toEqual([criterion]);

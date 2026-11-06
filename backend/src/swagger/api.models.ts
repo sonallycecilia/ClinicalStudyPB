@@ -1,6 +1,17 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsEmail, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import {
+  IsEmail,
+  IsEnum,
+  IsInt,
+  IsIn,
+  IsNotEmpty,
+  IsBoolean,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import { USER_ROLES } from '../users/user.types.js';
 import type { AccountStatus, UserRole } from '../users/user.types.js';
 import { StudyStatus } from '../studies/study.types.js';
@@ -20,7 +31,6 @@ import type {
 import {
   ArrayMinSize,
   IsArray,
-  IsIn,
   IsUUID,
   ValidateNested,
 } from 'class-validator';
@@ -211,25 +221,43 @@ export class StudyResponseDto {
   symbol!: StudySymbol;
 }
 
-export class CreateCriterionRequestDto {
+export class CreateCriterionDto {
   @ApiProperty({ enum: ['Inclusão', 'Exclusão'], example: 'Inclusão' })
+  @IsString()
+  @IsIn(['Inclusão', 'Exclusão'])
   type!: CriterionType;
 
   @ApiProperty({ minLength: 1, maxLength: 2000, example: 'Ter idade igual ou superior a 18 anos.' })
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(2000)
   description!: string;
 
   @ApiPropertyOptional({ default: true, example: true })
+  @IsOptional()
+  @IsBoolean()
   active?: boolean;
 }
 
-export class UpdateCriterionRequestDto {
+export class UpdateCriterionDto {
   @ApiPropertyOptional({ enum: ['Inclusão', 'Exclusão'], example: 'Exclusão' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['Inclusão', 'Exclusão'])
   type?: CriterionType;
 
   @ApiPropertyOptional({ minLength: 1, maxLength: 2000, example: 'Ter idade igual ou superior a 18 anos.' })
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(2000)
   description?: string;
 
   @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
   active?: boolean;
 }
 
