@@ -43,6 +43,33 @@ describe('Studies API', () => {
     expect(request).toHaveBeenCalledWith(`/studies/${study.id}`, expect.objectContaining({ method: 'PATCH' }));
   });
 
+  it('altera o estado com PATCH /studies/:id/status e o corpo { status }', async () => {
+    const updated = { ...study, status: 'encerrado' as const };
+    const request = vi.fn().mockResolvedValue(okResponse(updated));
+    await expect(studiesApi.transitionStatus(request, study.id, 'encerrado')).resolves.toEqual(updated);
+    expect(request).toHaveBeenCalledWith(`/studies/${study.id}/status`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'encerrado' }),
+    });
+  });
+
+  it.each([
+    [400, 'Transição de "planejamento" para "execução" não permitida.'],
+    [400, 'Estado de estudo desconhecido.'],
+    [401, 'Token inválido ou expirado. Entre novamente.'],
+    [403, 'Você não tem permissão para alterar este estudo.'],
+    [404, 'Estudo não encontrado.'],
+  ])('na alteração de estado, apresenta a mensagem do backend para HTTP %i', async (status, message) => {
+    const request = vi.fn().mockResolvedValue(errorResponse(status, message));
+    await expect(studiesApi.transitionStatus(request, study.id, 'recrutamento')).rejects.toThrow(message);
+  });
+
+  it('na alteração de estado, não expõe detalhes de erro do servidor nem de conexão', async () => {
+    await expect(studiesApi.transitionStatus(vi.fn().mockResolvedValue(errorResponse(500, 'QueryFailedError')), study.id, 'recrutamento'))
+      .rejects.toThrow('Ocorreu um erro inesperado no servidor.');
+    await expect(studiesApi.transitionStatus(vi.fn().mockRejectedValue(new TypeError('Failed to fetch')), study.id, 'recrutamento'))
+      .rejects.toThrow('Não foi possível conectar à API de estudos.');
+  });
+
   it('apresenta a mensagem de erro devolvida pela API', async () => {
     const request = vi.fn().mockResolvedValue(errorResponse(400, 'Data inválida.'));
     await expect(studiesApi.list(request)).rejects.toThrow('Data inválida.');

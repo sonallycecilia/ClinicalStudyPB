@@ -44,4 +44,8 @@ export const studiesApi = {
   update: (request: AuthenticatedRequest, id: string, input: StudyInput) => studiesRequest<Study>(request, `/studies/${encodeURIComponent(id)}`, {
     method: 'PATCH', body: JSON.stringify(input), headers: { 'Content-Type': 'application/json' },
   }),
+  /** PATCH /studies/:id/status com { status }; o backend valida a transição e devolve o estudo atualizado. */
+  transitionStatus: (request: AuthenticatedRequest, id: string, status: StudyStatus) => studiesRequest<Study>(request, `/studies/${encodeURIComponent(id)}/status`, {
+    method: 'PATCH', body: JSON.stringify({ status }), headers: { 'Content-Type': 'application/json' },
+  }),
 };

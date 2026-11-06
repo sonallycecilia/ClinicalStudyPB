@@ -2,16 +2,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import {
   Activity, ArrowLeft, CalendarDays, ChevronDown, CircleAlert, CircleCheck,
-  Eye, HeartPulse, MoreVertical, Moon, Pencil, Search, UsersRound, X,
+  Eye, HeartPulse, MoreVertical, Moon, Pencil, RefreshCw, Search, UsersRound, X,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { StudyCriteriaEditor, StudyCriteriaSection, StudyCriteriaSummary } from '../components/StudyCriteriaSection';
 import { StudyVisitsSection } from '../components/StudyVisitsSection';
+import { StudyStatusBadge, StudyStatusDialog } from '../components/StudyStatusDialog';
 import { CriteriaApiError, UNEXPECTED_LOAD_ERROR, applyCriteriaChanges, criteriaApi, planCriteriaChanges } from '../studies/criteriaApi';
 import type { CriteriaChange, CriterionDraft, CriterionType, EligibilityCriterion } from '../studies/criteriaApi';
 import { studiesApi } from '../studies/studiesApi';
 import { onlyDigits } from '../studies/studyForm';
 import type { Study } from '../studies/studiesApi';
+import { STUDY_STATUSES, STUDY_STATUS_LABELS, allowedStatusTransitions, studyStatusLabel } from '../studies/studyStatus';
 
 interface StudyForm {
   title: string;
@@ -24,7 +26,7 @@ interface StudyForm {
 }
 
 type ViewMode = 'list' | 'detail';
-type DialogMode = 'create' | 'edit' | 'success' | 'criteria-recovery' | null;
+type DialogMode = 'create' | 'edit' | 'success' | 'criteria-recovery' | 'status' | null;
 
 /** Alterações de critérios de um estudo já salvo. */
 interface CriteriaPersistence {
@@ -124,12 +126,6 @@ export function StudiesPage() {
     planned: studies.filter((item) => item.status === 'planejamento').length,
     closed: studies.filter((item) => item.status === 'encerrado').length,
   }), [studies]);
-  const statusClass: Record<Study['status'], string> = {
-    planejamento: 'status-planejamento',
-    recrutamento: 'status-recrutamento',
-    execução: 'status-execucao',
-    encerrado: 'status-encerrado',
-  };
 
   useEffect(() => {
     const controller = new AbortController();
@@ -161,7 +157,8 @@ export function StudiesPage() {
     if (!dialogMode) return;
     function handleKeyDown(event: KeyboardEvent) {
       // A recuperação exige uma decisão explícita: fechar descartaria os critérios pendentes.
-      if (event.key === 'Escape' && !isSaving && dialogMode !== 'criteria-recovery') {
+      // O diálogo de estado trata o próprio Escape, pois só ele sabe se há uma alteração em andamento.
+      if (event.key === 'Escape' && !isSaving && dialogMode !== 'criteria-recovery' && dialogMode !== 'status') {
         setDialogMode(null);
         setFormError('');
       }
@@ -208,6 +205,8 @@ export function StudiesPage() {
 
   const selectedStudy = studies.find((study) => study.id === selectedId) ?? studies[0];
   const editingStudy = editingId ? studies.find((study) => study.id === editingId) : undefined;
+  const [statusStudyId, setStatusStudyId] = useState<string | null>(null);
+  const statusStudy = statusStudyId ? studies.find((study) => study.id === statusStudyId) : undefined;
   // A listagem /studies está restrita ao pesquisador autenticado.
   // O responsável vem do token, não de opções locais ou do formulário.
   const researcherOptions = useMemo(() => user?.role === 'Pesquisador' ? [user.name] : [], [user]);
@@ -258,6 +257,31 @@ export function StudiesPage() {
     setFormErrorField(null);
     setDialogMode('edit');
     setOpenActionsFor(null);
+  }
+
+  function openStatusChange(study: Study) {
+    setNotice('');
+    setStatusStudyId(study.id);
+    setDialogMode('status');
+    setOpenActionsFor(null);
+  }
+
+  const closeStatusChange = useCallback(() => {
+    setDialogMode(null);
+    setStatusStudyId(null);
+  }, []);
+
+  // O estado só é atualizado com o estudo devolvido pela API após a confirmação de sucesso.
+  function handleStatusChanged(updated: Study) {
+    setStudies((current) => current.map((item) => item.id === updated.id ? updated : item));
+    closeStatusChange();
+    setNotice(`Estado do estudo "${updated.title}" alterado para ${studyStatusLabel(updated.status)}.`);
+  }
+
+  function renderStatusDialog() {
+    return dialogMode === 'status' && statusStudy
+      ? <StudyStatusDialog key={statusStudy.id} study={statusStudy} onCancel={closeStatusChange} onChanged={handleStatusChanged} />
+      : null;
   }
 
   function closeDialog() {
@@ -418,7 +442,7 @@ export function StudiesPage() {
         <section className="study-form-panel" role="dialog" aria-modal="true" aria-labelledby="study-form-title">
           <div className="study-form-heading">
             <h2 id="study-form-title">{isEdit ? 'Editar estudo' : 'Informações do estudo'}</h2>
-            {isEditingCurrent && editingStudy && <span className={`study-status ${statusClass[editingStudy.status]}`}><i />{editingStudy.status}</span>}
+            {isEditingCurrent && editingStudy && <StudyStatusBadge status={editingStudy.status} />}
           </div>
           <form className="study-form" noValidate onSubmit={(event) => void saveStudy(event)}>
             <Field label="Título do estudo" wide>
@@ -511,7 +535,8 @@ export function StudiesPage() {
           <header className="study-detail-hero">
             <div><h1>{selectedStudy.title}</h1><p>{selectedStudy.kind} <span>•</span> Código {selectedStudy.code}</p></div>
             <div className="study-detail-hero-actions">
-              <span className={`study-status ${statusClass[selectedStudy.status]}`}><i />{selectedStudy.status}</span>
+              <StudyStatusBadge status={selectedStudy.status} />
+              {allowedStatusTransitions(selectedStudy.status).length > 0 && <button className="button button-outline" type="button" onClick={() => openStatusChange(selectedStudy)}><RefreshCw size={14} /> Alterar estado</button>}
               {selectedStudy.status !== 'encerrado' && <button className="button button-primary" type="button" onClick={() => openEdit(selectedStudy)}><Pencil size={14} /> Editar estudo</button>}
             </div>
           </header>
@@ -543,6 +568,7 @@ export function StudiesPage() {
         </section>
         {dialogMode === 'edit' && renderStudyForm(true)}
         {dialogMode === 'criteria-recovery' && renderCriteriaRecoveryDialog()}
+        {renderStatusDialog()}
       </div>
     );
   }
@@ -562,7 +588,7 @@ export function StudiesPage() {
           <article className="study-stat-card"><p>Encerrados</p><strong>{String(studyStats.closed).padStart(2, '0')}</strong></article>
         </section>
         <section className="study-list-panel">
-          <div className="study-list-heading"><h2>Meus estudos</h2><div className="study-list-tools"><label className="study-search"><Search size={15} /><span className="sr-only">Buscar estudo</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar estudo..." /></label><label className="study-filter"><span className="sr-only">Filtrar estudos</span><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option>Todos</option><option>planejamento</option><option>recrutamento</option><option>execução</option><option>encerrado</option></select><ChevronDown size={13} /></label></div></div>
+          <div className="study-list-heading"><h2>Meus estudos</h2><div className="study-list-tools"><label className="study-search"><Search size={15} /><span className="sr-only">Buscar estudo</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar estudo..." /></label><label className="study-filter"><span className="sr-only">Filtrar estudos</span><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="Todos">Todos</option>{STUDY_STATUSES.map((status) => <option key={status} value={status}>{STUDY_STATUS_LABELS[status]}</option>)}</select><ChevronDown size={13} /></label></div></div>
           <div className="study-cards-grid">
             {visibleStudies.map((study) => {
               const progress = progressFor(study);
@@ -570,8 +596,8 @@ export function StudiesPage() {
                 <div className="study-card-top">
                   <div className="study-card-symbol">{studyIcon(study.symbol, 18)}</div>
                   <div className="study-card-title"><h3>{study.title}</h3><p>{study.kind}</p></div>
-                  <div className="study-card-menu-wrap"><button className="study-menu-trigger" type="button" aria-label={`Ações de ${study.title}`} aria-expanded={openActionsFor === study.id} onClick={() => setOpenActionsFor((current) => current === study.id ? null : study.id)}><MoreVertical size={17} /></button>{openActionsFor === study.id && <div className="study-action-menu"><button type="button" onClick={() => void startDetails(study)}><Eye size={14} />Ver detalhes</button>{study.status !== 'encerrado' && <button type="button" onClick={() => openEdit(study)}><Pencil size={14} />Editar estudo</button>}</div>}</div>
-                  <span className={`study-status ${statusClass[study.status]}`}><i />{study.status}</span>
+                  <div className="study-card-menu-wrap"><button className="study-menu-trigger" type="button" aria-label={`Ações de ${study.title}`} aria-expanded={openActionsFor === study.id} onClick={() => setOpenActionsFor((current) => current === study.id ? null : study.id)}><MoreVertical size={17} /></button>{openActionsFor === study.id && <div className="study-action-menu"><button type="button" onClick={() => void startDetails(study)}><Eye size={14} />Ver detalhes</button>{study.status !== 'encerrado' && <button type="button" onClick={() => openEdit(study)}><Pencil size={14} />Editar estudo</button>}{allowedStatusTransitions(study.status).length > 0 && <button type="button" onClick={() => openStatusChange(study)}><RefreshCw size={14} />Alterar estado</button>}</div>}</div>
+                  <StudyStatusBadge status={study.status} />
                 </div>
                 <div className="study-card-body">
                   <div className="study-meta-line"><CalendarDays size={14} /><div><span>Período</span><strong>{dateRange(study)}</strong></div></div>
@@ -590,6 +616,7 @@ export function StudiesPage() {
       {dialogMode === 'edit' && renderStudyForm(true)}
       {dialogMode === 'success' && renderSuccessDialog()}
       {dialogMode === 'criteria-recovery' && renderCriteriaRecoveryDialog()}
+      {renderStatusDialog()}
     </div>
   );
 }

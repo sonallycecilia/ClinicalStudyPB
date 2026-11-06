@@ -354,6 +354,9 @@ body:has(.modal-backdrop), body:has(.study-dialog-backdrop) { overflow: hidden; 
 .status-recrutamento { color: #098d84; background: #def5f1; }
 .status-execucao { color: #176f65; background: #d6efeb; }
 .status-encerrado { color: #705989; background: #efe9f7; }
+.status-desconhecido { color: #8a5a1c; background: #fbf1e3; }
+.study-status-change { width: 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-top: 16px; text-align: left; }
+.study-status-change .study-status { align-self: flex-start; }
 .study-card-body { padding: 10px 12px 12px; }
 .study-meta-line { display: flex; align-items: flex-start; gap: 7px; margin-bottom: 9px; color: #6d8a95; }
 .study-meta-line > svg { flex: 0 0 13px; margin-top: 1px; stroke-width: 2.4; }
