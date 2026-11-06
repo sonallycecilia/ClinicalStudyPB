@@ -5,10 +5,13 @@ import { StudyStatus } from './study.types.js';
 import { StudiesService } from './studies.service.js';
 import type {
   Candidate,
+  CandidateConsent,
+  CandidateConsentStatus,
   CandidateEligibilityAssessment,
   CreateCandidateInput,
   EligibilityCriterionResult,
   EvaluateCandidateInput,
+  RegisterCandidateConsentInput,
 } from './candidates.types.js';
 
 interface CandidateRow extends QueryResultRow {
@@ -35,6 +38,16 @@ interface EligibilityEvaluationRow extends QueryResultRow {
   observation: string | null;
   evaluatorId: string;
   evaluatedAt: string;
+}
+
+interface CandidateConsentRow extends QueryResultRow {
+  candidateId: string;
+  studyId: string;
+  status: CandidateConsentStatus | null;
+  termVersion: string | null;
+  registeredAt: string | null;
+  registrarId: string | null;
+  observation: string | null;
 }
 
 const CANDIDATE_COLUMNS = `
@@ -77,6 +90,65 @@ export class CandidatesService {
       [studyId, input.name, input.email ?? null],
     );
     if (!rows[0]) throw new Error('O banco não retornou o candidato cadastrado.');
+    return rows[0];
+  }
+
+  async registerConsent(
+    studyId: string,
+    candidateId: string,
+    input: RegisterCandidateConsentInput,
+    researcherId: string,
+  ): Promise<CandidateConsent> {
+    await this.studiesService.assertStudyCanBeModified(studyId, researcherId);
+    this.validateConsent(input);
+
+    const { rows } = await this.database.query<CandidateConsentRow>(
+      `INSERT INTO consentimentos
+        (id_candidato, status, versao_termo, id_registrado_por, observacao)
+       SELECT c.id_candidato, $3, $4, $5, $6
+       FROM candidatos c
+       WHERE c.id_estudo = $1 AND c.id_candidato = $2
+       RETURNING
+         id_candidato::text AS "candidateId",
+         $1::text AS "studyId",
+         status,
+         versao_termo AS "termVersion",
+         registrado_em::text AS "registeredAt",
+         id_registrado_por::text AS "registrarId",
+         observacao AS observation`,
+      [studyId, candidateId, input.status, input.termVersion, researcherId, input.observation ?? null],
+    );
+    if (!rows[0]) throw new NotFoundException('Candidato não encontrado neste estudo.');
+    return rows[0];
+  }
+
+  async getConsent(
+    studyId: string,
+    candidateId: string,
+    researcherId: string,
+  ): Promise<CandidateConsent> {
+    await this.studiesService.findById(studyId, researcherId);
+    const { rows } = await this.database.query<CandidateConsentRow>(
+      `SELECT
+         c.id_candidato::text AS "candidateId",
+         c.id_estudo::text AS "studyId",
+         consent.status,
+         consent.versao_termo AS "termVersion",
+         consent.registrado_em::text AS "registeredAt",
+         consent.id_registrado_por::text AS "registrarId",
+         consent.observacao AS observation
+       FROM candidatos c
+       LEFT JOIN LATERAL (
+         SELECT status, versao_termo, registrado_em, id_registrado_por, observacao
+         FROM consentimentos
+         WHERE id_candidato = c.id_candidato
+         ORDER BY registrado_em DESC, id_consentimento DESC
+         LIMIT 1
+       ) consent ON TRUE
+       WHERE c.id_estudo = $1 AND c.id_candidato = $2`,
+      [studyId, candidateId],
+    );
+    if (!rows[0]) throw new NotFoundException('Candidato não encontrado neste estudo.');
     return rows[0];
   }
 
@@ -263,6 +335,19 @@ export class CandidatesService {
         throw new BadRequestException('Não informe mais de uma avaliação para o mesmo critério.');
       }
       seenCriterionIds.add(evaluation.criterionId);
+    }
+  }
+
+  private validateConsent(input: RegisterCandidateConsentInput): void {
+    const allowedStatuses: CandidateConsentStatus[] = ['Registrado', 'Recusado', 'Revogado'];
+    if (!input || typeof input !== 'object' ||
+        !allowedStatuses.includes(input.status) ||
+        typeof input.termVersion !== 'string' ||
+        input.termVersion.trim().length === 0 ||
+        input.termVersion.length > 50 ||
+        (input.observation != null &&
+          (typeof input.observation !== 'string' || input.observation.length > 2000))) {
+      throw new BadRequestException('Informe um estado e uma versão válidos para o termo de consentimento.');
     }
   }
 }

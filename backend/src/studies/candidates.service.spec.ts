@@ -74,6 +74,75 @@ describe('CandidatesService', () => {
     expect(database.query).not.toHaveBeenCalled();
   });
 
+  it('registra consentimento simulado e vincula o pesquisador autenticado', async () => {
+    const consent = {
+      candidateId: candidate.id,
+      studyId,
+      status: 'Registrado',
+      termVersion: 'simulado-v1',
+      registeredAt: '2026-11-06T10:00:00.000Z',
+      registrarId: researcherId,
+      observation: null,
+    };
+    database.query.mockResolvedValue({ rows: [consent], rowCount: 1 });
+    await expect(service.registerConsent(studyId, candidate.id, {
+      status: 'Registrado',
+      termVersion: 'simulado-v1',
+    }, researcherId)).resolves.toEqual(consent);
+    expect(studies.assertStudyCanBeModified).toHaveBeenCalledWith(studyId, researcherId);
+    expect(database.query.mock.calls[0]?.[0]).toContain('FROM candidatos c');
+    expect(database.query.mock.calls[0]?.[1]).toEqual([
+      studyId, candidate.id, 'Registrado', 'simulado-v1', researcherId, null,
+    ]);
+  });
+
+  it('consulta o estado mais recente ou retorna status nulo quando ainda não foi registrado', async () => {
+    const consent = {
+      candidateId: candidate.id,
+      studyId,
+      status: 'Recusado',
+      termVersion: 'simulado-v1',
+      registeredAt: '2026-11-06T10:00:00.000Z',
+      registrarId: researcherId,
+      observation: 'Não concedido.',
+    };
+    database.query.mockResolvedValueOnce({ rows: [consent], rowCount: 1 });
+    await expect(service.getConsent(studyId, candidate.id, researcherId)).resolves.toEqual(consent);
+    expect(studies.findById).toHaveBeenCalledWith(studyId, researcherId);
+    expect(database.query.mock.calls[0]?.[0]).toContain('ORDER BY registrado_em DESC, id_consentimento DESC');
+
+    const unrecorded = {
+      candidateId: candidate.id,
+      studyId,
+      status: null,
+      termVersion: null,
+      registeredAt: null,
+      registrarId: null,
+      observation: null,
+    };
+    database.query.mockResolvedValueOnce({ rows: [unrecorded], rowCount: 1 });
+    await expect(service.getConsent(studyId, candidate.id, researcherId)).resolves.toEqual(unrecorded);
+  });
+
+  it('não registra consentimento para candidato de outro estudo e rejeita dados inválidos', async () => {
+    database.query.mockResolvedValue({ rows: [], rowCount: 0 });
+    await expect(service.registerConsent(studyId, candidate.id, {
+      status: 'Registrado',
+      termVersion: 'simulado-v1',
+    }, researcherId)).rejects.toThrow(NotFoundException);
+
+    await expect(service.registerConsent(studyId, candidate.id, {
+      status: 'Registrado',
+      termVersion: '',
+    }, researcherId)).rejects.toThrow(BadRequestException);
+    expect(database.query).toHaveBeenCalledTimes(1);
+  });
+
+  it('retorna não encontrado ao consultar consentimento de candidato inexistente no estudo', async () => {
+    database.query.mockResolvedValue({ rows: [], rowCount: 0 });
+    await expect(service.getConsent(studyId, candidate.id, researcherId)).rejects.toThrow(NotFoundException);
+  });
+
   it('bloqueia cadastro quando o estudo está encerrado', async () => {
     studies.assertStudyCanBeModified.mockRejectedValue(new BadRequestException());
     await expect(service.create(studyId, { name: candidate.name }, researcherId))

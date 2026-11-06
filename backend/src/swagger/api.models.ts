@@ -10,9 +10,11 @@ import type { CreatePlannedVisitInput, CreateVisitActivityInput } from '../studi
 import type { Candidate, CreateCandidateInput } from '../studies/candidates.types.js';
 import type {
   CandidateEligibilityAssessment,
+  CandidateConsent,
   CriterionEvaluationInput,
   EvaluateCandidateInput,
   EligibilityEvaluation,
+  RegisterCandidateConsentInput,
 } from '../studies/candidates.types.js';
 import {
   ArrayMinSize,
@@ -371,6 +373,56 @@ export class CandidateResponseDto implements Candidate {
 
   @ApiProperty({ format: 'date-time' })
   registeredAt!: string;
+}
+
+export class RegisterCandidateConsentRequestDto implements RegisterCandidateConsentInput {
+  @ApiProperty({
+    enum: ['Registrado', 'Recusado', 'Revogado'],
+    description: 'Estado do termo simulado: Registrado representa consentimento concedido.',
+  })
+  @IsIn(['Registrado', 'Recusado', 'Revogado'])
+  status!: RegisterCandidateConsentInput['status'];
+
+  @ApiProperty({ minLength: 1, maxLength: 50, example: 'simulado-v1' })
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(50)
+  termVersion!: string;
+
+  @ApiPropertyOptional({ maxLength: 2000, nullable: true })
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() || null : value)
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  observation?: string | null;
+}
+
+export class CandidateConsentResponseDto implements CandidateConsent {
+  @ApiProperty({ format: 'uuid' })
+  candidateId!: string;
+
+  @ApiProperty({ format: 'uuid' })
+  studyId!: string;
+
+  @ApiProperty({
+    enum: ['Registrado', 'Recusado', 'Revogado'],
+    nullable: true,
+    description: 'Null indica que ainda não há consentimento registrado.',
+  })
+  status!: CandidateConsent['status'];
+
+  @ApiProperty({ nullable: true, example: 'simulado-v1' })
+  termVersion!: string | null;
+
+  @ApiProperty({ format: 'date-time', nullable: true })
+  registeredAt!: string | null;
+
+  @ApiProperty({ format: 'uuid', nullable: true })
+  registrarId!: string | null;
+
+  @ApiProperty({ nullable: true })
+  observation!: string | null;
 }
 
 export class CriterionEvaluationRequestDto implements CriterionEvaluationInput {

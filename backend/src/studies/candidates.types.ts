@@ -49,3 +49,21 @@ export interface CandidateEligibilityAssessment {
   status: CandidateRecruitmentStatus;
   evaluations: EligibilityEvaluation[];
 }
+
+export type CandidateConsentStatus = 'Registrado' | 'Recusado' | 'Revogado';
+
+export interface RegisterCandidateConsentInput {
+  status: CandidateConsentStatus;
+  termVersion: string;
+  observation?: string | null;
+}
+
+export interface CandidateConsent {
+  candidateId: string;
+  studyId: string;
+  status: CandidateConsentStatus | null;
+  termVersion: string | null;
+  registeredAt: string | null;
+  registrarId: string | null;
+  observation: string | null;
+}
