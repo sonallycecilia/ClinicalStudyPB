@@ -32,4 +32,13 @@ describe('permissões por perfil — tasks 3078, 3081 e 3094', () => {
     expect(getHomeForRole('Pesquisador')).toBe('/estudos');
     expect(getHomeForRole('Coordenador')).toBe('/coordenador/painel');
   });
+
+  it('autoriza somente o Coordenador na rota exata de cadastro de candidato', () => {
+    const path = '/coordenador/candidatos/novo';
+    expect(canAccessRoute('Coordenador', path)).toBe(true);
+    expect(canAccessRoute('Administrador', path)).toBe(false);
+    expect(canAccessRoute('Pesquisador', path)).toBe(false);
+    expect(canAccessRoute(undefined, path)).toBe(false);
+    expect(canAccessRoute('Coordenador', `${path}/nao-autorizado`)).toBe(false);
+  });
 });

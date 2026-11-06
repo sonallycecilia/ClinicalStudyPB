@@ -120,6 +120,17 @@ export class StudiesService {
     return rows.map((row) => toStudy(row));
   }
 
+  async listAvailableForRecruitment(): Promise<Pick<Study, 'id' | 'title'>[]> {
+    // A fase persistida (migration 004) é distinta do status provisório calculado por datas.
+    const { rows } = await this.database.query<Pick<Study, 'id' | 'title'>>(
+      `SELECT id_estudo::text AS id, titulo AS title
+       FROM estudos WHERE status = $1
+       ORDER BY titulo, id_estudo`,
+      ['Recrutamento'],
+    );
+    return rows;
+  }
+
   async findById(id: string, researcherId: string): Promise<Study> {
     await this.assertResearcher(researcherId);
     const study = await this.findByIdForOwnerCheck(id);

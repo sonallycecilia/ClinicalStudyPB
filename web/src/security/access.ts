@@ -25,6 +25,7 @@ const ROUTE_ACCESS: Record<string, UserRole[]> = {
   '/estudos': ['Pesquisador'],
   '/coordenador/painel': ['Coordenador'],
   '/coordenador/candidatos': ['Coordenador'],
+  '/coordenador/candidatos/novo': ['Coordenador'],
   '/coordenador/visitas': ['Coordenador'],
   '/coordenador/reagendamentos': ['Coordenador'],
   '/coordenador/relatorios': ['Coordenador'],

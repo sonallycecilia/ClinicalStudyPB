@@ -37,6 +37,14 @@ describe('Studies API', () => {
     }));
   });
 
+  it('consulta as opções de recrutamento pela rota específica com cancelamento', async () => {
+    const options = [{ id: study.id, title: study.title }];
+    const request = vi.fn().mockResolvedValue(okResponse(options));
+    const controller = new AbortController();
+    await expect(studiesApi.listAvailableForRecruitment(request, controller.signal)).resolves.toEqual(options);
+    expect(request).toHaveBeenCalledWith('/studies/disponiveis-recrutamento', { signal: controller.signal });
+  });
+
   it('usa PATCH para atualizar um estudo existente', async () => {
     const request = vi.fn().mockResolvedValue(okResponse(study));
     await expect(studiesApi.update(request, study.id, input)).resolves.toEqual(study);

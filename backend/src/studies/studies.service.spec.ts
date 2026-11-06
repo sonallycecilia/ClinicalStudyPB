@@ -74,6 +74,16 @@ describe('StudiesService com PostgreSQL', () => {
     ]);
   });
 
+  it('consulta somente ID e título pela fase persistida de recrutamento, sem inferir a fase por datas', async () => {
+    const option = { id: studyId, title: payload.title };
+    database.query.mockResolvedValue({ rows: [option], rowCount: 1 });
+    await expect(service.listAvailableForRecruitment()).resolves.toEqual([option]);
+    expect(database.query).toHaveBeenCalledWith(
+      expect.stringContaining('FROM estudos WHERE status = $1'), ['Recrutamento'],
+    );
+    expect(users.findById).not.toHaveBeenCalled();
+  });
+
   it('atualiza campos autorizados e rejeita campo não permitido', async () => {
     database.query
       .mockResolvedValueOnce({ rows: [baseStudyRow], rowCount: 1 })
