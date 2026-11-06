@@ -9,6 +9,7 @@ import type { CriterionType } from '../studies/criteria.types.js';
 import type { CreatePlannedVisitInput, CreateVisitActivityInput } from '../studies/visits.types.js';
 import type { Candidate, CreateCandidateInput } from '../studies/candidates.types.js';
 import type {
+  CandidateInclusion,
   CandidateEligibilityAssessment,
   CandidateConsent,
   CriterionEvaluationInput,
@@ -423,6 +424,29 @@ export class CandidateConsentResponseDto implements CandidateConsent {
 
   @ApiProperty({ nullable: true })
   observation!: string | null;
+}
+
+export class CandidateInclusionResponseDto implements CandidateInclusion {
+  @ApiProperty({ format: 'uuid' })
+  participationId!: string;
+
+  @ApiProperty({ format: 'uuid' })
+  candidateId!: string;
+
+  @ApiProperty({ format: 'uuid' })
+  studyId!: string;
+
+  @ApiProperty({ format: 'date', example: '2026-11-06' })
+  includedAt!: string;
+
+  @ApiProperty({ enum: ['Ativo'], example: 'Ativo' })
+  participationStatus!: 'Ativo';
+
+  @ApiProperty({ type: 'integer', minimum: 1, example: 5 })
+  participantsLinked!: number;
+
+  @ApiProperty({ type: 'integer', minimum: 1, example: 20 })
+  participantLimit!: number;
 }
 
 export class CriterionEvaluationRequestDto implements CriterionEvaluationInput {

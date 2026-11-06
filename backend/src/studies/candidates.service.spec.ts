@@ -16,12 +16,18 @@ const candidate: Candidate = {
   registeredAt: '2026-11-04T15:00:00.000Z',
 };
 
+type QueryMock = jest.Mock<
+  (sql: string, values?: unknown[]) => Promise<{ rows: object[]; rowCount: number | null }>
+>;
+type TransactionClient = { query: QueryMock };
+type TransactionOperation = (client: TransactionClient) => Promise<unknown>;
+
 describe('CandidatesService', () => {
   let database: {
-    query: jest.Mock<
-      (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount: number | null }>
-    >;
+    query: QueryMock;
+    transaction: jest.Mock<(operation: TransactionOperation) => Promise<unknown>>;
   };
+  let transactionClient: TransactionClient;
   let studies: {
     findById: jest.Mock<(id: string, ownerId: string) => Promise<unknown>>;
     assertStudyCanBeModified: jest.Mock<(id: string, ownerId: string) => Promise<unknown>>;
@@ -29,10 +35,17 @@ describe('CandidatesService', () => {
   let service: CandidatesService;
 
   beforeEach(() => {
+    transactionClient = {
+      query: jest.fn<
+        (sql: string, values?: unknown[]) => Promise<{ rows: object[]; rowCount: number | null }>
+      >(),
+    };
     database = {
       query: jest.fn<
-        (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount: number | null }>
+        (sql: string, values?: unknown[]) => Promise<{ rows: object[]; rowCount: number | null }>
       >(),
+      transaction: jest.fn<(operation: TransactionOperation) => Promise<unknown>>()
+        .mockImplementation((operation) => operation(transactionClient)),
     };
     studies = {
       findById: jest.fn<(id: string, ownerId: string) => Promise<unknown>>(),
@@ -141,6 +154,105 @@ describe('CandidatesService', () => {
   it('retorna não encontrado ao consultar consentimento de candidato inexistente no estudo', async () => {
     database.query.mockResolvedValue({ rows: [], rowCount: 0 });
     await expect(service.getConsent(studyId, candidate.id, researcherId)).rejects.toThrow(NotFoundException);
+  });
+
+  it('inclui candidato elegível e consentido, persiste participação e atualiza contador', async () => {
+    transactionClient.query
+      .mockResolvedValueOnce({
+        rows: [{ status: 'recrutamento', participantLimit: 5, participantsLinked: 2 }],
+        rowCount: 1,
+      })
+      .mockResolvedValueOnce({ rows: [{ status: 'Elegível' }], rowCount: 1 })
+      .mockResolvedValueOnce({
+        rows: [{ type: 'Inclusão', result: 'Atende' }, { type: 'Exclusão', result: 'Não atende' }],
+        rowCount: 2,
+      })
+      .mockResolvedValueOnce({ rows: [{ status: 'Registrado' }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ count: 2 }], rowCount: 1 })
+      .mockResolvedValueOnce({
+        rows: [{
+          participationId: '00000000-0000-4000-8000-000000000005',
+          candidateId: candidate.id,
+          includedAt: '2026-11-06',
+        }],
+        rowCount: 1,
+      })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ participantLimit: 5 }], rowCount: 1 });
+
+    await expect(service.include(studyId, candidate.id, researcherId)).resolves.toEqual({
+      participationId: '00000000-0000-4000-8000-000000000005',
+      candidateId: candidate.id,
+      studyId,
+      includedAt: '2026-11-06',
+      participationStatus: 'Ativo',
+      participantsLinked: 3,
+      participantLimit: 5,
+    });
+    expect(studies.findById).toHaveBeenCalledWith(studyId, researcherId);
+    expect(database.transaction).toHaveBeenCalledTimes(1);
+    expect(transactionClient.query.mock.calls[0]?.[0]).toContain('FOR UPDATE');
+    expect(transactionClient.query.mock.calls[5]?.[0]).toContain('INSERT INTO participacoes_estudo');
+    expect(transactionClient.query.mock.calls[6]?.[0]).toContain("SET status_recrutamento = 'Incluído'");
+    expect(transactionClient.query.mock.calls[7]?.[1]).toEqual([studyId, researcherId, 3]);
+  });
+
+  it('bloqueia inclusão quando o candidato não é elegível', async () => {
+    transactionClient.query
+      .mockResolvedValueOnce({
+        rows: [{ status: 'recrutamento', participantLimit: 5, participantsLinked: 2 }],
+        rowCount: 1,
+      })
+      .mockResolvedValueOnce({ rows: [{ status: 'Inelegível' }], rowCount: 1 });
+
+    await expect(service.include(studyId, candidate.id, researcherId))
+      .rejects.toThrow('Candidato inelegível');
+    expect(transactionClient.query).toHaveBeenCalledTimes(2);
+  });
+
+  it('bloqueia inclusão se algum critério ativo não foi aprovado', async () => {
+    transactionClient.query
+      .mockResolvedValueOnce({
+        rows: [{ status: 'recrutamento', participantLimit: 5, participantsLinked: 2 }],
+        rowCount: 1,
+      })
+      .mockResolvedValueOnce({ rows: [{ status: 'Elegível' }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ type: 'Inclusão', result: null }], rowCount: 1 });
+
+    await expect(service.include(studyId, candidate.id, researcherId))
+      .rejects.toThrow('todos os critérios ativos devem estar avaliados');
+    expect(transactionClient.query).toHaveBeenCalledTimes(3);
+  });
+
+  it('bloqueia inclusão sem consentimento concedido', async () => {
+    transactionClient.query
+      .mockResolvedValueOnce({
+        rows: [{ status: 'recrutamento', participantLimit: 5, participantsLinked: 2 }],
+        rowCount: 1,
+      })
+      .mockResolvedValueOnce({ rows: [{ status: 'Elegível' }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ type: 'Inclusão', result: 'Atende' }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ status: 'Revogado' }], rowCount: 1 });
+
+    await expect(service.include(studyId, candidate.id, researcherId))
+      .rejects.toThrow('Consentimento ausente ou não concedido');
+    expect(transactionClient.query).toHaveBeenCalledTimes(4);
+  });
+
+  it('bloqueia inclusão quando o limite de vagas foi atingido', async () => {
+    transactionClient.query
+      .mockResolvedValueOnce({
+        rows: [{ status: 'recrutamento', participantLimit: 2, participantsLinked: 2 }],
+        rowCount: 1,
+      })
+      .mockResolvedValueOnce({ rows: [{ status: 'Elegível' }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ type: 'Inclusão', result: 'Atende' }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ status: 'Registrado' }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ count: 2 }], rowCount: 1 });
+
+    await expect(service.include(studyId, candidate.id, researcherId))
+      .rejects.toThrow('Limite de vagas atingido');
+    expect(transactionClient.query).toHaveBeenCalledTimes(5);
   });
 
   it('bloqueia cadastro quando o estudo está encerrado', async () => {

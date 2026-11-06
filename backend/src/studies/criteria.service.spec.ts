@@ -20,7 +20,7 @@ const criterion: EligibilityCriterion = {
 describe('CriteriaService', () => {
   let database: {
     query: jest.Mock<
-      (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount: number | null }>
+      (sql: string, values?: unknown[]) => Promise<{ rows: object[]; rowCount: number | null }>
     >;
   };
   let studies: {
@@ -32,7 +32,7 @@ describe('CriteriaService', () => {
   beforeEach(() => {
     database = {
       query: jest.fn<
-        (sql: string, values?: unknown[]) => Promise<{ rows: Record<string, unknown>[]; rowCount: number | null }>
+        (sql: string, values?: unknown[]) => Promise<{ rows: object[]; rowCount: number | null }>
       >(),
     };
     studies = {

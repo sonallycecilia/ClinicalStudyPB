@@ -67,3 +67,13 @@ export interface CandidateConsent {
   registrarId: string | null;
   observation: string | null;
 }
+
+export interface CandidateInclusion {
+  participationId: string;
+  candidateId: string;
+  studyId: string;
+  includedAt: string;
+  participationStatus: 'Ativo';
+  participantsLinked: number;
+  participantLimit: number;
+}

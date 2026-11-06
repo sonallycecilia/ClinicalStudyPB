@@ -32,6 +32,7 @@ import {
   ApiErrorResponseDto,
   CandidateConsentResponseDto,
   CandidateEligibilityAssessmentResponseDto,
+  CandidateInclusionResponseDto,
   CandidateResponseDto,
   CreateCandidateRequestDto,
   EvaluateCandidateRequestDto,
@@ -116,6 +117,26 @@ export class CandidatesController {
     @Req() request: AuthenticatedRequest,
   ) {
     return this.candidatesService.getConsent(studyId, candidateId, request.user!.sub);
+  }
+
+  @Post(':candidateId/include')
+  @ApiOperation({ summary: 'Incluir candidato elegível como participante do estudo' })
+  @ApiParam({ name: 'studyId', description: 'UUID do estudo.', format: 'uuid' })
+  @ApiParam({ name: 'candidateId', description: 'UUID do candidato.', format: 'uuid' })
+  @ApiCreatedResponse({ description: 'Candidato incluído como participante ativo.', type: CandidateInclusionResponseDto })
+  @ApiBadRequestResponse({
+    description: 'Candidato inelegível, consentimento ausente ou vaga indisponível.',
+    type: ApiErrorResponseDto,
+  })
+  @ApiUnauthorizedResponse({ description: 'Token ausente, inválido ou expirado.', type: ApiErrorResponseDto })
+  @ApiForbiddenResponse({ description: 'Somente o pesquisador proprietário pode incluir participantes.', type: ApiErrorResponseDto })
+  @ApiNotFoundResponse({ description: 'Estudo ou candidato não encontrado neste estudo.', type: ApiErrorResponseDto })
+  include(
+    @Param('studyId', new ParseUUIDPipe()) studyId: string,
+    @Param('candidateId', new ParseUUIDPipe()) candidateId: string,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.candidatesService.include(studyId, candidateId, request.user!.sub);
   }
 
   @Post(':candidateId/eligibility-assessments')
