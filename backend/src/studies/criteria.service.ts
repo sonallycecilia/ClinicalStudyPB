@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import type { QueryResultRow } from 'pg';
 import { DatabaseService } from '../database/database.service.js';
 import type { CreateCriterionDto, UpdateCriterionDto } from '../swagger/api.models.js';
+import { StudyStatus } from './study.types.js';
 import { StudiesService } from './studies.service.js';
 import type {
   CriterionType,
@@ -76,23 +77,63 @@ export class CriteriaService {
   ): Promise<EligibilityCriterion> {
     await this.studiesService.assertStudyCanBeModified(studyId, researcherId);
     const data = this.validateUpdateInput(input);
-    const current = await this.findForStudy(studyId, criterionId);
-    if (!current) throw new NotFoundException('Critério não encontrado neste estudo.');
-    const { rows } = await this.database.query<CriterionRow>(
-      `UPDATE criterios_elegibilidade
-       SET tipo = $3, descricao = $4, ativo = $5
-       WHERE id_estudo = $1 AND id_criterio = $2
-       RETURNING ${CRITERION_COLUMNS}`,
-      [
-        studyId,
-        criterionId,
-        data.type ?? current.type,
-        data.description ?? current.description,
-        data.active ?? current.active,
-      ],
-    );
-    if (!rows[0]) throw new NotFoundException('Critério não encontrado neste estudo.');
-    return rows[0];
+    return this.database.transaction(async (client) => {
+      const studyResult = await client.query<{ status: StudyStatus }>(
+        `SELECT status
+         FROM estudos
+         WHERE id_estudo = $1 AND id_pesquisador = $2
+         FOR UPDATE`,
+        [studyId, researcherId],
+      );
+      if (!studyResult.rows[0]) throw new NotFoundException('Estudo não encontrado.');
+      if (studyResult.rows[0].status === StudyStatus.Encerrado) {
+        throw new BadRequestException('Não é possível alterar um estudo encerrado.');
+      }
+
+      const { rows: currentRows } = await client.query<CriterionRow>(
+        `SELECT ${CRITERION_COLUMNS}
+         FROM criterios_elegibilidade
+         WHERE id_estudo = $1 AND id_criterio = $2
+         FOR UPDATE`,
+        [studyId, criterionId],
+      );
+      const current = currentRows[0];
+      if (!current) throw new NotFoundException('Critério não encontrado neste estudo.');
+
+      const nextType = data.type ?? current.type;
+      const nextDescription = data.description ?? current.description;
+      const nextActive = data.active ?? current.active;
+      const { rows } = await client.query<CriterionRow>(
+        `UPDATE criterios_elegibilidade
+         SET tipo = $3, descricao = $4, ativo = $5
+         WHERE id_estudo = $1 AND id_criterio = $2
+         RETURNING ${CRITERION_COLUMNS}`,
+        [studyId, criterionId, nextType, nextDescription, nextActive],
+      );
+      if (!rows[0]) throw new NotFoundException('Critério não encontrado neste estudo.');
+
+      if (nextType !== current.type ||
+          nextDescription !== current.description ||
+          nextActive !== current.active) {
+        await client.query(
+          `WITH invalidated AS (
+             DELETE FROM avaliacoes_elegibilidade a
+             USING candidatos c
+             WHERE a.id_candidato = c.id_candidato
+               AND a.id_criterio = $1
+               AND c.id_estudo = $2
+               AND c.status_recrutamento IN ('Novo', 'Em avaliação', 'Elegível', 'Inelegível')
+             RETURNING a.id_candidato
+           )
+           UPDATE candidatos
+           SET status_recrutamento = 'Em avaliação'
+           WHERE id_candidato IN (SELECT id_candidato FROM invalidated)
+             AND status_recrutamento IN ('Elegível', 'Inelegível')`,
+          [criterionId, studyId],
+        );
+      }
+      return rows[0];
+    });
   }
 
   private async assertStudyAccess(studyId: string, researcherId: string): Promise<void> {

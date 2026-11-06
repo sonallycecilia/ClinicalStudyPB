@@ -327,6 +327,9 @@ export class CandidatesService {
       if (!candidateResult.rows[0]) {
         throw new NotFoundException('Candidato não encontrado neste estudo.');
       }
+      if (candidateResult.rows[0].status === 'Incluído') {
+        throw new BadRequestException('O candidato já foi incluído neste estudo e não pode ser reavaliado.');
+      }
 
       const criteriaResult = await client.query<CriterionRow>(
         `SELECT id_criterio::text AS id, tipo AS type, descricao AS description

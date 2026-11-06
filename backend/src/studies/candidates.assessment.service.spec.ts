@@ -120,6 +120,24 @@ describe('CandidatesService avaliação de elegibilidade', () => {
     }, researcherId)).resolves.toMatchObject({ status: 'Em avaliação' });
   });
 
+  it('impede reavaliar um candidato já incluído sem alterar suas avaliações', async () => {
+    txQuery
+      .mockResolvedValueOnce({ rows: [{ status: StudyStatus.Recrutamento }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ status: 'Incluído' }], rowCount: 1 });
+
+    await expect(service.evaluate(studyId, candidateId, {
+      evaluations: [
+        { criterionId: inclusionId, result: 'Atende' },
+        { criterionId: exclusionId, result: 'Não atende' },
+      ],
+    }, researcherId)).rejects.toThrow(BadRequestException);
+
+    expect(txQuery).toHaveBeenCalledTimes(2);
+    expect(txQuery.mock.calls.some(([sql]) =>
+      sql.includes('INSERT INTO avaliacoes_elegibilidade') || sql.includes('UPDATE candidatos'),
+    )).toBe(false);
+  });
+
   it('retorna 404 para candidato inexistente ou fora do estudo', async () => {
     txQuery
       .mockResolvedValueOnce({ rows: [{ status: StudyStatus.Recrutamento }], rowCount: 1 })
