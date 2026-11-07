@@ -1,5 +1,5 @@
 /** Formatos compatíveis com o Study retornado pelo backend NestJS. */
-export type StudyStatus = 'Em andamento' | 'Planejado' | 'Encerrado';
+export type StudyStatus = 'planejamento' | 'recrutamento' | 'execução' | 'encerrado';
 export type StudyKind = 'Estudo observacional' | 'Estudo longitudinal';
 export interface Study {
   id: string;
@@ -26,6 +26,7 @@ async function studiesRequest<T>(request: AuthenticatedRequest, path: string, in
   } catch {
     throw new Error('Não foi possível conectar à API de estudos. Verifique se o backend está ligado.');
   }
+  if (response.status >= 500) throw new Error('Ocorreu um erro inesperado no servidor. Tente novamente em alguns instantes.');
   if (!response.ok) {
     const body = await response.json().catch(() => null) as { message?: string | string[] } | null;
     const detail = Array.isArray(body?.message) ? body.message.join(' ') : body?.message;
@@ -44,5 +45,9 @@ export const studiesApi = {
   }),
   update: (request: AuthenticatedRequest, id: string, input: StudyInput) => studiesRequest<Study>(request, `/studies/${encodeURIComponent(id)}`, {
     method: 'PATCH', body: JSON.stringify(input), headers: { 'Content-Type': 'application/json' },
+  }),
+  /** PATCH /studies/:id/status com { status }; o backend valida a transição e devolve o estudo atualizado. */
+  transitionStatus: (request: AuthenticatedRequest, id: string, status: StudyStatus) => studiesRequest<Study>(request, `/studies/${encodeURIComponent(id)}/status`, {
+    method: 'PATCH', body: JSON.stringify({ status }), headers: { 'Content-Type': 'application/json' },
   }),
 };
