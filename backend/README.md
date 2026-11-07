@@ -69,6 +69,8 @@ backend/
 │   ├── auth/
 │   ├── database/
 │   ├── studies/
+│   │   ├── criteria.controller.ts
+│   │   └── visits.controller.ts
 │   └── users/
 ├── test/
 │   ├── app.e2e-spec.ts
@@ -82,3 +84,27 @@ backend/
 ```
 
 A pasta `src/` contém a implementação da API, organizada por responsabilidades. `auth/` trata autenticação e sessões, `database/` gerencia o pool PostgreSQL, `users/` implementa o CRUD de usuários e `studies/` implementa estudos clínicos associados ao pesquisador autenticado. A pasta `migrations/` evolui o schema versionado; `scripts/` aplica migrations e cria dados fictícios apenas quando explicitamente habilitado.
+
+## Visitas previstas
+
+As rotas abaixo exigem autenticação de pesquisador e aceitam apenas estudos pertencentes ao pesquisador autenticado:
+
+- `GET /studies/:studyId/visits` e `GET /studies/:studyId/visits/:visitId`: listar e consultar visitas previstas.
+- `POST /studies/:studyId/visits`: cadastrar visita com `name` e `order` obrigatórios; `intervalDays` e `description` são opcionais.
+- `GET /studies/:studyId/visits/:visitId/activities`: listar as atividades de uma visita.
+- `POST /studies/:studyId/visits/:visitId/activities`: cadastrar atividade com `name` e `type` obrigatórios; `description` é opcional.
+
+O identificador do estudo e o identificador da visita são validados como UUIDs. A ordem da visita deve ser única dentro do estudo, e a atividade só pode ser associada a uma visita do estudo informado.
+Os corpos de cadastro são validados pelos DTOs com `class-validator` e `class-transformer`, usando `ValidationPipe` local às rotas de criação. Campos desconhecidos são rejeitados; textos são removidos de espaços nas pontas antes da validação.
+
+## Estados do estudo (RF07)
+
+Os estudos iniciam em `planejamento` e persistem um dos estados `planejamento`, `recrutamento`, `execução` ou `encerrado`. O endpoint `PATCH /studies/:id/status` recebe `{ "status": "recrutamento" }` e permite somente avanços sequenciais: planejamento → recrutamento → execução → encerrado. Estados desconhecidos ou transições inválidas retornam `400`; estudos encerrados continuam consultáveis, mas não podem ser atualizados nem receber novos critérios, visitas ou atividades.
+
+## Candidatos (RF08)
+
+`POST /studies/:studyId/candidates` cadastra um candidato para estudo próprio com `name` obrigatório e `email` opcional. O serviço confirma a propriedade e existência do estudo antes de persistir; estudos encerrados não aceitam novos candidatos. `GET /studies/:studyId/candidates` lista os candidatos do estudo. Ambos os endpoints exigem pesquisador autenticado, e os corpos são validados pelo `ValidationPipe` com DTO, `class-validator` e `class-transformer`.
+
+### Avaliação de elegibilidade (RF09)
+
+`POST /studies/:studyId/candidates/:candidateId/eligibility-assessments` recebe `evaluations`, uma resposta para cada critério ativo do estudo (`criterionId`, `result` e `observation` opcional). O backend rejeita critérios duplicados, ausentes ou pertencentes a outro estudo e persiste a avaliação em uma transação. Todos os critérios de inclusão atendidos e os de exclusão não atendidos tornam o candidato `Elegível`; uma falha de inclusão ou critério de exclusão atendido torna-o `Inelegível`; respostas pendentes sem reprovação mantêm `Em avaliação`. Reenvios atualizam (upsert) a resposta anterior. `GET` no mesmo caminho consulta a avaliação persistida.
