@@ -813,6 +813,30 @@ body:has(.modal-backdrop), body:has(.study-dialog-backdrop) { overflow: hidden; 
 .coord-detail-list > div > strong { color: #25454f; font-size: 11px; text-align: right; }
 .coord-help-copy { margin: 14px 0 4px; color: #78939d; font-size: 11px; line-height: 1.5; }
 
+.candidate-consent-form { padding-top: 18px; color: #24444f; font-size: 13px; line-height: 1.6; }
+.consent-fields { min-width: 0; margin: 20px 0; padding: 16px; border: 1px solid #dce8eb; border-radius: 10px; }
+.consent-fields legend { color: #183843; font-weight: 600; }
+.consent-options { margin: 0 0 16px; padding: 0; border: 0; }
+.consent-options label { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; margin: 6px 8px 0 0; padding: 6px 12px; border: 1px solid #dce8eb; border-radius: 8px; cursor: pointer; }
+.consent-options label:has(input:checked) { border-color: var(--teal-dark); background: #e2f4f3; }
+.consent-options input { width: 16px; height: 16px; accent-color: var(--teal-dark); }
+.consent-fields > :is(input, textarea) { display: block; width: 100%; min-height: 44px; margin: 8px 0; padding: 10px; border: 1px solid #dce8eb; border-radius: 8px; color: inherit; background: #fff; font: inherit; }
+.consent-fields textarea { min-height: 80px; resize: vertical; }
+.consent-fields small { display: block; margin-bottom: 16px; color: #506975; }
+.consent-count { text-align: right; }
+.consent-fields > [aria-invalid='true'], .consent-options label:has(input[aria-invalid='true']) { border-color: #c8393d; }
+.candidate-consent-form .study-field-error { color: #b82c35; }
+.candidate-consent-form :is(input, textarea, button):focus-visible { outline: 2px solid var(--teal-dark); outline-offset: 3px; }
+.candidate-consent-form .coord-detail-list strong { overflow-wrap: anywhere; min-width: 0; }
+.candidate-consent-form .modal-actions { flex-wrap: wrap; }
+.candidate-consent-form .modal-actions .button { min-height: 44px; font-size: 12px; }
+.candidate-consent-form button:disabled { color: #506975; background: #e3ecee; border-color: #cbdade; cursor: not-allowed; opacity: 1; transform: none; }
+@media (max-width: 600px) {
+  .consent-options label { display: flex; margin-right: 0; }
+  .consent-fields > :is(input, textarea) { font-size: 16px; }
+  .candidate-consent-form .modal-actions { flex-direction: column; align-items: stretch; }
+  .candidate-consent-form .modal-actions .button { width: 100%; flex: auto; }
+}
 .candidate-eligibility-form { padding-top: 18px; color: #24444f; font-size: 13px; line-height: 1.6; }
 .eligibility-group { margin-top: 22px; }
 .eligibility-group h3 { margin: 0; color: #183843; font-size: 16px; }

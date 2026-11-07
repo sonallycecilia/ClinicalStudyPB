@@ -2,6 +2,8 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEven
 import { useNavigate } from 'react-router-dom';
 import { CandidateForm } from '../candidates/CandidateForm';
 import { CandidateEligibilityForm } from '../candidates/CandidateEligibilityForm';
+import { CandidateConsentForm } from '../candidates/CandidateConsentForm';
+import { useCandidateConsent } from '../candidates/useCandidateConsent';
 import { useCandidateEligibilityCriteria } from '../candidates/useCandidateEligibilityCriteria';
 import { useRecruitmentStudies } from '../candidates/useRecruitmentStudies';
 import type { Candidate, CandidateStatus } from '../candidates/candidatesApi';
@@ -180,16 +182,23 @@ function CandidateEligibilitySection({ candidate, onBack }: { candidate: Candida
   return <CandidateEligibilityForm state={criteria.state} onRetry={criteria.reload} onCancel={onBack} />;
 }
 
+function CandidateConsentSection({ candidate, onBack }: { candidate: Candidate; onBack: () => void }) {
+  const consent = useCandidateConsent(candidate.studyId, candidate.id);
+  return <CandidateConsentForm candidate={candidate} state={consent.state} onRetry={consent.reload} onCancel={onBack} />;
+}
+
 function CandidateDetailsModal({ candidate, onClose }: { candidate: Candidate; onClose: () => void }) {
-  const [evaluating, setEvaluating] = useState(false);
-  return <Modal title={evaluating ? 'Avaliar elegibilidade' : 'Detalhes do candidato'} description={candidate.name} onClose={onClose} wide={evaluating}>
-    <div className="coord-detail-list">
+  const [view, setView] = useState<'details' | 'eligibility' | 'consent'>('details');
+  const evaluating = view === 'eligibility';
+  return <Modal title={evaluating ? 'Avaliar elegibilidade' : view === 'consent' ? 'Registrar consentimento' : 'Detalhes do candidato'} description={candidate.name} onClose={onClose} wide={view !== 'details'}>
+    {view !== 'consent' && <div className="coord-detail-list">
       <div><span>Estudo de interesse</span><strong>{candidate.studyTitle}</strong></div>
       {!evaluating && <div><span>Data de inscrição</span><strong>{candidateDate(candidate.enrollmentDate)}</strong></div>}
       <div><span>Status atual</span><StatusBadge status={candidate.status} /></div>
-    </div>
-    {evaluating ? <CandidateEligibilitySection candidate={candidate} onBack={() => setEvaluating(false)} /> : <div className="modal-actions coord-modal-actions">
-      <button type="button" className="button button-primary" onClick={() => setEvaluating(true)}>Avaliar elegibilidade</button>
+    </div>}
+    {evaluating ? <CandidateEligibilitySection candidate={candidate} onBack={() => setView('details')} /> : view === 'consent' ? <CandidateConsentSection candidate={candidate} onBack={() => setView('details')} /> : <div className="modal-actions coord-modal-actions">
+      <button type="button" className="button button-primary" onClick={() => setView('eligibility')}>Avaliar elegibilidade</button>
+      <button type="button" className="button button-outline" onClick={() => setView('consent')}>Registrar consentimento</button>
     </div>}
   </Modal>;
 }
