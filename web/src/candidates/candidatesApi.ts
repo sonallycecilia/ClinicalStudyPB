@@ -132,4 +132,67 @@ const registerConsent: (
   throw new ConsentUnavailableError();
 };
 
-export const candidatesApi = { listByStudy, listEligibilityCriteria, getEligibilityAssessment, registerEligibilityAssessment, getConsent, registerConsent };
+export interface CandidateInclusion {
+  participationId: string;
+  candidateId: string;
+  studyId: string;
+  includedAt: string;
+  participationStatus: 'Ativo';
+  participantsLinked: number;
+  participantLimit: number;
+}
+
+export const INCLUSION_UNAVAILABLE_MESSAGE = 'A inclusão de participantes ainda não está disponível para o Coordenador. Depende da liberação de acesso ao estudo e da integração da consulta de candidatos. Nenhuma inclusão será realizada.';
+export const INVALID_INCLUSION_MESSAGE = 'O servidor não retornou uma confirmação válida da inclusão. Consulte os candidatos antes de tentar novamente.';
+
+export class CandidateInclusionError extends Error {
+  constructor(message: string, readonly status?: number) {
+    super(message);
+    this.name = 'CandidateInclusionError';
+  }
+}
+
+/** Valida também a identidade do resultado, inclusive quando a operação é injetada. */
+export function isCandidateInclusion(value: unknown, studyId: string, candidateId: string): value is CandidateInclusion {
+  if (!value || typeof value !== 'object') return false;
+  const result = value as Partial<CandidateInclusion>;
+  const date = typeof result.includedAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(result.includedAt)
+    ? new Date(`${result.includedAt}T00:00:00Z`) : null;
+  return typeof result.participationId === 'string' && result.participationId.trim().length > 0
+    && result.candidateId === candidateId && result.studyId === studyId
+    && date !== null && !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === result.includedAt
+    && result.participationStatus === 'Ativo'
+    && Number.isInteger(result.participantsLinked) && Number.isInteger(result.participantLimit)
+    && result.participantsLinked! > 0 && result.participantsLinked! <= result.participantLimit!;
+}
+
+// POST sem corpo. Conectar à interface somente após autorização do Coordenador:
+// a rota e o serviço atuais exigem o Pesquisador proprietário do estudo.
+const include = async (request: AuthenticatedRequest, studyId: string, candidateId: string): Promise<CandidateInclusion> => {
+  let response: Response;
+  try {
+    response = await request(`/studies/${encodeURIComponent(studyId)}/candidates/${encodeURIComponent(candidateId)}/include`, { method: 'POST' });
+  } catch {
+    throw new CandidateInclusionError('Não foi possível comunicar com o servidor. Nenhum sucesso foi confirmado. Consulte os candidatos antes de tentar novamente.');
+  }
+  const body: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const fallbacks: Record<number, string> = {
+      400: 'A inclusão foi recusada. Verifique os requisitos do candidato e a situação do estudo.',
+      401: 'Sua sessão expirou ou não está autorizada. Entre novamente para continuar.',
+      403: 'Você não tem permissão para incluir participantes neste estudo.',
+      404: 'Candidato ou estudo não encontrado. Consulte a lista de candidatos novamente.',
+    };
+    const message = (body as { message?: unknown } | null)?.message;
+    // NestJS não fornece códigos de domínio: preserva o motivo real do 400,
+    // sem tentar classificar erros comparando frases ou palavras da mensagem.
+    const detail = typeof message === 'string' ? message
+      : Array.isArray(message) ? message.filter((item): item is string => typeof item === 'string').join(' ') : '';
+    throw new CandidateInclusionError(response.status === 400 && detail.trim() ? detail
+      : fallbacks[response.status] ?? 'Não foi possível confirmar a inclusão no servidor. Consulte os candidatos antes de tentar novamente.', response.status);
+  }
+  if (!isCandidateInclusion(body, studyId, candidateId)) throw new CandidateInclusionError(INVALID_INCLUSION_MESSAGE);
+  return body;
+};
+
+export const candidatesApi = { listByStudy, listEligibilityCriteria, getEligibilityAssessment, registerEligibilityAssessment, getConsent, registerConsent, include };

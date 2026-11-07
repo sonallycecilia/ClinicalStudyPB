@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { StrictMode, type ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
-import { candidatesApi, ELIGIBILITY_UNAVAILABLE_MESSAGE, type Candidate } from '../candidates/candidatesApi';
+import { candidatesApi, ELIGIBILITY_UNAVAILABLE_MESSAGE, INCLUSION_UNAVAILABLE_MESSAGE, type Candidate } from '../candidates/candidatesApi';
 import { CriteriaApiError, type EligibilityCriterion } from '../studies/criteriaApi';
 import {
   CoordinatorCandidatesPage,
@@ -605,6 +605,43 @@ describe('Avaliação de elegibilidade do candidato', () => {
     expect(within(currentDialog).getByText('Mariana Alves')).toBeTruthy();
     expect(within(currentDialog).queryByRole('radio')).toBeNull();
     expect(within(currentDialog).queryByRole('alert')).toBeNull();
+  });
+});
+
+describe('Inclusão de participante no Coordenador', () => {
+  it('reutiliza o modal para o candidato correto, cancela sem enviar e preserva o status da listagem', async () => {
+    vi.spyOn(candidatesApi, 'listByStudy').mockResolvedValue(candidateRows);
+    const include = vi.spyOn(candidatesApi, 'include');
+    renderCoordinator(<CoordinatorCandidatesPage />);
+    await selectStudy();
+    for (const name of ['Lucas Martins', 'Mariana Alves']) {
+      const row = await screen.findByRole('row', { name: new RegExp(name) });
+      fireEvent.click(within(row).getByRole('button', { name: 'Abrir' }));
+      const details = screen.getByRole('dialog', { name: 'Detalhes do candidato' });
+      expect(within(details).getByRole('button', { name: 'Avaliar elegibilidade' })).toBeTruthy();
+      expect(within(details).getByRole('button', { name: 'Registrar consentimento' })).toBeTruthy();
+      fireEvent.click(within(details).getByRole('button', { name: 'Incluir participante' }));
+      const dialog = screen.getByRole('dialog', { name: 'Incluir participante' });
+      expect(dialog).toBe(details);
+      expect(screen.getAllByRole('dialog')).toHaveLength(1);
+      const form = within(dialog).getByRole('form', { name: 'Inclusão de participante' });
+      expect(within(form).getByText(name)).toBeTruthy();
+      expect(within(form).getByText('Estudo em recrutamento')).toBeTruthy();
+      expect(within(form).getByText(INCLUSION_UNAVAILABLE_MESSAGE)).toBeTruthy();
+      const confirm = within(form).getByRole('button', { name: 'Confirmar inclusão' }) as HTMLButtonElement;
+      expect(confirm.disabled).toBe(true);
+      fireEvent.click(confirm);
+      fireEvent.submit(form);
+      expect(within(dialog).queryByText('Candidato incluído como participante com sucesso')).toBeNull();
+      fireEvent.click(within(form).getByRole('button', { name: 'Cancelar' }));
+      expect(screen.getByRole('dialog', { name: 'Detalhes do candidato' })).toBe(details);
+      const original = candidateRows.find((candidate) => candidate.name === name)!;
+      expect(within(details).getByText(original.status)).toBeTruthy();
+      expect(within(row).getByText(original.status)).toBeTruthy();
+      fireEvent.click(within(details).getByRole('button', { name: 'Fechar' }));
+    }
+    expect(include).not.toHaveBeenCalled();
+    expect(mockRequest).toHaveBeenCalledOnce();
   });
 });
 
