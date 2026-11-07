@@ -190,6 +190,16 @@ npm run dev:backend
 npm run dev:web
 ```
 
+#### Iniciar banco, API, web e mobile juntos
+
+Depois de preparar os arquivos `.env`, instalar as dependências de cada aplicação (incluindo `npm ci --prefix mobile`) e aplicar as migrations, execute na raiz:
+
+```powershell
+npm.cmd run dev:all
+```
+
+Mantenha o Docker Desktop iniciado. O comando inicia o PostgreSQL, aguarda o banco ficar saudável e executa API, web e Expo no mesmo terminal. A web fica em `http://localhost:5173`; o Expo permite abrir o aplicativo mobile no celular. `Ctrl+C` encerra os processos de desenvolvimento; o banco permanece no Docker. Para parar o banco sem apagar seus dados, use `docker compose stop postgres`.
+
 ### 7.4. Executar testes e verificações
 
 Os comandos abaixo podem ser executados na raiz depois de instalar as dependências. Os testes E2E do backend exigem uma conexão PostgreSQL pela variável `DATABASE_URL`; use um banco dedicado a testes, nunca produção. A suíte cria schemas temporários e os remove ao terminar, sem alterar as tabelas de negócio existentes.
