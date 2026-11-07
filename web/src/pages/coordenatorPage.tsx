@@ -13,6 +13,7 @@ import {
   FileText,
   MoreVertical,
   Plus,
+  RefreshCw,
   Search,
   X,
 } from 'lucide-react';
@@ -92,8 +93,8 @@ function SearchField({ value, onChange, placeholder = 'Buscar por nome...' }: { 
   return <label className="study-search coord-search"><Search size={12} /><input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} /></label>;
 }
 
-function FilterSelect({ value, onChange, options, label, disabled = false }: { value: string; onChange: (value: string) => void; options: (string | { value: string; label: string })[]; label: string; disabled?: boolean }) {
-  return <label className="study-filter coord-filter"><span className="sr-only">{label}</span><select value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}>{options.map((option) => typeof option === 'string'
+function FilterSelect({ value, onChange, options, label, disabled = false, describedBy }: { value: string; onChange: (value: string) => void; options: (string | { value: string; label: string })[]; label: string; disabled?: boolean; describedBy?: string }) {
+  return <label className={`study-filter coord-filter${disabled ? ' coord-filter-disabled' : ''}`}><span className="sr-only">{label}</span><select value={value} disabled={disabled} aria-describedby={describedBy} onChange={(event) => onChange(event.target.value)}>{options.map((option) => typeof option === 'string'
     ? <option key={option}>{option}</option>
     : <option key={option.value} value={option.value}>{option.label}</option>)}</select><ChevronDown size={11} /></label>;
 }
@@ -252,22 +253,26 @@ export function CoordinatorCandidatesPage() {
   const studies = useCandidateListStudies();
   const candidates = useStudyCandidates(studyId);
   const options = studies.state.status === 'ready' ? studies.state.options : [];
+  const studiesLoading = studies.state.status === 'loading';
   const studyPlaceholder = studies.state.status === 'loading' ? 'Carregando estudos…'
-    : studies.state.status === 'error' ? 'Falha ao carregar estudos' : 'Selecione um estudo';
+    : studies.state.status === 'error' ? 'Falha ao carregar estudos'
+      : options.length === 0 ? 'Nenhum estudo disponível' : 'Selecione um estudo';
 
   return <div className="coord-page coord-candidates-page">
     <PageHeader title="Candidatos e participantes" action="Novo candidato" onAction={() => setShowNew(true)} />
     {showNew && <CandidateRegistrationModal onClose={closeRegistration} />}
     <div className="page-content-offset">
     <section className="table-card coord-panel coord-list-panel">
-      <div className="study-list-heading coord-panel-heading"><h2>Lista de candidatos e participantes</h2><div className="study-list-tools coord-table-tools"><SearchField value={search} onChange={setSearch} placeholder="Buscar por nome..." /><FilterSelect value={studyId} onChange={(id) => { setStudyId(id); setActiveCandidate(null); }} label="Filtrar por estudo" disabled={options.length === 0} options={[
+      <div className="study-list-heading coord-panel-heading"><h2>Lista de candidatos e participantes</h2><div className="study-list-tools coord-table-tools"><SearchField value={search} onChange={setSearch} placeholder="Buscar por nome..." /><FilterSelect value={studyId} onChange={(id) => { setStudyId(id); setActiveCandidate(null); }} label="Filtrar por estudo" disabled={options.length === 0} describedBy={options.length === 0 ? 'candidate-list-study-help candidate-list-study-feedback' : 'candidate-list-study-help'} options={[
         { value: '', label: studyPlaceholder },
         ...options.map((study) => ({ value: study.id, label: options.some((other) => other.id !== study.id && other.title === study.title) ? `${study.title} (${study.id})` : study.title })),
-      ]} /><FilterSelect value={statusFilter} onChange={setStatusFilter} label="Filtrar por status" options={['Todos os status', 'Pendente de avaliação', 'Participante ativo', 'Consentimento pendente', 'Não elegível']} /></div></div>
-      <p className="coord-help-copy">A seleção exibe apenas estudos em recrutamento. A consulta dos estudos nas demais fases ainda não está disponível para o coordenador.</p>
-      {studies.state.status === 'loading' && <p role="status" className="coord-help-copy">Carregando estudos…</p>}
-      {studies.state.status === 'error' && <div role="alert"><p>Não foi possível carregar os estudos.</p><button type="button" className="button button-outline coord-secondary-button" onClick={studies.reload}>Recarregar estudos</button></div>}
-      {studies.state.status === 'ready' && options.length === 0 && <p role="status" className="coord-help-copy">Nenhum estudo em recrutamento disponível para seleção. Não foi possível consultar candidatos.</p>}
+      ]} /><FilterSelect value={statusFilter} onChange={setStatusFilter} label="Filtrar por status" options={['Todos os status', 'Pendente de avaliação', 'Participante ativo', 'Consentimento pendente', 'Não elegível']} />
+        <button type="button" className="icon-button coord-refresh-button" aria-label="Atualizar estudos" title="Atualizar estudos" aria-busy={studiesLoading} disabled={studiesLoading} onClick={studies.reload}><RefreshCw className="coord-refresh-icon" size={16} aria-hidden="true" /></button>
+      </div></div>
+      <p id="candidate-list-study-help" className="coord-help-copy">A seleção exibe apenas estudos em recrutamento. A consulta dos estudos nas demais fases ainda não está disponível para o coordenador.</p>
+      {studiesLoading && <p id="candidate-list-study-feedback" role="status" className="coord-help-copy">Carregando estudos…</p>}
+      {studies.state.status === 'error' && <p id="candidate-list-study-feedback" role="alert" className="coord-help-copy">Não foi possível carregar os estudos. Use o ícone de atualização para tentar novamente.</p>}
+      {studies.state.status === 'ready' && options.length === 0 && <p id="candidate-list-study-feedback" role="status" className="coord-help-copy">Nenhum estudo em recrutamento disponível para seleção. Não foi possível consultar candidatos.</p>}
       <CandidatesTable state={candidates.state} search={search} statusFilter={statusFilter} onOpen={setActiveCandidate} onRetry={candidates.reload} />
     </section>
     </div>

@@ -200,9 +200,9 @@ describe('CoordinatorCandidatesPage', () => {
     const query = vi.spyOn(candidatesApi, 'listByStudy');
     mockRequest.mockRejectedValueOnce(new Error('Falha'));
     renderCoordinator(<CoordinatorCandidatesPage />);
-    await screen.findByText('Não foi possível carregar os estudos.');
+    await screen.findByText('Não foi possível carregar os estudos. Use o ícone de atualização para tentar novamente.');
     expect((screen.getByRole('combobox', { name: 'Filtrar por estudo' }) as HTMLSelectElement).disabled).toBe(true);
-    fireEvent.click(screen.getByRole('button', { name: 'Recarregar estudos' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Atualizar estudos' }));
     await screen.findByRole('option', { name: 'Estudo em recrutamento' });
     expect(query).not.toHaveBeenCalled();
   });
@@ -211,7 +211,74 @@ describe('CoordinatorCandidatesPage', () => {
     mockRequest.mockResolvedValue({ ok: true, json: async () => [] } as Response);
     renderCoordinator(<CoordinatorCandidatesPage />);
     await screen.findByText('Nenhum estudo em recrutamento disponível para seleção. Não foi possível consultar candidatos.');
+    expect((screen.getByRole('combobox', { name: 'Filtrar por estudo' }) as HTMLSelectElement).disabled).toBe(true);
+    expect(screen.getByRole('option', { name: 'Nenhum estudo disponível' })).toBeTruthy();
+    const refresh = screen.getByRole('button', { name: 'Atualizar estudos' });
+    expect(refresh.textContent).toBe('');
+    expect(refresh.getAttribute('title')).toBe('Atualizar estudos');
+    expect(refresh.closest('.coord-table-tools')).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: 'Filtrar por estudo' }).getAttribute('aria-describedby')).toContain('candidate-list-study-feedback');
     expect(screen.queryByText('O estudo selecionado não possui candidatos cadastrados.')).toBeNull();
+  });
+
+  it('atualiza os estudos após uma lista vazia e habilita a seleção quando há opções', async () => {
+    let resolveStudies!: (response: Response) => void;
+    mockRequest
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      .mockReturnValueOnce(new Promise<Response>((resolve) => { resolveStudies = resolve; }));
+    const query = vi.spyOn(candidatesApi, 'listByStudy');
+    renderCoordinator(<CoordinatorCandidatesPage />);
+    await screen.findByRole('option', { name: 'Nenhum estudo disponível' });
+    const refresh = screen.getByRole('button', { name: 'Atualizar estudos' }) as HTMLButtonElement;
+    fireEvent.click(refresh);
+
+    const studySelect = screen.getByRole('combobox', { name: 'Filtrar por estudo' }) as HTMLSelectElement;
+    expect(studySelect.disabled).toBe(true);
+    expect(screen.getByRole('option', { name: 'Carregando estudos…' })).toBeTruthy();
+    expect(refresh.disabled).toBe(true);
+    expect(refresh.getAttribute('aria-busy')).toBe('true');
+    fireEvent.click(refresh);
+    fireEvent.click(refresh);
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+    expect(mockRequest).toHaveBeenLastCalledWith('/studies/disponiveis-recrutamento', { signal: expect.any(AbortSignal) });
+
+    await act(async () => resolveStudies({ ok: true, json: async () => studyOptions } as Response));
+    expect(studySelect.disabled).toBe(false);
+    expect(screen.getByRole('option', { name: 'Selecione um estudo' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'Estudo em recrutamento' })).toBeTruthy();
+    expect(refresh.disabled).toBe(false);
+    expect(refresh.getAttribute('aria-busy')).toBe('false');
+    expect(screen.queryByText('Nenhum estudo em recrutamento disponível para seleção. Não foi possível consultar candidatos.')).toBeNull();
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it.each(['vazio', 'erro'])('encerra o carregamento da atualização com resultado %s e permite tentar novamente', async (outcome) => {
+    let resolve!: (response: Response) => void;
+    let reject!: (error: Error) => void;
+    mockRequest
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      .mockReturnValueOnce(new Promise<Response>((done, fail) => { resolve = done; reject = fail; }));
+    renderCoordinator(<CoordinatorCandidatesPage />);
+    await screen.findByRole('option', { name: 'Nenhum estudo disponível' });
+    const refresh = screen.getByRole('button', { name: 'Atualizar estudos' }) as HTMLButtonElement;
+    fireEvent.click(refresh);
+    expect(refresh.disabled).toBe(true);
+    expect(refresh.getAttribute('aria-busy')).toBe('true');
+
+    await act(async () => {
+      if (outcome === 'vazio') resolve({ ok: true, json: async () => [] } as Response);
+      else reject(new Error('Falha de conexão'));
+    });
+    expect(refresh.disabled).toBe(false);
+    expect(refresh.getAttribute('aria-busy')).toBe('false');
+    expect((screen.getByRole('combobox', { name: 'Filtrar por estudo' }) as HTMLSelectElement).disabled).toBe(true);
+    if (outcome === 'vazio') expect(screen.getByRole('option', { name: 'Nenhum estudo disponível' })).toBeTruthy();
+    else expect(screen.getByRole('alert').textContent).toContain('Não foi possível carregar os estudos.');
+
+    fireEvent.click(refresh);
+    await screen.findByRole('option', { name: 'Estudo em recrutamento' });
+    expect((screen.getByRole('combobox', { name: 'Filtrar por estudo' }) as HTMLSelectElement).disabled).toBe(false);
+    expect(mockRequest).toHaveBeenCalledTimes(3);
   });
 
   it('abre o formulário compartilhado e consulta os estudos do cadastro somente ao abrir o modal', async () => {

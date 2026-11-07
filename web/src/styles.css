@@ -652,6 +652,24 @@ body:has(.modal-backdrop), body:has(.study-dialog-backdrop) { overflow: hidden; 
 .coord-filter select { width: 100%; height: 100%; padding: 0 18px 0 0; border: 0; outline: 0; appearance: none; color: #24444f; background: transparent; font-size: 10px; cursor: pointer; }
 .coord-filter svg { position: absolute; right: 9px; width: 14px; height: 14px; color: #688793; pointer-events: none; }
 
+.coord-candidates-page .coord-filter select { padding: 0 32px 0 12px; min-width: 0; text-overflow: ellipsis; }
+.coord-candidates-page .coord-filter svg { top: 50%; transform: translateY(-50%); }
+.coord-candidates-page .coord-filter-disabled { background: #edf1f3; border-color: #dce3e7; }
+.coord-candidates-page .coord-filter select:disabled { color: #6b8189; opacity: 1; cursor: not-allowed; }
+.coord-candidates-page .coord-filter-disabled svg { color: #96a7ae; }
+.coord-refresh-button { flex: 0 0 35px; width: 35px; height: 35px; margin-left: auto; padding: 0; border: 1px solid #dce8eb; border-radius: 8px; background: #f3f7f8; }
+.coord-refresh-button:focus-visible { outline: 2px solid #83c7c4; outline-offset: 2px; }
+.coord-refresh-button:disabled { color: #688792; background: #f3f7f8; opacity: .65; cursor: progress; }
+.coord-refresh-icon { transform-origin: center; }
+.coord-refresh-button[aria-busy="true"] > .coord-refresh-icon { animation: coord-refresh-spin 2s linear infinite; }
+@keyframes coord-refresh-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .coord-refresh-button[aria-busy="true"] > .coord-refresh-icon { animation: none; }
+}
+
 /* Tabelas: seguem a escala já usada em UsersPage. */
 .coord-table { width: 100%; border-collapse: collapse; text-align: left; white-space: nowrap; }
 .coord-table thead { border-top: 1px solid #edf2f3; border-bottom: 1px solid #edf2f3; }
