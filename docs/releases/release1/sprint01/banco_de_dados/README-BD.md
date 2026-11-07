@@ -1,26 +1,147 @@
-# Banco de dados — ClinicalStudyPB
+# Banco de dados do ClinicalStudyPB
 
-O banco é um **PostgreSQL 17** executado em Docker. A estrutura é criada por **migrations em SQL puro**
-(pasta `backend/migrations/`), aplicadas pelo script `db:migrate`. O projeto não usa ORM: o backend
-acessa o banco com o driver `pg`.
+Este documento consolida a documentação técnica do banco do projeto, com foco em PostgreSQL, estrutura de dados, regras de integridade, migrações, seed e integração com o backend.
 
-## 1. Como conectar
+## 1. Visão geral
 
-O serviço `postgres` do `docker-compose.yml` publica a porta apenas na própria máquina.
+O banco do ClinicalStudyPB é um PostgreSQL 17 executado em Docker durante o desenvolvimento. A estrutura é criada por migrations em SQL puro, armazenadas em `backend/migrations/`, e aplicadas por `npm run db:migrate` no backend. O projeto não usa ORM; o acesso ao banco é feito pelo driver `pg`.
+
+O modelo suporta:
+
+- usuários e sessões
+- estudos e critérios de elegibilidade
+- visitas previstas e atividades
+- candidatos e avaliações
+- consentimentos e participações
+- visitas, resultados e solicitações
+- auditoria
+
+## 2. Conexão e configuração local
+
+A configuração padrão do Compose usa o serviço `postgres` e expõe a porta `5433` no host para desenvolvimento local.
 
 | Campo | Valor |
 |---|---|
 | Host | `localhost` |
-| Porta | `5433` (a `5432` é só a porta interna do container) |
+| Porta publicada no host | `5433` |
+| Porta interna da rede Docker | `5432` |
 | Banco | `clinicalstudypb` |
 | Usuário | `clinicalstudy` |
-| Senha | `clinicalstudy_local` (somente desenvolvimento local) |
+| Senha | `clinicalstudy_local` |
+| Host acessado pelo backend em container | `postgres` |
 
-URL JDBC: `jdbc:postgresql://localhost:5433/clinicalstudypb`
+Comando para abrir o terminal SQL:
 
-Dentro da rede do Compose, o backend usa `postgres:5432` (variável `DATABASE_URL`).
+```bash
+docker compose exec postgres psql -U clinicalstudy -d clinicalstudypb
+```
 
-## 2. Diagrama entidade-relacionamento
+No `psql`, `\dt` lista as tabelas e `\d usuarios` mostra a estrutura da tabela de usuários.
+
+### URL de conexão
+
+- URL JDBC: `jdbc:postgresql://localhost:5433/clinicalstudypb`
+- PostgreSQL local via host: `postgresql://clinicalstudy:clinicalstudy_local@localhost:5433/clinicalstudypb`
+- Backend dentro do Compose: `DATABASE_URL=postgresql://clinicalstudy:clinicalstudy_local@postgres:5432/clinicalstudypb`
+
+## 3. Migrations e seed
+
+As migrations ficam em `backend/migrations/` e são aplicadas em ordem alfabética do nome.
+
+| Arquivo | Conteúdo |
+|---|---|
+| `001_create_usuarios.sql` | Tabela `usuarios` |
+| `002_create_sessoes.sql` | Tabela `sessoes` |
+| `003_create_estudos.sql` | Tabela `estudos` e a sequence `estudos_codigo_seq` |
+| `004_create_status_estudos.sql` | Coluna `estudos.status` |
+| `005_create_criterios_elegibilidade.sql` | Tabela `criterios_elegibilidade` |
+| `006_create_visitas_previstas.sql` | Tabela `visitas_previstas` |
+| `007_create_atividades_visita.sql` | Tabela `atividades_visita` |
+| `008_create_candidatos.sql` | Tabela `candidatos` |
+| `009_avaliacoes_elegibilidade.sql` | Tabela `avaliacoes_elegibilidade` |
+| `010_consentimentos.sql` | Tabela `consentimentos` |
+| `011_participacoes_estudo.sql` | Tabela `participacoes_estudo` |
+| `012_create_visitas.sql` | Tabela `visitas` |
+| `013_resultados_avaliacao.sql` | Tabela `resultados_avaliacao` |
+| `014_create_solicitacoes_visita.sql` | Tabela `solicitacoes_visita` |
+| `015_create_auditoria.sql` | Tabela `auditoria` |
+
+A tabela `candidatos` é criada pela migration `008_create_candidatos.sql`. O backend expõe o cadastro e a listagem por estudo em `POST` e `GET /studies/:studyId/candidates`, exigindo que o pesquisador autenticado seja proprietário do estudo.
+
+As avaliações de elegibilidade usam `avaliacoes_elegibilidade`, criada pela migration `009_avaliacoes_elegibilidade.sql`. A API verifica o vínculo de candidato e critério ao mesmo estudo, persiste as respostas de critérios ativos em transação e atualiza o status do candidato conforme os resultados.
+
+### Como o script de migração funciona
+
+1. Abre uma transação e obtém um *advisory lock*, para que duas execuções simultâneas não colidam.
+2. Cria a tabela de controle `schema_migrations` (nome, checksum e data de aplicação), se ela não existir.
+3. Percorre os arquivos `NNN_nome.sql` em ordem. Os já registrados são ignorados; os novos são
+   executados e registrados.
+4. Se um arquivo já aplicado foi alterado (checksum diferente), o script aborta com erro.
+5. Qualquer falha desfaz **todas** as migrations da execução (`ROLLBACK`).
+
+### Regras para criar migrations
+
+- Use o próximo número da sequência, com três dígitos (`016_create_...sql`).
+- **Nunca edite** uma migration que já foi aplicada em algum banco ou integrada à branch principal.
+  Corrija com uma migration nova (`ALTER TABLE ...`).
+- Não use `BEGIN` nem `COMMIT` no arquivo: o script já controla a transação.
+- Respeite a ordem das chaves estrangeiras: a tabela referenciada deve ser criada antes.
+- Salve os arquivos em UTF-8, pois há valores com acento nos `CHECK`.
+
+### Como aplicar (com Docker)
+
+```bash
+docker compose up -d --build backend
+docker compose logs -f backend
+```
+
+O `--build` é necessário porque a pasta `migrations/` é copiada para dentro da imagem (apenas
+`backend/src` é montado como volume). O backend executa `db:migrate` e depois `db:seed:demo` a cada subida.
+
+Para recriar o banco local do zero (apaga todos os dados do volume):
+
+```bash
+docker compose down -v
+docker compose up -d --build
+```
+
+### Seed de demonstração
+
+O seed (`npm run db:seed:demo`) insere dados fictícios para desenvolvimento:
+
+- 4 contas, uma por perfil: `ana.souza` (Administrador), `marina.costa` (Pesquisador),
+  `rafael.lima` (Coordenador) e `bianca.oliveira` (Participante), todas com o domínio
+  `@clinicalstudypb.test`. As senhas de demonstração ficam no script do seed; no banco só existe o hash.
+- 3 estudos fictícios (`EST-001` a `EST-003`), vinculados à pesquisadora.
+
+O seed só executa com `ALLOW_DEMO_SEED=true` e `NODE_ENV` diferente de `production`. Ele é idempotente
+(`ON CONFLICT DO NOTHING`): rodar várias vezes não duplica nem sobrescreve registros existentes.
+Ele ainda não popula as tabelas de recrutamento e execução.
+
+### Backend executado fora do Docker
+
+É possível iniciar somente o banco com `docker compose up -d postgres`, ou usar um PostgreSQL 17 instalado localmente com banco e usuário criados previamente.
+
+Copie `backend/.env.example` para `backend/.env`. O exemplo usa `localhost` na `DATABASE_URL`; ajuste as credenciais se usar uma instalação própria. Se o PostgreSQL for iniciado pelo Compose e o backend rodar na máquina, configure a porta `5433` nessa URL. Depois, dentro de `backend/`:
+
+```bash
+npm ci
+npm run db:migrate
+npm run start:dev
+```
+
+No PowerShell, use `npm.cmd` se a política de execução bloquear `npm.ps1`.
+
+O backend exige `DATABASE_URL` e verifica a conexão na inicialização em todos os ambientes.
+
+Para criar as quatro contas fictícias fora do Docker, habilite explicitamente o seed no PowerShell:
+
+```powershell
+$env:ALLOW_DEMO_SEED='true'
+npm run db:seed:demo
+```
+
+## 4. Diagrama entidade-relacionamento
 
 O diagrama usa a notação de Chen: **retângulos azuis** são entidades, **losangos rosa** são
 relacionamentos e **elipses cinza** são atributos. As cardinalidades (`1`, `N`, `0..1`) estão nas
@@ -305,7 +426,7 @@ flowchart TB
 
 A tabela `schema_migrations` (controle das migrations) é criada pelo script de migração e não aparece no diagrama.
 
-### 2.1 Relacionamentos e chaves estrangeiras
+## 5. Relacionamentos e chaves estrangeiras
 
 | Relacionamento | Pai | Filha (coluna FK) | Cardinalidade | Ao excluir o pai |
 |---|---|---|---|---|
@@ -335,7 +456,7 @@ Nos relacionamentos `AVALIA`, `REGISTRA` e `SOLICITA`, o usuário aparece como m
 losango: ele é o avaliador, quem registra ou quem solicita. Por isso esses losangos têm mais de duas
 ligações.
 
-## 3. Tabelas
+## 6. Tabelas
 
 | Grupo | Tabela | Finalidade |
 |---|---|---|
@@ -354,7 +475,7 @@ ligações.
 | Execução | `solicitacoes_visita` | Pedidos de confirmação ou reagendamento de uma visita. |
 | Auditoria | `auditoria` | Registro de ações dos usuários sobre as entidades do sistema. |
 
-## 4. Valores de domínio
+## 7. Valores de domínio
 
 Os valores abaixo são validados por `CHECK` no banco e devem ser usados exatamente como escritos
 (incluindo maiúsculas e acentos).
@@ -365,7 +486,7 @@ Os valores abaixo são validados por `CHECK` no banco e devem ser usados exatame
 | `usuarios.status` | `Ativo`, `Inativo` |
 | `estudos.tipo` | `Estudo observacional`, `Estudo longitudinal` |
 | `estudos.simbolo` | `moon`, `heart`, `activity` |
-| `estudos.status` | `planejamento` (padrão), `recrutamento`, `execução`, `encerrado` |
+| `estudos.status` | `Planejamento` (padrão), `Recrutamento`, `Execução`, `Encerrado` |
 | `criterios_elegibilidade.tipo` | `Inclusão`, `Exclusão` |
 | `candidatos.status_recrutamento` | `Novo`, `Em avaliação` (padrão), `Elegível`, `Inelegível`, `Incluído`, `Desistiu` |
 | `avaliacoes_elegibilidade.resultado` | `Atende`, `Não atende`, `Pendente` |
@@ -375,7 +496,7 @@ Os valores abaixo são validados por `CHECK` no banco e devem ser usados exatame
 | `solicitacoes_visita.tipo` | `Confirmação`, `Reagendamento` |
 | `solicitacoes_visita.status` | `Pendente` (padrão), `Aceita`, `Recusada`, `Cancelada` |
 
-## 5. Regras de integridade
+## 8. Regras de integridade
 
 Garantidas pelo próprio banco:
 
@@ -405,77 +526,35 @@ Não garantidas pelo banco (devem ser validadas na aplicação):
 - Que a visita prevista de uma visita pertença ao mesmo estudo da participação.
 - Que o número de participações não ultrapasse `estudos.limite_participantes`.
 
-## 6. Migrations
+## 9. Usuários, sessões e autenticação
 
-As migrations ficam em `backend/migrations/` e são aplicadas em ordem alfabética do nome.
+A tabela `usuarios` armazena nome, e-mail, telefone, hash e salt da senha, perfil, status e data de criação. O `UsersService` realiza cadastro, listagem, consulta por UUID, edição, exclusão e autenticação no PostgreSQL. Os e-mails são normalizados removendo espaços nas pontas e convertendo para minúsculas. As consultas que recebem valores externos são parametrizadas com o driver `pg`.
 
-| Arquivo | Conteúdo |
-|---|---|
-| `001_create_usuarios.sql` | Tabela `usuarios` |
-| `002_create_sessoes.sql` | Tabela `sessoes` |
-| `003_create_estudos.sql` | Tabela `estudos` e a sequence `estudos_codigo_seq` |
-| `004_create_status_estudos.sql` | Coluna `estudos.status` |
-| `005_create_criterios_elegibilidade.sql` | Tabela `criterios_elegibilidade` |
-| `006_create_visitas_previstas.sql` | Tabela `visitas_previstas` |
-| `007_create_atividades_visita.sql` | Tabela `atividades_visita` |
-| `008_create_candidatos.sql` | Tabela `candidatos` |
-| `009_avaliacoes_elegibilidade.sql` | Tabela `avaliacoes_elegibilidade` |
-| `010_consentimentos.sql` | Tabela `consentimentos` |
-| `011_participacoes_estudo.sql` | Tabela `participacoes_estudo` |
-| `012_create_visitas.sql` | Tabela `visitas` |
-| `013_resultados_avaliacao.sql` | Tabela `resultados_avaliacao` |
-| `014_create_solicitacoes_visita.sql` | Tabela `solicitacoes_visita` |
-| `015_create_auditoria.sql` | Tabela `auditoria` |
-| `016_normalize_status_estudos.sql` | Normaliza e valida os estados do estudo |
+As senhas são derivadas com `scrypt` e um salt individual. O hash e o salt são usados internamente e não são retornados pela API.
 
-A tabela `candidatos` é criada pela migration `008_create_candidatos.sql`. O backend expõe o cadastro e a listagem por estudo em `POST` e `GET /studies/:studyId/candidates`, exigindo que o pesquisador autenticado seja proprietário do estudo.
+A tabela `sessoes`, criada por `002_create_sessoes.sql`, registra sessões com UUID próprio, usuário associado, data de criação e expiração (`expira_em`). Um usuário pode ter mais de uma sessão. A exclusão da conta remove suas sessões pela chave estrangeira `ON DELETE CASCADE`.
 
-As avaliações de elegibilidade usam `avaliacoes_elegibilidade`, criada pela migration `009_avaliacoes_elegibilidade.sql`. A API verifica o vínculo de candidato e critério ao mesmo estudo, persiste as respostas de critérios ativos em transação e atualiza o status do candidato conforme os resultados.
+O token de acesso tem duração de uma hora e só é aceito enquanto não estiver expirado e a sessão correspondente continuar ativa no banco. Em cada requisição protegida, o backend valida o token recebido no cabeçalho `Authorization`, a sessão, o status atual da conta e o perfil vigente; o guard do endpoint também verifica a permissão necessária.
 
-### Como o script de migração funciona
+`POST /auth/logout` revoga somente a sessão associada ao token usado naquela chamada. A alteração da senha ou a inativação da conta remove todas as sessões da conta. Reativá-la não restaura sessões removidas nem tokens antigos.
 
-1. Abre uma transação e obtém um *advisory lock*, para que duas execuções simultâneas não colidam.
-2. Cria a tabela de controle `schema_migrations` (nome, checksum e data de aplicação), se ela não existir.
-3. Percorre os arquivos `NNN_nome.sql` em ordem. Os já registrados são ignorados; os novos são
-   executados e registrados.
-4. Se um arquivo já aplicado foi alterado (checksum diferente), o script aborta com erro.
-5. Qualquer falha desfaz **todas** as migrations da execução (`ROLLBACK`).
+Na aplicação web, uma sessão persistida é validada por `GET /auth/me`; uma resposta inválida ou indisponibilidade da API faz o contexto de autenticação limpar a sessão local. O fluxo de autenticação não usa contas locais como alternativa quando a API falha. No logout, a web chama `POST /auth/logout` antes de limpar a sessão local; se a chamada falhar, mantém a sessão para permitir nova tentativa.
 
-### Regras para criar migrations
+Os estudos também são persistidos no PostgreSQL. Na API atual, um Pesquisador ativo pode consultar e alterar apenas os estudos associados à própria conta.
 
-- Use o próximo número da sequência, com três dígitos (`016_create_...sql`).
-- **Nunca edite** uma migration que já foi aplicada em algum banco ou integrada à branch principal.
-  Corrija com uma migration nova (`ALTER TABLE ...`).
-- Não use `BEGIN` nem `COMMIT` no arquivo: o script já controla a transação.
-- Respeite a ordem das chaves estrangeiras: a tabela referenciada deve ser criada antes.
-- Salve os arquivos em UTF-8, pois há valores com acento nos `CHECK`.
+## 10. Banco de testes e schemas temporários
 
-### Como aplicar
+Os testes de integração e E2E do backend usam schemas temporários e aplicam as migrations relevantes para garantir isolamento. Os dados de desenvolvimento não são apagados; todos os cenários usam ambiente controlado e removem espaços temporários ao final da execução.
 
-```bash
-docker compose up -d --build backend
-docker compose logs -f backend
-```
+## 11. Integração com o backend
 
-O `--build` é necessário porque a pasta `migrations/` é copiada para dentro da imagem (apenas
-`backend/src` é montado como volume). O backend executa `db:migrate` e depois `db:seed:demo` a cada subida.
+O backend lê as configurações de conexão a partir da variável `DATABASE_URL` e realiza operações em PostgreSQL por meio de `DatabaseService` e módulos específicos (`auth`, `users`, `studies`).
 
-Para recriar o banco local do zero (apaga todos os dados do volume):
+Os serviços usam SQL parametrizado, por exemplo, para autenticação, listagem de usuários, busca por estudo e isolamento por pesquisador. O fluxo de acesso e autorização valida a sessão e o perfil em cada requisição.
 
-```bash
-docker compose down -v
-docker compose up -d --build
-```
+## 12. Referências
 
-## 7. Seed de demonstração
-
-O seed (`npm run db:seed:demo`) insere dados fictícios para desenvolvimento:
-
-- 4 contas, uma por perfil: `ana.souza` (Administrador), `marina.costa` (Pesquisador),
-  `rafael.lima` (Coordenador) e `bianca.oliveira` (Participante), todas com o domínio
-  `@clinicalstudypb.test`. As senhas de demonstração ficam no script do seed; no banco só existe o hash.
-- 3 estudos fictícios (`EST-001` a `EST-003`), vinculados à pesquisadora.
-
-O seed só executa com `ALLOW_DEMO_SEED=true` e `NODE_ENV` diferente de `production`. Ele é idempotente
-(`ON CONFLICT DO NOTHING`): rodar várias vezes não duplica nem sobrescreve registros existentes.
-Ele ainda não popula as tabelas de recrutamento e execução.
+- [Arquitetura e integração](../../arquitetura-e-integracao.md)
+- [Documentação de testes](../testes/README-TESTES.md)
+- [Usuários e controle de acesso](../../usuarios-e-controle-de-acesso.md)
+- [README principal](../../../../../README.md)
