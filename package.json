@@ -5,6 +5,8 @@
   "scripts": {
     "setup": "npm ci --prefix backend && npm install --prefix web",
     "dev": "concurrently --kill-others --names backend,web --prefix-colors blue,green \"npm run dev:backend\" \"npm run dev:web\"",
+    "dev:all": "docker compose up -d --wait postgres && concurrently --kill-others --names backend,web,mobile --prefix-colors blue,green,magenta \"npm run dev:backend\" \"npm run dev:web\" \"npm run dev:mobile\"",
+    "dev:mobile": "npm --prefix mobile run start",
     "dev:backend": "npm --prefix backend run start:dev",
     "dev:web": "npm --prefix web run dev -- --port 5173 --strictPort"
   },

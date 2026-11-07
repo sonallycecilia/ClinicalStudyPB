@@ -1,4 +1,10 @@
-export type StudyStatus = 'Planejado' | 'Em andamento' | 'Encerrado';
+export enum StudyStatus {
+  Planejamento = 'planejamento',
+  Recrutamento = 'recrutamento',
+  Execucao = 'execução',
+  Encerrado = 'encerrado',
+}
+
 export type StudyKind = 'Estudo observacional' | 'Estudo longitudinal';
 export type StudySymbol = 'moon' | 'heart' | 'activity';
 
