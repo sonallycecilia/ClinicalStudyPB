@@ -1,5 +1,7 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { CandidateForm } from '../candidates/CandidateForm';
+import { useRecruitmentStudies } from '../candidates/useRecruitmentStudies';
 import {
   CalendarDays,
   Check,
@@ -139,6 +141,47 @@ function initialsFormName(value: string) {
   return value.trim() ? initials(value) : '??';
 }
 
+function CandidateRegistrationModal({ onClose }: { onClose: () => void }) {
+  const studies = useRecruitmentStudies();
+
+  useEffect(() => {
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const name = document.getElementById('candidate-name');
+    const dialog = name?.closest<HTMLElement>('[role="dialog"]');
+    dialog?.querySelector<HTMLButtonElement>('button[aria-label="Fechar"]')?.focus();
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+      } else if (event.key === 'Tab' && dialog) {
+        const controls = Array.from(dialog.querySelectorAll<HTMLElement>('button, input, select, textarea, a[href], [tabindex]'))
+          .filter((element) => !element.matches(':disabled') && element.tabIndex >= 0);
+        const first = controls[0];
+        const last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last?.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first?.focus();
+        }
+      }
+    }
+
+    dialog?.addEventListener('keydown', handleKeyDown);
+    return () => {
+      dialog?.removeEventListener('keydown', handleKeyDown);
+      previousFocus?.focus();
+    };
+  }, [onClose]);
+
+  return <Modal title="Cadastrar candidato" description="Informe os dados do candidato e selecione o estudo de interesse." onClose={onClose}>
+    <CandidateForm studies={studies} onCancel={onClose} />
+  </Modal>;
+}
+
 export function CoordinatorDashboardPage() {
   const [visits, setVisits] = useState(initialVisits);
   const [search, setSearch] = useState('');
@@ -186,23 +229,12 @@ export function CoordinatorDashboardPage() {
 }
 
 export function CoordinatorCandidatesPage() {
+  const [showNew, setShowNew] = useState(false);
   const [candidates, setCandidates] = useState(initialCandidates);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('Todos os status');
   const [activeCandidate, setActiveCandidate] = useState<CandidateRow | null>(null);
-  const [showNew, setShowNew] = useState(false);
-  const [name, setName] = useState('');
-  const [study, setStudy] = useState('Qualidade do sono');
   const visible = candidates.filter((candidate) => candidate.name.toLowerCase().includes(search.toLowerCase()) && (statusFilter === 'Todos os status' || candidate.status === statusFilter));
-
-  function addCandidate(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const candidateName = name.trim();
-    if (!candidateName) return;
-    setCandidates((current) => [...current, { id: Date.now(), name: candidateName, initials: initialsFormName(candidateName), study, enrollmentDate: new Date().toLocaleDateString('pt-BR'), status: 'Pendente de avaliação' }]);
-    setName('');
-    setShowNew(false);
-  }
 
   function setCandidateStatus(status: CandidateStatus) {
     if (!activeCandidate) return;
@@ -212,6 +244,7 @@ export function CoordinatorCandidatesPage() {
 
   return <div className="coord-page coord-candidates-page">
     <PageHeader title="Candidatos e participantes" action="Novo candidato" onAction={() => setShowNew(true)} />
+    {showNew && <CandidateRegistrationModal onClose={() => setShowNew(false)} />}
     <div className="page-content-offset">
     <StatCards items={[{ title: 'Candidatos para avaliar', value: String(candidates.filter((item) => item.status === 'Pendente de avaliação').length + 2).padStart(2, '0') }, { title: 'Participantes ativos', value: String(candidates.filter((item) => item.status === 'Participante ativo').length + 16).padStart(2, '0') }, { title: 'Inscrições este mês', value: '07' }]} />
     <section className="table-card coord-panel coord-list-panel">
@@ -221,7 +254,6 @@ export function CoordinatorCandidatesPage() {
       </tbody></table></div>
     </section>
     </div>
-    {showNew && <Modal title="Novo candidato" description="Cadastre um candidato para acompanhar sua elegibilidade." onClose={() => setShowNew(false)}><form className="coord-form" onSubmit={addCandidate}><Field label="Nome completo" wide><input required value={name} onChange={(event) => setName(event.target.value)} placeholder="Nome do candidato" /></Field><Field label="Estudo de interesse" wide><select value={study} onChange={(event) => setStudy(event.target.value)}><option>Qualidade do sono</option><option>Pressão arterial</option><option>Atividade física</option></select></Field><div className="modal-actions coord-modal-actions"><button type="button" className="button button-outline coord-secondary-button" onClick={() => setShowNew(false)}>Cancelar</button><button className="button button-primary coord-primary-button" type="submit"><Plus size={13} /> Cadastrar candidato</button></div></form></Modal>}
     {activeCandidate && <Modal title="Detalhes do candidato" description={activeCandidate.name} onClose={() => setActiveCandidate(null)}><div className="coord-detail-list"><div><span>Estudo de interesse</span><strong>{activeCandidate.study}</strong></div><div><span>Data de inscrição</span><strong>{activeCandidate.enrollmentDate}</strong></div><div><span>Status atual</span><StatusBadge status={activeCandidate.status} /></div></div><p className="coord-help-copy">Altere o status conforme o avanço do processo de elegibilidade e consentimento.</p><div className="modal-actions coord-modal-actions coord-wrap-actions"><button type="button" className="button button-outline coord-secondary-button" onClick={() => setCandidateStatus('Pendente de avaliação')}>Pendente</button><button type="button" className="button button-outline coord-secondary-button" onClick={() => setCandidateStatus('Consentimento pendente')}>Consentimento</button><button type="button" className="button button-primary coord-primary-button" onClick={() => setCandidateStatus('Participante ativo')}><Check size={13} /> Tornar ativo</button><button type="button" className="button coord-danger-button" onClick={() => setCandidateStatus('Não elegível')}>Não elegível</button></div></Modal>}
   </div>;
 }

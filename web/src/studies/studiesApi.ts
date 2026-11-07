@@ -36,6 +36,8 @@ async function studiesRequest<T>(request: AuthenticatedRequest, path: string, in
 
 export const studiesApi = {
   list: (request: AuthenticatedRequest, signal?: AbortSignal) => studiesRequest<Study[]>(request, '/studies', { signal }),
+  listAvailableForRecruitment: (request: AuthenticatedRequest, signal?: AbortSignal) =>
+    studiesRequest<Pick<Study, 'id' | 'title'>[]>(request, '/studies/disponiveis-recrutamento', { signal }),
   detail: (request: AuthenticatedRequest, id: string) => studiesRequest<Study>(request, `/studies/${encodeURIComponent(id)}`),
   create: (request: AuthenticatedRequest, input: StudyInput) => studiesRequest<Study>(request, '/studies', {
     method: 'POST', body: JSON.stringify(input), headers: { 'Content-Type': 'application/json' },

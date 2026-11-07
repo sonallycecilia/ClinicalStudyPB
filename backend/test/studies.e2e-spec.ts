@@ -1,6 +1,7 @@
 import request from 'supertest';
 import { databaseTestApp } from './database-test-app.js';
 import { UsersService } from '../src/users/users.service.js';
+import { DatabaseService } from '../src/database/database.service.js';
 import type { PublicUser } from '../src/users/user.types.js';
 
 const sample = {
@@ -20,6 +21,8 @@ describe('Estudos clínicos com PostgreSQL (E2E)', () => {
   let researcherToken: string;
   let otherResearcherToken: string;
   let adminToken: string;
+  let coordinatorToken: string;
+  let participantToken: string;
   const api = () => fixture.app.getHttpServer();
   const bearer = (token: string) => `Bearer ${token}`;
 
@@ -38,6 +41,10 @@ describe('Estudos clínicos com PostgreSQL (E2E)', () => {
     researcherToken = await login(researcher.email);
     otherResearcherToken = await login(otherResearcher.email);
     adminToken = await login(admin.email);
+    const coordinator = await users.create({ ...baseUser, email: 'coordenador@example.test', role: 'Coordenador' });
+    const participant = await users.create({ ...baseUser, email: 'participante@example.test', role: 'Participante' });
+    coordinatorToken = await login(coordinator.email);
+    participantToken = await login(participant.email);
   });
 
   afterAll(async () => {
@@ -94,5 +101,41 @@ describe('Estudos clínicos com PostgreSQL (E2E)', () => {
     await request(api()).get(`/studies/${created.body.id}`)
       .set('Authorization', bearer(researcherToken)).expect(200)
       .expect(({ body }) => expect(body.title).toBe('Estudo persistente'));
+  });
+
+  it('permite ao Coordenador consultar somente estudos na fase Recrutamento, com ID e título', async () => {
+    const path = '/studies/disponiveis-recrutamento';
+    await request(api()).get(path).set('Authorization', bearer(coordinatorToken))
+      .expect(200).expect(({ body }) => expect(body).toEqual([]));
+
+    let recruitingStudy: { id: string; title: string } | undefined;
+    const database = fixture.app.get(DatabaseService);
+    for (const phase of ['Planejamento', 'Recrutamento', 'Execução', 'Encerrado']) {
+      const created = await request(api()).post('/studies').set('Authorization', bearer(researcherToken))
+        .send({ ...sample, title: `Estudo na fase ${phase}`, startDate: '2020-01-01' }).expect(201);
+      // Fixtures apenas no schema descartável do teste; não reclassifica dados de desenvolvimento.
+      await database.query('UPDATE estudos SET status = $1 WHERE id_estudo = $2', [phase, created.body.id]);
+      expect(created.body.status).toBe('Em andamento');
+      if (phase === 'Recrutamento') recruitingStudy = { id: created.body.id, title: created.body.title };
+    }
+    await request(api()).get(path).set('Authorization', bearer(coordinatorToken))
+      .expect(200).expect(({ body }) => expect(body).toEqual([recruitingStudy]));
+  });
+
+  it('mantém a nova consulta restrita ao Coordenador e não libera as demais operações', async () => {
+    const path = '/studies/disponiveis-recrutamento';
+    await request(api()).get(path).expect(401);
+    for (const token of [adminToken, researcherToken, participantToken]) {
+      await request(api()).get(path).set('Authorization', bearer(token)).expect(403);
+    }
+    const created = await request(api()).post('/studies').set('Authorization', bearer(researcherToken))
+      .send({ ...sample, title: 'Estudo protegido do Coordenador' }).expect(201);
+    await request(api()).get('/studies').set('Authorization', bearer(coordinatorToken)).expect(403);
+    await request(api()).get(`/studies/${created.body.id}`).set('Authorization', bearer(coordinatorToken)).expect(403);
+    await request(api()).post('/studies').set('Authorization', bearer(coordinatorToken)).send(sample).expect(403);
+    await request(api()).patch(`/studies/${created.body.id}`).set('Authorization', bearer(coordinatorToken))
+      .send({ title: 'Alteração indevida' }).expect(403);
+    await request(api()).get(`/studies/${created.body.id}`).set('Authorization', bearer(researcherToken))
+      .expect(200).expect(({ body }) => expect(body.title).toBe('Estudo protegido do Coordenador'));
   });
 });
