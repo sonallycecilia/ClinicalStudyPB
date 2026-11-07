@@ -171,7 +171,8 @@ describe('StudyVisitsSection — cadastro', () => {
     fill(dialog, /Nome da visita/, '  Retorno  ');
     fill(dialog, /Intervalo/, '14');
     fill(dialog, /Descrição da visita/, 'Primeiro retorno.');
-    addActivity(dialog, 1, 'Coleta de sangue', 'Exame');
+    const blood = addActivity(dialog, 1, 'Coleta de sangue', 'Exame');
+    fill(blood, /Descrição da atividade/, '  Tubo com EDTA.  ');
     addActivity(dialog, 2, 'Questionário de sono', 'Questionário');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cadastrar visita' }));
 
@@ -179,11 +180,12 @@ describe('StudyVisitsSection — cadastro', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(posts()).toEqual([
       ['/studies/study-one/visits', { name: 'Retorno', order: 2, intervalDays: 14, description: 'Primeiro retorno.' }],
-      ['/studies/study-one/visits/visit-1/activities', { name: 'Coleta de sangue', type: 'Exame', description: null }],
+      ['/studies/study-one/visits/visit-1/activities', { name: 'Coleta de sangue', type: 'Exame', description: 'Tubo com EDTA.' }],
       ['/studies/study-one/visits/visit-1/activities', { name: 'Questionário de sono', type: 'Questionário', description: null }],
     ]);
     const created = await screen.findByRole('article', { name: /Visita 2 Retorno/ });
     expect(within(created).getByText('Coleta de sangue')).toBeTruthy();
+    expect(within(created).getByText('Tubo com EDTA.')).toBeTruthy();
     expect(within(created).getByText('Questionário de sono')).toBeTruthy();
   });
 
@@ -199,6 +201,35 @@ describe('StudyVisitsSection — cadastro', () => {
 
     expect(await screen.findByRole('article', { name: /Visita 1 Consulta inicial/ })).toBeTruthy();
     expect(posts()).toEqual([['/studies/study-one/visits', { name: 'Consulta inicial', order: 1, intervalDays: null, description: null }]]);
+  });
+
+  it('remove uma atividade do meio sem perder as demais nem manter os erros da removida', async () => {
+    routeApi();
+    render(<StudyVisitsSection studyId="study-one" />);
+    const dialog = await openForm();
+
+    fill(dialog, /Nome da visita/, 'Consulta inicial');
+    addActivity(dialog, 1, 'Coleta', 'Exame');
+    addActivity(dialog, 2, '', '');
+    addActivity(dialog, 3, 'Questionário', 'Entrevista');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cadastrar visita' }));
+    expect(within(within(dialog).getByRole('group', { name: 'Atividade 2' })).getAllByRole('alert')).toHaveLength(2);
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Remover atividade 2' }));
+
+    expect(within(dialog).queryAllByRole('alert')).toEqual([]);
+    expect(within(dialog).getByText('2 atividades')).toBeTruthy();
+    expect(within(within(dialog).getByRole('group', { name: 'Atividade 1' })).getByLabelText(/Nome da atividade/)).toHaveProperty('value', 'Coleta');
+    expect(within(within(dialog).getByRole('group', { name: 'Atividade 2' })).getByLabelText(/Nome da atividade/)).toHaveProperty('value', 'Questionário');
+    expect(within(dialog).queryByRole('group', { name: 'Atividade 3' })).toBeNull();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cadastrar visita' }));
+    expect(await screen.findByText('Visita cadastrada com sucesso.')).toBeTruthy();
+    expect(posts().map(([path, body]) => [path, body.name])).toEqual([
+      ['/studies/study-one/visits', 'Consulta inicial'],
+      ['/studies/study-one/visits/visit-1/activities', 'Coleta'],
+      ['/studies/study-one/visits/visit-1/activities', 'Questionário'],
+    ]);
   });
 
   it('valida campos obrigatórios, limites e ordem repetida sem chamar a API', async () => {
@@ -237,6 +268,7 @@ describe('StudyVisitsSection — cadastro', () => {
     ['Ordem', '2147483648', 'Informe um número de no máximo 2147483647.'],
     ['Intervalo', '-1', 'Informe um número inteiro maior ou igual a 0.'],
     ['Intervalo', '1.5', 'Informe um número inteiro maior ou igual a 0.'],
+    ['Intervalo', '2147483648', 'Informe um número de no máximo 2147483647.'],
   ])('recusa %s com o valor "%s" sem alterar o que foi digitado', async (label, value, message) => {
     routeApi();
     render(<StudyVisitsSection studyId="study-one" />);
@@ -605,5 +637,53 @@ describe('StudyVisitsSection — detalhes do estudo', () => {
     await openDetails('encerrado');
     expect(screen.queryByRole('button', { name: '+ Cadastrar visita' })).toBeNull();
     expect(screen.getByText('Estudo encerrado: as visitas podem ser consultadas, mas não é possível cadastrar novas.')).toBeTruthy();
+  });
+
+  it('ao encerrar o estudo pela API nos detalhes, mantém as visitas e deixa de oferecer o cadastro', async () => {
+    await openDetails('execução');
+    const routed = mockRequest.getMockImplementation()!;
+    mockRequest.mockImplementation(async (path: string, init?: RequestInit) => path === '/studies/study-one/status'
+      ? jsonResponse({ ...study, status: JSON.parse(String(init?.body)).status })
+      : routed(path, init));
+
+    fireEvent.click(screen.getByRole('button', { name: /Alterar estado/ }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Alterar estado do estudo' })).getByRole('button', { name: 'Confirmar alteração' }));
+
+    expect(await screen.findByText('Estado do estudo "Qualidade do sono" alterado para Encerrado.')).toBeTruthy();
+    expect(mockRequest).toHaveBeenCalledWith('/studies/study-one/status', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ status: 'encerrado' }) }));
+    const hero = screen.getByRole('heading', { level: 1, name: study.title }).closest('header')!;
+    expect(within(hero).getByText('Encerrado').classList.contains('status-encerrado')).toBe(true);
+    expect(screen.getByRole('article', { name: /Visita 1 Consulta inicial/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '+ Cadastrar visita' })).toBeNull();
+    expect(screen.getByText('Estudo encerrado: as visitas podem ser consultadas, mas não é possível cadastrar novas.')).toBeTruthy();
+  });
+
+  it('ao trocar de estudo nos detalhes, mostra o estado e as visitas somente do estudo aberto', async () => {
+    const other: Study = { ...study, id: 'study-two', code: 'EST-002', title: 'Atividade física', status: 'planejamento' };
+    const otherVisit: PlannedVisit = { ...baseline, id: 'v9', studyId: 'study-two', name: 'Avaliação física' };
+    mockRequest.mockImplementation(async (path: string) => {
+      if (path === '/studies') return jsonResponse([study, other]);
+      if (path === '/studies/study-one') return jsonResponse(study);
+      if (path === '/studies/study-two') return jsonResponse(other);
+      if (path === '/studies/study-one/visits') return jsonResponse([baseline]);
+      if (path === '/studies/study-two/visits') return jsonResponse([otherVisit]);
+      return jsonResponse([]);
+    });
+    render(<StudiesPage />);
+    const heroOf = (title: string) => screen.getByRole('heading', { level: 1, name: title }).closest('header')!;
+
+    fireEvent.click(await screen.findByRole('button', { name: `Ações de ${study.title}` }));
+    fireEvent.click(screen.getByRole('button', { name: /Ver detalhes/ }));
+    expect(await screen.findByRole('article', { name: /Visita 1 Consulta inicial/ })).toBeTruthy();
+    expect(within(heroOf(study.title)).getByText('Execução')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar aos estudos' }));
+    fireEvent.click(await screen.findByRole('button', { name: `Ações de ${other.title}` }));
+    fireEvent.click(screen.getByRole('button', { name: /Ver detalhes/ }));
+
+    expect(await screen.findByRole('article', { name: /Visita 1 Avaliação física/ })).toBeTruthy();
+    expect(screen.queryByRole('article', { name: /Consulta inicial/ })).toBeNull();
+    expect(within(heroOf(other.title)).getByText('Planejamento')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '+ Cadastrar visita' })).toBeTruthy();
   });
 });

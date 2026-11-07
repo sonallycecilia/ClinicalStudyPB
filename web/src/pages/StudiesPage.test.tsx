@@ -245,6 +245,12 @@ describe('StudiesPage', () => {
 });
 
 describe('StudiesPage — estados do estudo', () => {
+  // O resumo de critérios de cada cartão consulta a API pelo cliente autenticado; sem resposta,
+  // ele não atualiza a tela depois do fim do teste (o que gerava avisos de act(...)).
+  beforeEach(() => {
+    mockRequest.mockReturnValue(new Promise<Response>(() => undefined));
+  });
+
   const allStatuses: Study[] = (['planejamento', 'recrutamento', 'execução', 'encerrado'] as const).map((status, index) => ({
     ...studies[0]!, id: `study-${status}`, code: `EST-01${index}`, title: `Estudo ${index + 1}`, status,
   }));
@@ -356,7 +362,7 @@ describe('StudiesPage — estados do estudo', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Alterar estado/ }));
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Confirmar alteração' }));
 
-    expect((await screen.findByRole('status')).textContent).toContain('alterado para Encerrado.');
+    expect(await screen.findByText('Estado do estudo "Qualidade do sono" alterado para Encerrado.')).toBeTruthy();
     expect(mockTransition).toHaveBeenCalledWith(mockRequest, 'study-one', 'encerrado');
     const hero = screen.getByRole('heading', { level: 1, name: 'Qualidade do sono' }).closest('header')!;
     expect(within(hero).getByText('Encerrado')).toBeTruthy();
