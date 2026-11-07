@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CandidateForm } from '../candidates/CandidateForm';
+import { CandidateEligibilityForm } from '../candidates/CandidateEligibilityForm';
+import { useCandidateEligibilityCriteria } from '../candidates/useCandidateEligibilityCriteria';
 import { useRecruitmentStudies } from '../candidates/useRecruitmentStudies';
 import type { Candidate, CandidateStatus } from '../candidates/candidatesApi';
 import { useStudyCandidates, type StudyCandidatesState } from '../candidates/useStudyCandidates';
@@ -112,36 +114,21 @@ function EmptyRow({ columns, message }: { columns: number; message: ReactNode })
 }
 
 function Modal({ title, description, onClose, children, wide = false }: { title: string; description?: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
-  return <div className="modal-backdrop coord-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className={`user-modal coord-modal${wide ? ' coord-modal-wide' : ''}`} role="dialog" aria-modal="true" aria-labelledby="coord-modal-title">
-      <header className="coord-modal-header"><div><h2 id="coord-modal-title">{title}</h2>{description && <p>{description}</p>}</div><button type="button" className="icon-button coord-icon-button" onClick={onClose} aria-label="Fechar"><X size={17} /></button></header>
-      {children}
-    </section>
-  </div>;
-}
-
-function Field({ label, children, wide = false }: { label: string; children: ReactNode; wide?: boolean }) {
-  return <label className={`study-field coord-field${wide ? ' coord-field-wide' : ''}`}><span>{label}</span>{children}</label>;
-}
-
-function initialsFormName(value: string) {
-  return value.trim() ? initials(value) : '??';
-}
-
-function CandidateRegistrationModal({ onClose }: { onClose: () => void }) {
-  const studies = useRecruitmentStudies();
+  const dialogRef = useRef<HTMLElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  const titleId = useId();
 
   useEffect(() => {
     const previousFocus = document.activeElement as HTMLElement | null;
-    const name = document.getElementById('candidate-name');
-    const dialog = name?.closest<HTMLElement>('[role="dialog"]');
+    const dialog = dialogRef.current;
     dialog?.querySelector<HTMLButtonElement>('button[aria-label="Fechar"]')?.focus();
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
-        onClose();
+        closeRef.current();
       } else if (event.key === 'Tab' && dialog) {
         const controls = Array.from(dialog.querySelectorAll<HTMLElement>('button, input, select, textarea, a[href], [tabindex]'))
           .filter((element) => !element.matches(':disabled') && element.tabIndex >= 0);
@@ -160,12 +147,50 @@ function CandidateRegistrationModal({ onClose }: { onClose: () => void }) {
     dialog?.addEventListener('keydown', handleKeyDown);
     return () => {
       dialog?.removeEventListener('keydown', handleKeyDown);
-      previousFocus?.focus();
+      if (previousFocus?.isConnected) previousFocus.focus();
     };
-  }, [onClose]);
+  }, [title]);
+
+  return <div className="modal-backdrop coord-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section ref={dialogRef} className={`user-modal coord-modal${wide ? ' coord-modal-wide' : ''}`} role="dialog" aria-modal="true" aria-labelledby={titleId}>
+      <header className="coord-modal-header"><div><h2 id={titleId}>{title}</h2>{description && <p>{description}</p>}</div><button type="button" className="icon-button coord-icon-button" onClick={onClose} aria-label="Fechar"><X size={17} /></button></header>
+      {children}
+    </section>
+  </div>;
+}
+
+function Field({ label, children, wide = false }: { label: string; children: ReactNode; wide?: boolean }) {
+  return <label className={`study-field coord-field${wide ? ' coord-field-wide' : ''}`}><span>{label}</span>{children}</label>;
+}
+
+function initialsFormName(value: string) {
+  return value.trim() ? initials(value) : '??';
+}
+
+function CandidateRegistrationModal({ onClose }: { onClose: () => void }) {
+  const studies = useRecruitmentStudies();
 
   return <Modal title="Cadastrar candidato" description="Informe os dados do candidato e selecione o estudo de interesse." onClose={onClose}>
     <CandidateForm studies={studies} onCancel={onClose} />
+  </Modal>;
+}
+
+function CandidateEligibilitySection({ candidate, onBack }: { candidate: Candidate; onBack: () => void }) {
+  const criteria = useCandidateEligibilityCriteria(candidate.studyId);
+  return <CandidateEligibilityForm state={criteria.state} onRetry={criteria.reload} onCancel={onBack} />;
+}
+
+function CandidateDetailsModal({ candidate, onClose }: { candidate: Candidate; onClose: () => void }) {
+  const [evaluating, setEvaluating] = useState(false);
+  return <Modal title={evaluating ? 'Avaliar elegibilidade' : 'Detalhes do candidato'} description={candidate.name} onClose={onClose} wide={evaluating}>
+    <div className="coord-detail-list">
+      <div><span>Estudo de interesse</span><strong>{candidate.studyTitle}</strong></div>
+      {!evaluating && <div><span>Data de inscrição</span><strong>{candidateDate(candidate.enrollmentDate)}</strong></div>}
+      <div><span>Status atual</span><StatusBadge status={candidate.status} /></div>
+    </div>
+    {evaluating ? <CandidateEligibilitySection candidate={candidate} onBack={() => setEvaluating(false)} /> : <div className="modal-actions coord-modal-actions">
+      <button type="button" className="button button-primary" onClick={() => setEvaluating(true)}>Avaliar elegibilidade</button>
+    </div>}
   </Modal>;
 }
 
@@ -276,7 +301,7 @@ export function CoordinatorCandidatesPage() {
       <CandidatesTable state={candidates.state} search={search} statusFilter={statusFilter} onOpen={setActiveCandidate} onRetry={candidates.reload} />
     </section>
     </div>
-    {activeCandidate && <Modal title="Detalhes do candidato" description={activeCandidate.name} onClose={() => setActiveCandidate(null)}><div className="coord-detail-list"><div><span>Estudo de interesse</span><strong>{activeCandidate.studyTitle}</strong></div><div><span>Data de inscrição</span><strong>{candidateDate(activeCandidate.enrollmentDate)}</strong></div><div><span>Status atual</span><StatusBadge status={activeCandidate.status} /></div></div></Modal>}
+    {activeCandidate && <CandidateDetailsModal key={activeCandidate.id} candidate={activeCandidate} onClose={() => setActiveCandidate(null)} />}
   </div>;
 }
 
