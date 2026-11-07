@@ -54,9 +54,10 @@ describe('página e rotas de cadastro de candidato no App', () => {
     expect(screen.queryByText('Candidato cadastrado com sucesso.')).toBeNull();
   });
 
-  it('abre o modal a partir da listagem e cancela sem navegar ou criar registros', () => {
+  it('abre o modal a partir da listagem e cancela sem navegar ou criar registros', async () => {
     window.history.replaceState({}, '', '/coordenador/candidatos');
     render(<App />);
+    await screen.findByRole('option', { name: 'Estudo em recrutamento' });
     fireEvent.click(screen.getByRole('button', { name: 'Novo candidato' }));
     expect(window.location.pathname).toBe('/coordenador/candidatos');
     expect(screen.getByRole('dialog', { name: 'Cadastrar candidato' })).toBeTruthy();
@@ -66,14 +67,16 @@ describe('página e rotas de cadastro de candidato no App', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.getByRole('heading', { name: 'Lista de candidatos e participantes' })).toBeTruthy();
     expect(screen.queryByText('Pessoa não salva')).toBeNull();
-    expect(request).toHaveBeenCalledOnce();
-    expect((request.mock.calls[0][1] as RequestInit).signal?.aborted).toBe(true);
+    expect(request).toHaveBeenCalledTimes(2);
+    expect((request.mock.calls[1][1] as RequestInit).signal?.aborted).toBe(true);
+    expect((request.mock.calls[0][1] as RequestInit).signal?.aborted).toBe(false);
   });
 
-  it('retorna à listagem pelo cabeçalho', () => {
+  it('retorna à listagem pelo cabeçalho', async () => {
     render(<App />);
     fireEvent.click(screen.getByRole('link', { name: 'Candidatos e participantes', current: false }));
     expect(window.location.pathname).toBe('/coordenador/candidatos');
+    await screen.findByRole('option', { name: 'Estudo em recrutamento' });
   });
 
   it('mantém o seletor indisponível enquanto carrega a consulta', () => {

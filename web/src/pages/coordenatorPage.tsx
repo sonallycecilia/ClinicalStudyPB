@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CandidateForm } from '../candidates/CandidateForm';
 import { useRecruitmentStudies } from '../candidates/useRecruitmentStudies';
+import type { Candidate, CandidateStatus } from '../candidates/candidatesApi';
+import { useStudyCandidates, type StudyCandidatesState } from '../candidates/useStudyCandidates';
+import { useCandidateListStudies } from '../candidates/useCandidateListStudies';
 import {
   CalendarDays,
   Check,
@@ -15,7 +18,6 @@ import {
 } from 'lucide-react';
 
 type VisitStatus = 'Confirmada' | 'Aguardando' | 'Reagendamento' | 'Concluída';
-type CandidateStatus = 'Pendente de avaliação' | 'Participante ativo' | 'Consentimento pendente' | 'Não elegível';
 type RequestStatus = 'Pendente' | 'Aprovada' | 'Recusada';
 
 interface VisitRow {
@@ -26,15 +28,6 @@ interface VisitRow {
   visit: string;
   dateTime: string;
   status: VisitStatus;
-}
-
-interface CandidateRow {
-  id: number;
-  name: string;
-  initials: string;
-  study: string;
-  enrollmentDate: string;
-  status: CandidateStatus;
 }
 
 interface RequestRow {
@@ -52,15 +45,6 @@ const initialVisits: VisitRow[] = [
   { id: 2, participant: 'Rafael Lima', initials: 'RL', study: 'Pressão arterial', visit: 'Avaliação inicial', dateTime: '24/10/2026 · 10:30', status: 'Aguardando' },
   { id: 3, participant: 'Ana Maria', initials: 'AS', study: 'Atividade física', visit: 'Visita 02', dateTime: '25/10/2026 · 14:00', status: 'Confirmada' },
   { id: 4, participant: 'Bianca Oliveira', initials: 'BO', study: 'Qualidade do sono', visit: 'Visita 03', dateTime: '26/10/2026 · 08:30', status: 'Reagendamento' },
-];
-
-const initialCandidates: CandidateRow[] = [
-  { id: 1, name: 'Mariana Alves', initials: 'MA', study: 'Qualidade do sono', enrollmentDate: '20/10/2026', status: 'Pendente de avaliação' },
-  { id: 2, name: 'Pedro Santos', initials: 'PS', study: 'Pressão arterial', enrollmentDate: '19/10/2026', status: 'Pendente de avaliação' },
-  { id: 3, name: 'Bianca Oliveira', initials: 'BO', study: 'Qualidade do sono', enrollmentDate: '18/10/2026', status: 'Participante ativo' },
-  { id: 4, name: 'Lucas Martins', initials: 'LM', study: 'Atividade física', enrollmentDate: '16/10/2026', status: 'Consentimento pendente' },
-  { id: 5, name: 'Carla Mendes', initials: 'CM', study: 'Pressão arterial', enrollmentDate: '14/10/2026', status: 'Participante ativo' },
-  { id: 6, name: 'João Pedro', initials: 'JP', study: 'Qualidade do sono', enrollmentDate: '12/10/2026', status: 'Não elegível' },
 ];
 
 const initialRequests: RequestRow[] = [
@@ -108,8 +92,10 @@ function SearchField({ value, onChange, placeholder = 'Buscar por nome...' }: { 
   return <label className="study-search coord-search"><Search size={12} /><input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} /></label>;
 }
 
-function FilterSelect({ value, onChange, options, label }: { value: string; onChange: (value: string) => void; options: string[]; label: string }) {
-  return <label className="study-filter coord-filter"><span className="sr-only">{label}</span><select value={value} onChange={(event) => onChange(event.target.value)}>{options.map((option) => <option key={option}>{option}</option>)}</select><ChevronDown size={11} /></label>;
+function FilterSelect({ value, onChange, options, label, disabled = false }: { value: string; onChange: (value: string) => void; options: (string | { value: string; label: string })[]; label: string; disabled?: boolean }) {
+  return <label className="study-filter coord-filter"><span className="sr-only">{label}</span><select value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}>{options.map((option) => typeof option === 'string'
+    ? <option key={option}>{option}</option>
+    : <option key={option.value} value={option.value}>{option.label}</option>)}</select><ChevronDown size={11} /></label>;
 }
 
 function PersonCell({ name, initials: badge }: { name: string; initials: string }) {
@@ -120,7 +106,7 @@ function MoreButton({ onClick }: { onClick: () => void }) {
   return <button type="button" className="icon-button coord-more-button" onClick={onClick} aria-label="Mais ações"><MoreVertical size={14} /></button>;
 }
 
-function EmptyRow({ columns, message }: { columns: number; message: string }) {
+function EmptyRow({ columns, message }: { columns: number; message: ReactNode }) {
   return <tr><td colSpan={columns} className="coord-empty-row">{message}</td></tr>;
 }
 
@@ -214,7 +200,7 @@ export function CoordinatorDashboardPage() {
   return <div className="coord-page coord-dashboard-page">
     <PageHeader title="Coordenar Estudos Clínicos" action="Novo registro" onAction={() => setShowNew(true)} />
     <div className="page-content-offset">
-    <StatCards items={[{ title: 'Candidatos pendentes', value: '04', note: 'para avaliar' }, { title: 'Participantes ativos', value: '18' }, { title: 'Visitas esta semana', value: '12' }, { title: 'Reagendamentos', value: '03 pendentes' }]} />
+    <StatCards items={[{ title: 'Candidatos pendentes', value: '—', note: 'Consulta indisponível' }, { title: 'Participantes ativos', value: '18' }, { title: 'Visitas esta semana', value: '12' }, { title: 'Reagendamentos', value: '03 pendentes' }]} />
     <section className="table-card coord-panel coord-upcoming-panel">
       <div className="study-list-heading coord-panel-heading"><h2>Próximas visitas</h2><div className="study-list-tools coord-table-tools"><SearchField value={search} onChange={setSearch} placeholder="Buscar participante..." /><FilterSelect value={studyFilter} onChange={setStudyFilter} label="Filtrar por estudo" options={['Todos os estudos', 'Qualidade do sono', 'Pressão arterial', 'Atividade física']} /></div></div>
       <div className="table-scroll coord-table-scroll"><table className="users-table coord-table coord-dashboard-table"><thead><tr><th>Participante</th><th>Estudo</th><th>Data / horário</th><th>Situação</th><th className="coord-th-actions">Ações</th></tr></thead><tbody>
@@ -228,33 +214,64 @@ export function CoordinatorDashboardPage() {
   </div>;
 }
 
+function candidateDate(value: string) {
+  return value.split('-').reverse().join('/');
+}
+
+function CandidatesTable({ state, search, statusFilter, onOpen, onRetry }: {
+  state: StudyCandidatesState;
+  search: string;
+  statusFilter: string;
+  onOpen: (candidate: Candidate) => void;
+  onRetry: () => void;
+}) {
+  const visible = state.status === 'ready' ? state.candidates.filter((candidate) =>
+    candidate.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())
+    && (statusFilter === 'Todos os status' || candidate.status === statusFilter)) : [];
+  let feedback: ReactNode;
+  if (state.status === 'loading') feedback = <span role="status">Consultando candidatos…</span>;
+  else if (state.status === 'error') feedback = <div role="alert"><p>{state.message}</p><button type="button" className="button button-outline coord-secondary-button" onClick={onRetry}>Tentar novamente</button></div>;
+  else if (state.status === 'unavailable') feedback = <span role="status">{state.message}</span>;
+  else if (state.status === 'idle') feedback = <span role="status">Selecione um estudo para consultar os candidatos.</span>;
+  else feedback = <span role="status">{state.candidates.length === 0
+    ? 'O estudo selecionado não possui candidatos cadastrados.'
+    : 'Nenhum candidato encontrado para os filtros selecionados.'}</span>;
+
+  return <div className="table-scroll coord-table-scroll"><table className="users-table coord-table coord-candidates-table" aria-label="Candidatos do estudo" aria-busy={state.status === 'loading'}><thead><tr><th>Pessoa</th><th>Estudo de interesse</th><th>Data de inscrição</th><th>Status</th><th className="coord-th-actions">Ações</th></tr></thead><tbody>
+    {visible.length ? visible.map((candidate) => <tr key={candidate.id}><td><PersonCell name={candidate.name} initials={initials(candidate.name)} /></td><td>{candidate.studyTitle}</td><td>{candidateDate(candidate.enrollmentDate)}</td><td><StatusBadge status={candidate.status} /></td><td><div className="coord-row-actions"><button type="button" className="coord-text-action" onClick={() => onOpen(candidate)}>Abrir</button></div></td></tr>) : <EmptyRow columns={5} message={feedback} />}
+  </tbody></table></div>;
+}
+
 export function CoordinatorCandidatesPage() {
   const [showNew, setShowNew] = useState(false);
-  const [candidates, setCandidates] = useState(initialCandidates);
+  const closeRegistration = useCallback(() => setShowNew(false), []);
   const [search, setSearch] = useState('');
+  const [studyId, setStudyId] = useState('');
   const [statusFilter, setStatusFilter] = useState('Todos os status');
-  const [activeCandidate, setActiveCandidate] = useState<CandidateRow | null>(null);
-  const visible = candidates.filter((candidate) => candidate.name.toLowerCase().includes(search.toLowerCase()) && (statusFilter === 'Todos os status' || candidate.status === statusFilter));
-
-  function setCandidateStatus(status: CandidateStatus) {
-    if (!activeCandidate) return;
-    setCandidates((current) => current.map((candidate) => candidate.id === activeCandidate.id ? { ...candidate, status } : candidate));
-    setActiveCandidate(null);
-  }
+  const [activeCandidate, setActiveCandidate] = useState<Candidate | null>(null);
+  const studies = useCandidateListStudies();
+  const candidates = useStudyCandidates(studyId);
+  const options = studies.state.status === 'ready' ? studies.state.options : [];
+  const studyPlaceholder = studies.state.status === 'loading' ? 'Carregando estudos…'
+    : studies.state.status === 'error' ? 'Falha ao carregar estudos' : 'Selecione um estudo';
 
   return <div className="coord-page coord-candidates-page">
     <PageHeader title="Candidatos e participantes" action="Novo candidato" onAction={() => setShowNew(true)} />
-    {showNew && <CandidateRegistrationModal onClose={() => setShowNew(false)} />}
+    {showNew && <CandidateRegistrationModal onClose={closeRegistration} />}
     <div className="page-content-offset">
-    <StatCards items={[{ title: 'Candidatos para avaliar', value: String(candidates.filter((item) => item.status === 'Pendente de avaliação').length + 2).padStart(2, '0') }, { title: 'Participantes ativos', value: String(candidates.filter((item) => item.status === 'Participante ativo').length + 16).padStart(2, '0') }, { title: 'Inscrições este mês', value: '07' }]} />
     <section className="table-card coord-panel coord-list-panel">
-      <div className="study-list-heading coord-panel-heading"><h2>Lista de candidatos e participantes</h2><div className="study-list-tools coord-table-tools"><SearchField value={search} onChange={setSearch} placeholder="Buscar por nome..." /><FilterSelect value={statusFilter} onChange={setStatusFilter} label="Filtrar por status" options={['Todos os status', 'Pendente de avaliação', 'Participante ativo', 'Consentimento pendente', 'Não elegível']} /></div></div>
-      <div className="table-scroll coord-table-scroll"><table className="users-table coord-table coord-candidates-table"><thead><tr><th>Pessoa</th><th>Estudo de interesse</th><th>Data de inscrição</th><th>Status</th><th className="coord-th-actions">Ações</th></tr></thead><tbody>
-        {visible.length ? visible.map((candidate) => <tr key={candidate.id}><td><PersonCell name={candidate.name} initials={candidate.initials} /></td><td>{candidate.study}</td><td>{candidate.enrollmentDate}</td><td><StatusBadge status={candidate.status} /></td><td><div className="coord-row-actions"><button type="button" className="coord-text-action" onClick={() => setActiveCandidate(candidate)}>Abrir</button><MoreButton onClick={() => setActiveCandidate(candidate)} /></div></td></tr>) : <EmptyRow columns={5} message="Nenhum candidato encontrado." />}
-      </tbody></table></div>
+      <div className="study-list-heading coord-panel-heading"><h2>Lista de candidatos e participantes</h2><div className="study-list-tools coord-table-tools"><SearchField value={search} onChange={setSearch} placeholder="Buscar por nome..." /><FilterSelect value={studyId} onChange={(id) => { setStudyId(id); setActiveCandidate(null); }} label="Filtrar por estudo" disabled={options.length === 0} options={[
+        { value: '', label: studyPlaceholder },
+        ...options.map((study) => ({ value: study.id, label: options.some((other) => other.id !== study.id && other.title === study.title) ? `${study.title} (${study.id})` : study.title })),
+      ]} /><FilterSelect value={statusFilter} onChange={setStatusFilter} label="Filtrar por status" options={['Todos os status', 'Pendente de avaliação', 'Participante ativo', 'Consentimento pendente', 'Não elegível']} /></div></div>
+      <p className="coord-help-copy">A seleção exibe apenas estudos em recrutamento. A consulta dos estudos nas demais fases ainda não está disponível para o coordenador.</p>
+      {studies.state.status === 'loading' && <p role="status" className="coord-help-copy">Carregando estudos…</p>}
+      {studies.state.status === 'error' && <div role="alert"><p>Não foi possível carregar os estudos.</p><button type="button" className="button button-outline coord-secondary-button" onClick={studies.reload}>Recarregar estudos</button></div>}
+      {studies.state.status === 'ready' && options.length === 0 && <p role="status" className="coord-help-copy">Nenhum estudo em recrutamento disponível para seleção. Não foi possível consultar candidatos.</p>}
+      <CandidatesTable state={candidates.state} search={search} statusFilter={statusFilter} onOpen={setActiveCandidate} onRetry={candidates.reload} />
     </section>
     </div>
-    {activeCandidate && <Modal title="Detalhes do candidato" description={activeCandidate.name} onClose={() => setActiveCandidate(null)}><div className="coord-detail-list"><div><span>Estudo de interesse</span><strong>{activeCandidate.study}</strong></div><div><span>Data de inscrição</span><strong>{activeCandidate.enrollmentDate}</strong></div><div><span>Status atual</span><StatusBadge status={activeCandidate.status} /></div></div><p className="coord-help-copy">Altere o status conforme o avanço do processo de elegibilidade e consentimento.</p><div className="modal-actions coord-modal-actions coord-wrap-actions"><button type="button" className="button button-outline coord-secondary-button" onClick={() => setCandidateStatus('Pendente de avaliação')}>Pendente</button><button type="button" className="button button-outline coord-secondary-button" onClick={() => setCandidateStatus('Consentimento pendente')}>Consentimento</button><button type="button" className="button button-primary coord-primary-button" onClick={() => setCandidateStatus('Participante ativo')}><Check size={13} /> Tornar ativo</button><button type="button" className="button coord-danger-button" onClick={() => setCandidateStatus('Não elegível')}>Não elegível</button></div></Modal>}
+    {activeCandidate && <Modal title="Detalhes do candidato" description={activeCandidate.name} onClose={() => setActiveCandidate(null)}><div className="coord-detail-list"><div><span>Estudo de interesse</span><strong>{activeCandidate.studyTitle}</strong></div><div><span>Data de inscrição</span><strong>{candidateDate(activeCandidate.enrollmentDate)}</strong></div><div><span>Status atual</span><StatusBadge status={activeCandidate.status} /></div></div></Modal>}
   </div>;
 }
 
@@ -382,7 +399,7 @@ export function CoordinatorReportsPage() {
   const reportRows: {
     title: string;
     description: string;
-    rows: string[][];
+    rows: string[][] | null;
   }[] = [
     {
       title: 'Resumo dos estudos',
@@ -409,16 +426,8 @@ export function CoordinatorReportsPage() {
     },
     {
       title: 'Participantes e elegibilidade',
-      description: 'Candidatos avaliados, incluídos e situação de consentimento.',
-      rows: [
-        ['Participante', 'Estudo de interesse', 'Data de inscrição', 'Status'],
-        ...initialCandidates.map((candidate) => [
-          candidate.name,
-          candidate.study,
-          candidate.enrollmentDate,
-          candidate.status,
-        ]),
-      ],
+      description: 'Relatório indisponível enquanto a consulta de candidatos não estiver integrada.',
+      rows: null,
     },
   ];
 
@@ -519,7 +528,9 @@ export function CoordinatorReportsPage() {
             <button
               type="button"
               className="button button-outline coord-secondary-button"
+              disabled={report.rows === null}
               onClick={() =>
+                report.rows &&
                 downloadCsv(
                   `clinicalstudypb-${reportSlugs[index]}.csv`,
                   report.rows,
