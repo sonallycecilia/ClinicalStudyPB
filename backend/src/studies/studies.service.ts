@@ -171,6 +171,19 @@ export class StudiesService {
     return modifying ? this.assertStudyCanBeModified(id, userId) : this.findById(id, userId);
   }
 
+  /** Exclusivo do RF11 aprovado: inclusão de participantes em recrutamento. */
+  async assertInclusionStudyAccess(id: string, userId: string): Promise<Study> {
+    const user = await this.usersService.findById(userId);
+    if (user.role === 'Coordenador' && user.status === 'Ativo') {
+      const study = await this.findByIdForOwnerCheck(id);
+      if (study.status !== StudyStatus.Recrutamento) {
+        throw new ForbiddenException('O Coordenador só pode incluir participantes de estudos em recrutamento.');
+      }
+      return study;
+    }
+    return this.assertStudyCanBeModified(id, userId);
+  }
+
   async create(input: StudyInput, researcherId: string): Promise<Study> {
     const researcher = await this.assertResearcher(researcherId);
     const data = this.validateInput(input);

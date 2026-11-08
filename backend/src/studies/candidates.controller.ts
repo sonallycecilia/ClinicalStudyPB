@@ -124,6 +124,7 @@ export class CandidatesController {
   }
 
   @Post(':candidateId/include')
+  @Roles('Pesquisador', 'Coordenador')
   @ApiOperation({ summary: 'Incluir candidato elegível como participante do estudo' })
   @ApiParam({ name: 'studyId', description: 'UUID do estudo.', format: 'uuid' })
   @ApiParam({ name: 'candidateId', description: 'UUID do candidato.', format: 'uuid' })
@@ -133,7 +134,7 @@ export class CandidatesController {
     type: ApiErrorResponseDto,
   })
   @ApiUnauthorizedResponse({ description: 'Token ausente, inválido ou expirado.', type: ApiErrorResponseDto })
-  @ApiForbiddenResponse({ description: 'Somente o pesquisador proprietário pode incluir participantes.', type: ApiErrorResponseDto })
+  @ApiForbiddenResponse({ description: 'Exige Pesquisador proprietário ou Coordenador ativo em estudo em recrutamento.', type: ApiErrorResponseDto })
   @ApiNotFoundResponse({ description: 'Estudo ou candidato não encontrado neste estudo.', type: ApiErrorResponseDto })
   include(
     @Param('studyId', new ParseUUIDPipe()) studyId: string,

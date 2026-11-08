@@ -160,11 +160,10 @@ describe('RF08 HTTP — controller, guards e services reais, persistência simul
 
   it.each([
     ['get', 'consents'], ['post', 'consents'],
-    ['post', 'include'],
   ] as const)('RF10 permite consentimento e mantém %s /:candidateId/%s com sua autorização específica', async (method, endpoint) => {
     await request(app.getHttpServer())[method](`${path}/${candidateId}/${endpoint}`)
-      .set('Authorization', bearer(coordinator)).send({}).expect(endpoint === 'include' ? 403 : method === 'get' ? 404 : 400);
-    if (endpoint === 'include' || method === 'post') expect(query).not.toHaveBeenCalled();
+      .set('Authorization', bearer(coordinator)).send({}).expect(method === 'get' ? 404 : 400);
+    if (method === 'post') expect(query).not.toHaveBeenCalled();
   });
 
   it.each([{}, { name: '   ' }, { name: 'Ana', email: 'invalid' }, { name: 'Ana', id_estudo: studyId },

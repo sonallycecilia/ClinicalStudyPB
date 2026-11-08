@@ -1,38 +1,55 @@
-import { useId, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import {
   CandidateInclusionError, INCLUSION_UNAVAILABLE_MESSAGE, INVALID_INCLUSION_MESSAGE, isCandidateInclusion,
   type Candidate, type CandidateInclusion,
 } from './candidatesApi';
 
-export function CandidateInclusionForm({ candidate, onCancel, onInclude }: {
+export function CandidateInclusionForm({ candidate, onCancel, onInclude, onIncluded, onBusyChange }: {
   candidate: Pick<Candidate, 'id' | 'name' | 'studyId' | 'studyTitle'>;
   onCancel: () => void;
-  /** Injetar somente após autorização; deve retornar a resposta persistida da API. */
-  onInclude?: (studyId: string, candidateId: string) => Promise<CandidateInclusion>;
+  /** Deve retornar a resposta persistida da API. */
+  onInclude?: (studyId: string, candidateId: string, signal?: AbortSignal) => Promise<CandidateInclusion>;
+  onIncluded?: (inclusion: CandidateInclusion) => void;
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const noticeId = useId();
   const submitting = useRef(false);
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<CandidateInclusion | null>(null);
   const [error, setError] = useState<CandidateInclusionError | null>(null);
+  const lifecycle = useRef<AbortController | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    lifecycle.current = controller;
+    return () => controller.abort();
+  }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!onInclude || submitting.current || result) return;
     submitting.current = true;
     setSaving(true);
+    onBusyChange?.(true);
     setError(null);
+    const signal = lifecycle.current!.signal;
+    let included: CandidateInclusion | undefined;
     try {
-      const response = await onInclude(candidate.studyId, candidate.id);
+      const response = await onInclude(candidate.studyId, candidate.id, signal);
+      if (signal.aborted) return;
       if (!isCandidateInclusion(response, candidate.studyId, candidate.id)) throw new CandidateInclusionError(INVALID_INCLUSION_MESSAGE);
       setResult(response);
+      included = response;
     } catch (reason: unknown) {
-      setError(reason instanceof CandidateInclusionError ? reason
+      if (!signal.aborted) setError(reason instanceof CandidateInclusionError ? reason
         : new CandidateInclusionError('Não foi possível confirmar a inclusão. Consulte os candidatos antes de tentar novamente.'));
     } finally {
       submitting.current = false;
-      setSaving(false);
+      if (!signal.aborted) {
+        setSaving(false);
+        onBusyChange?.(false);
+      }
     }
+    if (included && !signal.aborted) onIncluded?.(included);
   }
 
   return <form aria-label="Inclusão de participante" aria-busy={saving} onSubmit={submit}>
@@ -51,7 +68,7 @@ export function CandidateInclusionForm({ candidate, onCancel, onInclude }: {
       {error.status === 400 && <p>Consulte a avaliação de elegibilidade, o consentimento simulado (o último registro deve estar concedido como Registrado, sem recusa ou revogação) e a situação e as vagas do estudo antes de tentar novamente.</p>}
     </div>}
     {result && <>
-      <p role="status" className="candidate-notice">Candidato incluído como participante com sucesso</p>
+      <p role="status" className="candidate-notice">Participante incluído com sucesso!</p>
       <div className="coord-detail-list">
         <div><span>Data de inclusão</span><strong><time dateTime={result.includedAt}>{result.includedAt.split('-').reverse().join('/')}</time></strong></div>
         <div><span>Estado da participação</span><strong>{result.participationStatus}</strong></div>

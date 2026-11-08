@@ -1,5 +1,5 @@
 import { jest } from '@jest/globals';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service.js';
 import { StudiesService } from './studies.service.js';
 import { CandidatesService } from './candidates.service.js';
@@ -30,6 +30,7 @@ describe('CandidatesService', () => {
   };
   let transactionClient: TransactionClient;
   let studies: {
+    assertInclusionStudyAccess: jest.Mock<(id: string, userId: string) => Promise<unknown>>;
     assertConsentStudyAccess: jest.Mock<(id: string, userId: string, modifying?: boolean) => Promise<unknown>>;
     assertCandidateStudyAccess: jest.Mock<(id: string, userId: string, modifying?: boolean) => Promise<unknown>>;
     findById: jest.Mock<(id: string, ownerId: string) => Promise<unknown>>;
@@ -51,6 +52,7 @@ describe('CandidatesService', () => {
         .mockImplementation((operation) => operation(transactionClient)),
     };
     studies = {
+      assertInclusionStudyAccess: jest.fn<(id: string, userId: string) => Promise<unknown>>().mockResolvedValue({ researcherId }),
       assertConsentStudyAccess: jest.fn<(id: string, userId: string, modifying?: boolean) => Promise<unknown>>().mockResolvedValue({ researcherId }),
       assertCandidateStudyAccess: jest.fn<(id: string, userId: string, modifying?: boolean) => Promise<unknown>>(),
       findById: jest.fn<(id: string, ownerId: string) => Promise<unknown>>(),
@@ -171,7 +173,7 @@ describe('CandidatesService', () => {
     await expect(service.getConsent(studyId, candidate.id, researcherId)).rejects.toThrow(NotFoundException);
   });
 
-  it('inclui candidato elegível e consentido, persiste participação e atualiza contador', async () => {
+  it.each([researcherId, '00000000-0000-4000-8000-000000000006'])('inclui por usuário autorizado %s usando o proprietário real na transação', async (userId) => {
     transactionClient.query
       .mockResolvedValueOnce({
         rows: [{ status: 'recrutamento', participantLimit: 5, participantsLinked: 2 }],
@@ -195,7 +197,7 @@ describe('CandidatesService', () => {
       .mockResolvedValueOnce({ rows: [], rowCount: 1 })
       .mockResolvedValueOnce({ rows: [{ participantLimit: 5 }], rowCount: 1 });
 
-    await expect(service.include(studyId, candidate.id, researcherId)).resolves.toEqual({
+    await expect(service.include(studyId, candidate.id, userId)).resolves.toEqual({
       participationId: '00000000-0000-4000-8000-000000000005',
       candidateId: candidate.id,
       studyId,
@@ -204,12 +206,26 @@ describe('CandidatesService', () => {
       participantsLinked: 3,
       participantLimit: 5,
     });
-    expect(studies.findById).toHaveBeenCalledWith(studyId, researcherId);
+    expect(studies.assertInclusionStudyAccess).toHaveBeenCalledWith(studyId, userId);
+    expect(transactionClient.query.mock.calls[0]?.[1]).toEqual([studyId, researcherId]);
     expect(database.transaction).toHaveBeenCalledTimes(1);
     expect(transactionClient.query.mock.calls[0]?.[0]).toContain('FOR UPDATE');
     expect(transactionClient.query.mock.calls[5]?.[0]).toContain('INSERT INTO participacoes_estudo');
     expect(transactionClient.query.mock.calls[6]?.[0]).toContain("SET status_recrutamento = 'Incluído'");
     expect(transactionClient.query.mock.calls[7]?.[1]).toEqual([studyId, researcherId, 3]);
+  });
+
+  it('revalida recrutamento sob bloqueio antes de incluir como Coordenador', async () => {
+    transactionClient.query.mockResolvedValueOnce({ rows: [{ status: StudyStatus.Execucao, participantLimit: 5, participantsLinked: 0 }], rowCount: 1 });
+    await expect(service.include(studyId, candidate.id, 'coordinator')).rejects.toThrow(ForbiddenException);
+    expect(transactionClient.query).toHaveBeenCalledTimes(1);
+    expect(transactionClient.query.mock.calls[0]?.[0]).toContain('FOR UPDATE');
+  });
+
+  it('não inicia transação de inclusão sem autorização específica do RF11', async () => {
+    studies.assertInclusionStudyAccess.mockRejectedValueOnce(new ForbiddenException());
+    await expect(service.include(studyId, candidate.id, 'coordinator')).rejects.toThrow(ForbiddenException);
+    expect(database.transaction).not.toHaveBeenCalled();
   });
 
   it('bloqueia inclusão quando o candidato não é elegível', async () => {

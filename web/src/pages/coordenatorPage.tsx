@@ -8,7 +8,7 @@ import { CandidateInclusionForm } from '../candidates/CandidateInclusionForm';
 import { useCandidateConsent } from '../candidates/useCandidateConsent';
 import { useCandidateEligibilityCriteria } from '../candidates/useCandidateEligibilityCriteria';
 import { useRecruitmentStudies } from '../candidates/useRecruitmentStudies';
-import { candidatesApi, CANDIDATE_STATUSES, type Candidate, type CandidateConsent, type CandidateEligibilityAssessment, type CandidateStatus } from '../candidates/candidatesApi';
+import { candidatesApi, CANDIDATE_STATUSES, type Candidate, type CandidateConsent, type CandidateEligibilityAssessment, type CandidateInclusion, type CandidateStatus } from '../candidates/candidatesApi';
 import { useAuth } from '../auth/AuthContext';
 import { useStudyCandidates, type StudyCandidatesState } from '../candidates/useStudyCandidates';
 import { useCandidateListStudies } from '../candidates/useCandidateListStudies';
@@ -203,10 +203,12 @@ function CandidateConsentSection({ candidate, onBack, onBusyChange, onRegistered
   return <CandidateConsentForm key={`${candidate.studyId}:${candidate.id}`} candidate={candidate} state={consent.state} onRetry={consent.reload} onCancel={onBack} currentUser={user} onBusyChange={onBusyChange} onRegistered={onRegistered} onRegister={(input, signal) => candidatesApi.registerConsent(request, candidate.studyId, candidate.id, input, signal)} />;
 }
 
-function CandidateDetailsModal({ candidate, onClose, onRegistered }: { candidate: Candidate; onClose: () => void; onRegistered: (assessment: CandidateEligibilityAssessment) => void }) {
+function CandidateDetailsModal({ candidate, onClose, onRegistered, onIncluded }: { candidate: Candidate; onClose: () => void; onRegistered: (assessment: CandidateEligibilityAssessment) => void; onIncluded: (inclusion: CandidateInclusion) => void }) {
+  const { request } = useAuth();
   const [view, setView] = useState<'details' | 'eligibility' | 'consent' | 'inclusion'>('details');
   const [consentSuccess, setConsentSuccess] = useState<CandidateConsent | null>(null);
   const [eligibilitySuccess, setEligibilitySuccess] = useState<CandidateEligibilityAssessment | null>(null);
+  const [inclusionSuccess, setInclusionSuccess] = useState<CandidateInclusion | null>(null);
   const submitting = useRef(false);
   const evaluating = view === 'eligibility';
   useEffect(() => {
@@ -219,14 +221,20 @@ function CandidateDetailsModal({ candidate, onClose, onRegistered }: { candidate
     const timer = window.setTimeout(() => setEligibilitySuccess(null), 6000);
     return () => window.clearTimeout(timer);
   }, [eligibilitySuccess]);
+  useEffect(() => {
+    if (!inclusionSuccess) return;
+    const timer = window.setTimeout(() => setInclusionSuccess(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [inclusionSuccess]);
   return <Modal title={evaluating ? 'Avaliar elegibilidade' : view === 'consent' ? 'Registrar consentimento' : view === 'inclusion' ? 'Incluir participante' : 'Detalhes do candidato'} description={view === 'inclusion' ? candidate.name : undefined} onClose={() => { if (!submitting.current) onClose(); }} wide={view !== 'details'}>
     {view === 'details' && consentSuccess && <div className="notice" role="status"><span>Consentimento simulado registrado com sucesso!</span><button type="button" className="icon-button" aria-label="Fechar confirmação de consentimento" onClick={() => setConsentSuccess(null)}><X size={16} aria-hidden="true" /></button></div>}
     {view === 'details' && eligibilitySuccess && <div className="notice" role="status"><span>Avaliação registrada com sucesso!</span><button type="button" className="icon-button" aria-label="Fechar confirmação de avaliação" onClick={() => setEligibilitySuccess(null)}><X size={16} aria-hidden="true" /></button></div>}
+    {view === 'details' && inclusionSuccess && <div className="notice" role="status"><span>Participante incluído com sucesso!</span><button type="button" className="icon-button" aria-label="Fechar confirmação de inclusão" onClick={() => setInclusionSuccess(null)}><X size={16} aria-hidden="true" /></button></div>}
     {(view === 'details' || evaluating) && <CandidateSummary candidate={candidate} status={<StatusBadge status={candidate.status} />} enrollmentDate={view === 'details' ? candidate.enrollmentDate : undefined} />}
-    {evaluating ? <CandidateEligibilitySection candidate={candidate} onBack={() => setView('details')} onRegistered={onRegistered} onSaved={(assessment) => { setEligibilitySuccess(assessment); setView('details'); }} onBusyChange={(busy) => { submitting.current = busy; }} /> : view === 'consent' ? <CandidateConsentSection candidate={candidate} onBack={() => setView('details')} onBusyChange={(busy) => { submitting.current = busy; }} onRegistered={(consent) => { setConsentSuccess(consent); setView('details'); }} /> : view === 'inclusion' ? <CandidateInclusionForm candidate={candidate} onCancel={() => setView('details')} /> : <div className="modal-actions coord-modal-actions">
+    {evaluating ? <CandidateEligibilitySection candidate={candidate} onBack={() => setView('details')} onRegistered={onRegistered} onSaved={(assessment) => { setEligibilitySuccess(assessment); setView('details'); }} onBusyChange={(busy) => { submitting.current = busy; }} /> : view === 'consent' ? <CandidateConsentSection candidate={candidate} onBack={() => setView('details')} onBusyChange={(busy) => { submitting.current = busy; }} onRegistered={(consent) => { setConsentSuccess(consent); setView('details'); }} /> : view === 'inclusion' ? <CandidateInclusionForm candidate={candidate} onCancel={() => setView('details')} onBusyChange={(busy) => { submitting.current = busy; }} onInclude={(studyId, candidateId, signal) => candidatesApi.include(request, studyId, candidateId, signal)} onIncluded={(inclusion) => { onIncluded(inclusion); setInclusionSuccess(inclusion); setView('details'); }} /> : <div className="modal-actions coord-modal-actions">
       <button type="button" className="button button-primary" onClick={() => setView('eligibility')}>Avaliar elegibilidade</button>
       <button type="button" className="button button-outline" onClick={() => setView('consent')}>Registrar consentimento</button>
-      <button type="button" className="button button-outline" onClick={() => setView('inclusion')}>Incluir participante</button>
+      <button type="button" className="button button-outline" disabled={candidate.status === 'Incluído'} onClick={() => setView('inclusion')}>Incluir participante</button>
     </div>}
   </Modal>;
 }
@@ -377,6 +385,9 @@ export function CoordinatorCandidatesPage() {
     </div>
     {activeCandidate && <CandidateDetailsModal key={`${activeCandidate.studyId}:${activeCandidate.id}`} candidate={activeCandidate} onClose={() => setActiveCandidate(null)} onRegistered={(assessment) => {
       setActiveCandidate((current) => current?.id === assessment.candidateId && current.studyId === assessment.studyId ? { ...current, status: assessment.status } : current);
+      candidates.reload();
+    }} onIncluded={(inclusion) => {
+      setActiveCandidate((current) => current?.id === inclusion.candidateId && current.studyId === inclusion.studyId ? { ...current, status: 'Incluído' } : current);
       candidates.reload();
     }} />}
   </div>;

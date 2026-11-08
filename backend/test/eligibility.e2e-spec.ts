@@ -106,7 +106,7 @@ describe('RF09 — autorização e persistência PostgreSQL', () => {
     }
   });
 
-  it('preserva edição de critérios, consulta individual e inclusão restritos ao Pesquisador', async () => {
+  it('preserva edição de critérios e consulta individual restritas ao Pesquisador e exige elegibilidade no RF11', async () => {
     await request(api()).get(`${studyPath}/criteria/${inclusionId}`).set('Authorization', auth(coordinatorToken)).expect(403);
     await request(api()).post(`${studyPath}/criteria`).set('Authorization', auth(coordinatorToken)).send({ type: 'Inclusão', description: 'Novo' }).expect(403);
     for (const body of [{ description: 'Alterado' }, { active: false }]) {
@@ -115,7 +115,7 @@ describe('RF09 — autorização e persistência PostgreSQL', () => {
     for (const method of ['get', 'post'] as const) {
       await request(api())[method](`${studyPath}/candidates/${candidateId}/consents`).set('Authorization', auth(coordinatorToken)).send({}).expect(method === 'get' ? 200 : 400);
     }
-    await request(api()).post(`${studyPath}/candidates/${candidateId}/include`).set('Authorization', auth(coordinatorToken)).expect(403);
+    await request(api()).post(`${studyPath}/candidates/${candidateId}/include`).set('Authorization', auth(coordinatorToken)).expect(400);
   });
 
   it('limita Coordenador a recrutamento e preserva consulta do proprietário e bloqueio de gravação no encerramento', async () => {

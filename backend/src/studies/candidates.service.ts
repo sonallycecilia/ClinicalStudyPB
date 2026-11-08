@@ -181,9 +181,9 @@ export class CandidatesService {
   async include(
     studyId: string,
     candidateId: string,
-    researcherId: string,
+    userId: string,
   ): Promise<CandidateInclusion> {
-    await this.studiesService.findById(studyId, researcherId);
+    const authorizedStudy = await this.studiesService.assertInclusionStudyAccess(studyId, userId);
 
     return this.database.transaction(async (client) => {
       const studyResult = await client.query<StudyInclusionRow>(
@@ -194,12 +194,15 @@ export class CandidatesService {
          FROM estudos
          WHERE id_estudo = $1 AND id_pesquisador = $2
          FOR UPDATE`,
-        [studyId, researcherId],
+        [studyId, authorizedStudy.researcherId],
       );
       const study = studyResult.rows[0];
       if (!study) throw new NotFoundException('Estudo não encontrado.');
       if (study.status === StudyStatus.Encerrado) {
         throw new BadRequestException('Não é possível incluir participantes em um estudo encerrado.');
+      }
+      if (userId !== authorizedStudy.researcherId && study.status !== StudyStatus.Recrutamento) {
+        throw new ForbiddenException('O Coordenador só pode incluir participantes de estudos em recrutamento.');
       }
 
       const candidateResult = await client.query<{ status: Candidate['status'] }>(
@@ -294,7 +297,7 @@ export class CandidatesService {
          SET participantes_vinculados = $3
          WHERE id_estudo = $1 AND id_pesquisador = $2
          RETURNING limite_participantes AS "participantLimit"`,
-        [studyId, researcherId, participantsLinked + 1],
+        [studyId, authorizedStudy.researcherId, participantsLinked + 1],
       );
       if (!updatedStudy.rows[0]) throw new NotFoundException('Estudo não encontrado.');
 

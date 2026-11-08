@@ -8,7 +8,7 @@ const inclusion: CandidateInclusion = {
   participationId: 'participation-1', candidateId: candidate.id, studyId: candidate.studyId,
   includedAt: '2026-11-07', participationStatus: 'Ativo', participantsLinked: 3, participantLimit: 5,
 };
-const success = 'Candidato incluído como participante com sucesso';
+const success = 'Participante incluído com sucesso!';
 const confirm = () => screen.getByRole('button', { name: 'Confirmar inclusão' }) as HTMLButtonElement;
 
 afterEach(cleanup);
@@ -40,7 +40,7 @@ describe('CandidateInclusionForm', () => {
     fireEvent.click(confirm());
     fireEvent.click(confirm());
     fireEvent.submit(screen.getByRole('form'));
-    expect(onInclude).toHaveBeenCalledExactlyOnceWith(candidate.studyId, candidate.id);
+    expect(onInclude).toHaveBeenCalledExactlyOnceWith(candidate.studyId, candidate.id, expect.any(AbortSignal));
     expect(screen.getByRole('form').getAttribute('aria-busy')).toBe('true');
     expect(screen.getByRole('status').textContent).toBe('Incluindo participante…');
     expect(confirm().disabled).toBe(true);

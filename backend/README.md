@@ -109,7 +109,7 @@ Os estudos iniciam em `planejamento` e persistem um dos estados `planejamento`, 
 
 `POST /studies/:studyId/candidates/:candidateId/eligibility-assessments` recebe `evaluations`, uma resposta para cada critério ativo do estudo (`criterionId`, `result` e `observation` opcional). O backend rejeita critérios duplicados, ausentes ou pertencentes a outro estudo e persiste a avaliação em uma transação. Todos os critérios de inclusão atendidos e os de exclusão não atendidos tornam o candidato `Elegível`; uma falha de inclusão ou critério de exclusão atendido torna-o `Inelegível`; respostas pendentes sem reprovação mantêm `Em avaliação`. Reenvios atualizam (upsert) a resposta anterior. `GET` no mesmo caminho consulta a avaliação persistida.
 
-Os Coordenadores ativos podem acessar `GET /studies/:studyId/criteria` e `GET/POST /studies/:studyId/candidates/:candidateId/eligibility-assessments` em estudos em `recrutamento`. A permissão é verificada nos guards e nos services; o registro revalida a fase sob bloqueio do estudo e persiste o usuário autenticado como avaliador. A propriedade continua obrigatória para Pesquisadores. Edição de critérios e inclusão mantêm suas permissões anteriores. O frontend reutiliza o modal existente, consulta critérios e avaliações reais e apresenta o status calculado pelo backend. 
+Os Coordenadores ativos podem acessar `GET /studies/:studyId/criteria` e `GET/POST /studies/:studyId/candidates/:candidateId/eligibility-assessments` em estudos em `recrutamento`. A permissão é verificada nos guards e nos services; o registro revalida a fase sob bloqueio do estudo e persiste o usuário autenticado como avaliador. A propriedade continua obrigatória para Pesquisadores. Edição de critérios continua restrita ao proprietário. O frontend reutiliza o modal existente, consulta critérios e avaliações reais e apresenta o status calculado pelo backend.
 
 ### Consentimento simulado (RF10)
 
@@ -118,3 +118,11 @@ Os Coordenadores ativos podem acessar `GET /studies/:studyId/criteria` e `GET/PO
  Pesquisadores continuam restritos aos estudos próprios e não podem gravar em estudos encerrados. A identidade de quem registra vem da sessão autenticada. O consentimento não altera a elegibilidade nem realiza inclusão automática.
 
 O modal existente consulta e registra os dados reais, apresenta a resposta persistida e mantém o aviso de simulação acadêmica.
+
+### Inclusão de participantes (RF11)
+
+`POST /studies/:studyId/candidates/:candidateId/include` não exige corpo. A política aprovada para RF11 permite Coordenadores ativos em estudos em `recrutamento`, preservando o acesso do Pesquisador aos próprios estudos e o bloqueio de estudos encerrados. A verificação é específica desse endpoint e revalida a fase dentro da transação, sob `FOR UPDATE` no estudo.
+
+O backend exige elegibilidade aprovada, todos os critérios ativos atendidos segundo seu tipo, último consentimento `Registrado` e vaga disponível. A mesma transação cria a participação, atualiza o candidato para `Incluído` e incrementa o contador do estudo. Os bloqueios do estudo e candidato protegem contra duplicação e disputa pela última vaga. Uma rejeição reverte a operação inteira.
+
+O frontend confirma a identidade e os campos da resposta, retorna aos detalhes somente após sucesso válido e reconsulta a listagem. Erros mantêm a confirmação aberta.

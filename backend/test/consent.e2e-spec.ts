@@ -113,7 +113,7 @@ describe('RF10 — autorização e persistência do consentimento simulado', () 
     }
   });
 
-  it('não libera RF11 nem alterações em estudos/critérios e não altera elegibilidade já registrada', async () => {
+  it('não altera elegibilidade, não libera edição e RF11 rejeita consentimento revogado', async () => {
     const criterion = await request(api()).post(`${studyPath()}/criteria`).set('Authorization', auth(ownerToken))
       .send({ type: 'Inclusão', description: 'Critério de teste RF09' }).expect(201);
     const evaluationPath = `${studyPath()}/candidates/${candidateId}/eligibility-assessments`;
@@ -124,7 +124,7 @@ describe('RF10 — autorização e persistência do consentimento simulado', () 
       await request(api()).get(evaluationPath).set('Authorization', auth(coordinatorToken)).expect(200)
         .expect(({ body }) => expect(body).toEqual(eligible.body));
     }
-    await request(api()).post(`${studyPath()}/candidates/${candidateId}/include`).set('Authorization', auth(coordinatorToken)).expect(403);
+    await request(api()).post(`${studyPath()}/candidates/${candidateId}/include`).set('Authorization', auth(coordinatorToken)).expect(400);
     await request(api()).patch(studyPath()).set('Authorization', auth(coordinatorToken)).send({ title: 'Alterado' }).expect(403);
     await request(api()).patch(`${studyPath()}/criteria/${criterion.body.id}`).set('Authorization', auth(coordinatorToken)).send({ active: false }).expect(403);
   });

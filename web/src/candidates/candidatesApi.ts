@@ -304,7 +304,7 @@ export interface CandidateInclusion {
   participantLimit: number;
 }
 
-export const INCLUSION_UNAVAILABLE_MESSAGE = 'A inclusão de participantes ainda não está disponível para o Coordenador. Depende da liberação de acesso ao estudo e da integração da consulta de candidatos. Nenhuma inclusão será realizada.';
+export const INCLUSION_UNAVAILABLE_MESSAGE = 'A inclusão de participantes não está disponível nesta visualização. Nenhuma inclusão será realizada.';
 export const INVALID_INCLUSION_MESSAGE = 'O servidor não retornou uma confirmação válida da inclusão. Consulte os candidatos antes de tentar novamente.';
 
 export class CandidateInclusionError extends Error {
@@ -328,12 +328,11 @@ export function isCandidateInclusion(value: unknown, studyId: string, candidateI
     && result.participantsLinked! > 0 && result.participantsLinked! <= result.participantLimit!;
 }
 
-// POST sem corpo. Conectar à interface somente após autorização do Coordenador:
-// a rota e o serviço atuais exigem o Pesquisador proprietário do estudo.
-const include = async (request: AuthenticatedRequest, studyId: string, candidateId: string): Promise<CandidateInclusion> => {
+// POST sem corpo; a autorização e os requisitos da inclusão são verificados no servidor.
+const include = async (request: AuthenticatedRequest, studyId: string, candidateId: string, signal?: AbortSignal): Promise<CandidateInclusion> => {
   let response: Response;
   try {
-    response = await request(`/studies/${encodeURIComponent(studyId)}/candidates/${encodeURIComponent(candidateId)}/include`, { method: 'POST' });
+    response = await request(`/studies/${encodeURIComponent(studyId)}/candidates/${encodeURIComponent(candidateId)}/include`, { method: 'POST', ...(signal ? { signal } : {}) });
   } catch {
     throw new CandidateInclusionError('Não foi possível comunicar com o servidor. Nenhum sucesso foi confirmado. Consulte os candidatos antes de tentar novamente.');
   }

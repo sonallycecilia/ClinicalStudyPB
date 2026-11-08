@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { StrictMode, type ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
-import { candidatesApi, INCLUSION_UNAVAILABLE_MESSAGE, type Candidate } from '../candidates/candidatesApi';
+import { candidatesApi, type Candidate } from '../candidates/candidatesApi';
 import { CriteriaApiError, type EligibilityCriterion } from '../studies/criteriaApi';
 import {
   CoordinatorCandidatesPage,
@@ -648,12 +648,9 @@ describe('Inclusão de participante no Coordenador', () => {
       const form = within(dialog).getByRole('form', { name: 'Inclusão de participante' });
       expect(within(form).getByText(name)).toBeTruthy();
       expect(within(form).getByText('Estudo em recrutamento')).toBeTruthy();
-      expect(within(form).getByText(INCLUSION_UNAVAILABLE_MESSAGE)).toBeTruthy();
       const confirm = within(form).getByRole('button', { name: 'Confirmar inclusão' }) as HTMLButtonElement;
-      expect(confirm.disabled).toBe(true);
-      fireEvent.click(confirm);
-      fireEvent.submit(form);
-      expect(within(dialog).queryByText('Candidato incluído como participante com sucesso')).toBeNull();
+      expect(confirm.disabled).toBe(false);
+      expect(within(dialog).queryByText('Participante incluído com sucesso!')).toBeNull();
       fireEvent.click(within(form).getByRole('button', { name: 'Cancelar' }));
       expect(screen.getByRole('dialog', { name: 'Detalhes do candidato' })).toBe(details);
       const original = candidateRows.find((candidate) => candidate.name === name)!;
