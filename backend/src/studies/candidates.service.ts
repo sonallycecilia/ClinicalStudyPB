@@ -78,8 +78,8 @@ export class CandidatesService {
     private readonly studiesService: StudiesService,
   ) {}
 
-  async list(studyId: string, researcherId: string): Promise<Candidate[]> {
-    await this.studiesService.findById(studyId, researcherId);
+  async list(studyId: string, userId: string): Promise<Candidate[]> {
+    await this.studiesService.assertCandidateStudyAccess(studyId, userId);
     const { rows } = await this.database.query<CandidateRow>(
       `SELECT ${CANDIDATE_COLUMNS}
        FROM candidatos
@@ -93,9 +93,9 @@ export class CandidatesService {
   async create(
     studyId: string,
     input: CreateCandidateInput,
-    researcherId: string,
+    userId: string,
   ): Promise<Candidate> {
-    await this.studiesService.assertStudyCanBeModified(studyId, researcherId);
+    await this.studiesService.assertCandidateStudyAccess(studyId, userId, true);
     const { rows } = await this.database.query<CandidateRow>(
       `INSERT INTO candidatos (id_estudo, nome, email)
        VALUES ($1, $2, $3)

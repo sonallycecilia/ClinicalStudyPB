@@ -29,6 +29,7 @@ describe('CandidatesService', () => {
   };
   let transactionClient: TransactionClient;
   let studies: {
+    assertCandidateStudyAccess: jest.Mock<(id: string, userId: string, modifying?: boolean) => Promise<unknown>>;
     findById: jest.Mock<(id: string, ownerId: string) => Promise<unknown>>;
     assertStudyCanBeModified: jest.Mock<(id: string, ownerId: string) => Promise<unknown>>;
   };
@@ -48,6 +49,7 @@ describe('CandidatesService', () => {
         .mockImplementation((operation) => operation(transactionClient)),
     };
     studies = {
+      assertCandidateStudyAccess: jest.fn<(id: string, userId: string, modifying?: boolean) => Promise<unknown>>(),
       findById: jest.fn<(id: string, ownerId: string) => Promise<unknown>>(),
       assertStudyCanBeModified: jest.fn<(id: string, ownerId: string) => Promise<unknown>>(),
     };
@@ -63,7 +65,7 @@ describe('CandidatesService', () => {
       name: candidate.name,
       email: candidate.email,
     }, researcherId)).resolves.toEqual(candidate);
-    expect(studies.assertStudyCanBeModified).toHaveBeenCalledWith(studyId, researcherId);
+    expect(studies.assertCandidateStudyAccess).toHaveBeenCalledWith(studyId, researcherId, true);
     expect(database.query.mock.calls[0]?.[1]).toEqual([studyId, candidate.name, candidate.email]);
   });
 
@@ -75,13 +77,13 @@ describe('CandidatesService', () => {
     expect(database.query.mock.calls[0]?.[1]).toEqual([studyId, candidate.name, null]);
 
     await expect(service.list(studyId, researcherId)).resolves.toEqual([candidate]);
-    expect(studies.findById).toHaveBeenCalledWith(studyId, researcherId);
+    expect(studies.assertCandidateStudyAccess).toHaveBeenCalledWith(studyId, researcherId);
     expect(database.query.mock.calls[1]?.[1]).toEqual([studyId]);
     expect(database.query.mock.calls[1]?.[0]).toContain('WHERE id_estudo = $1');
   });
 
   it('não cadastra candidato se o estudo não existe', async () => {
-    studies.assertStudyCanBeModified.mockRejectedValue(new NotFoundException('Estudo não encontrado.'));
+    studies.assertCandidateStudyAccess.mockRejectedValue(new NotFoundException('Estudo não encontrado.'));
     await expect(service.create(studyId, { name: candidate.name }, researcherId))
       .rejects.toThrow(NotFoundException);
     expect(database.query).not.toHaveBeenCalled();
@@ -271,7 +273,7 @@ describe('CandidatesService', () => {
   });
 
   it('bloqueia cadastro quando o estudo está encerrado', async () => {
-    studies.assertStudyCanBeModified.mockRejectedValue(new BadRequestException());
+    studies.assertCandidateStudyAccess.mockRejectedValue(new BadRequestException());
     await expect(service.create(studyId, { name: candidate.name }, researcherId))
       .rejects.toThrow(BadRequestException);
     expect(database.query).not.toHaveBeenCalled();

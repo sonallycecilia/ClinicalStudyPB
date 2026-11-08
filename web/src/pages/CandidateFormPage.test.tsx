@@ -27,7 +27,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('página e rotas de cadastro de candidato no App', () => {
-  it('carrega estudos reais pela consulta autorizada, preserva o layout e mantém o cadastro sem persistência bloqueado', async () => {
+  it('carrega estudos pela consulta autorizada, preserva o layout e valida antes de enviar', async () => {
     render(<App />);
     expect(screen.getByRole('heading', { name: /Candidatos e participantes.*Cadastrar candidato/ }).textContent).toContain('>');
     const menu = screen.getByRole('navigation', { name: 'Menu do perfil Coordenador' });
@@ -42,11 +42,11 @@ describe('página e rotas de cadastro de candidato no App', () => {
     expect(study.value).toBe('study-1');
     expect(screen.queryByLabelText('Pessoa cadastrada (opcional)')).toBeNull();
     const button = screen.getByRole('button', { name: 'Cadastrar candidato' }) as HTMLButtonElement;
-    expect(button.disabled).toBe(true);
-    expect(button.getAttribute('aria-describedby')).toBe('candidate-integration-hint');
+    expect(button.disabled).toBe(false);
+    expect(button.getAttribute('aria-describedby')).toBeNull();
     fireEvent.click(button);
     fireEvent.submit(screen.getByRole('form'));
-    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('alert').textContent).toBe('Informe o nome completo do candidato.');
     fireEvent.blur(screen.getByLabelText(/Nome completo/));
     expect(screen.getByText('Informe o nome completo do candidato.')).toBeTruthy();
     expect(request).toHaveBeenCalledOnce();
@@ -70,6 +70,29 @@ describe('página e rotas de cadastro de candidato no App', () => {
     expect(request).toHaveBeenCalledTimes(2);
     expect((request.mock.calls[1][1] as RequestInit).signal?.aborted).toBe(true);
     expect((request.mock.calls[0][1] as RequestInit).signal?.aborted).toBe(false);
+  });
+
+  it('cadastra pela página e consulta o estudo correspondente ao voltar à listagem', async () => {
+    const candidate = { id: 'candidate-1', studyId: 'study-1', name: 'Ana Silva', email: 'ana@example.com', status: 'Novo', registeredAt: '2026-11-07T14:00:00Z' };
+    request.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === '/studies/disponiveis-recrutamento') return jsonResponse(options);
+      return jsonResponse(init?.method === 'POST' ? candidate : [candidate], init?.method === 'POST' ? 201 : 200);
+    });
+    render(<App />);
+    await screen.findByRole('option', { name: 'Estudo em recrutamento' });
+    fireEvent.change(screen.getByLabelText(/Nome completo/), { target: { value: 'Ana Silva' } });
+    fireEvent.change(screen.getByLabelText(/^Estudo/), { target: { value: 'study-1' } });
+    fireEvent.change(screen.getByLabelText('E-mail (opcional)'), { target: { value: 'ana@example.com' } });
+    fireEvent.submit(screen.getByRole('form'));
+    await screen.findByText('Candidato cadastrado com sucesso.');
+    expect(request).toHaveBeenCalledWith('/studies/study-1/candidates', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Ana Silva', email: 'ana@example.com' }),
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar à listagem' }));
+    expect(window.location.pathname).toBe('/coordenador/candidatos');
+    await screen.findByRole('row', { name: /Ana Silva/ });
+    expect((screen.getByRole('combobox', { name: 'Filtrar por estudo' }) as HTMLSelectElement).value).toBe('study-1');
+    expect(request).toHaveBeenCalledWith('/studies/study-1/candidates', { signal: expect.any(AbortSignal) });
   });
 
   it('retorna à listagem pelo cabeçalho', async () => {

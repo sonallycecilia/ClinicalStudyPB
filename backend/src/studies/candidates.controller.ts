@@ -50,12 +50,13 @@ export class CandidatesController {
   constructor(private readonly candidatesService: CandidatesService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Listar candidatos de um estudo próprio' })
+  @Roles('Pesquisador', 'Coordenador')
+  @ApiOperation({ summary: 'Listar candidatos de estudo próprio ou em recrutamento para o Coordenador' })
   @ApiParam({ name: 'studyId', description: 'UUID do estudo.', format: 'uuid' })
   @ApiOkResponse({ description: 'Candidatos vinculados ao estudo.', type: CandidateResponseDto, isArray: true })
   @ApiBadRequestResponse({ description: 'O parâmetro studyId não é um UUID válido.', type: ApiErrorResponseDto })
   @ApiUnauthorizedResponse({ description: 'Token ausente, inválido ou expirado.', type: ApiErrorResponseDto })
-  @ApiForbiddenResponse({ description: 'Somente o pesquisador proprietário pode consultar os candidatos.', type: ApiErrorResponseDto })
+  @ApiForbiddenResponse({ description: 'Exige pesquisador proprietário ou Coordenador em estudo na fase de recrutamento.', type: ApiErrorResponseDto })
   @ApiNotFoundResponse({ description: 'Estudo não encontrado.', type: ApiErrorResponseDto })
   list(
     @Param('studyId', new ParseUUIDPipe()) studyId: string,
@@ -65,14 +66,15 @@ export class CandidatesController {
   }
 
   @Post()
+  @Roles('Pesquisador', 'Coordenador')
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }))
-  @ApiOperation({ summary: 'Cadastrar candidato em estudo próprio' })
+  @ApiOperation({ summary: 'Cadastrar candidato em estudo próprio ou em recrutamento para o Coordenador' })
   @ApiParam({ name: 'studyId', description: 'UUID do estudo.', format: 'uuid' })
   @ApiBody({ type: CreateCandidateRequestDto })
   @ApiCreatedResponse({ description: 'Candidato cadastrado e vinculado ao estudo.', type: CandidateResponseDto })
   @ApiBadRequestResponse({ description: 'Parâmetros inválidos, dados obrigatórios ausentes ou estudo encerrado.', type: ApiErrorResponseDto })
   @ApiUnauthorizedResponse({ description: 'Token ausente, inválido ou expirado.', type: ApiErrorResponseDto })
-  @ApiForbiddenResponse({ description: 'Somente o pesquisador proprietário pode cadastrar candidatos.', type: ApiErrorResponseDto })
+  @ApiForbiddenResponse({ description: 'Exige pesquisador proprietário ou Coordenador em estudo na fase de recrutamento.', type: ApiErrorResponseDto })
   @ApiNotFoundResponse({ description: 'Estudo não encontrado.', type: ApiErrorResponseDto })
   create(
     @Param('studyId', new ParseUUIDPipe()) studyId: string,

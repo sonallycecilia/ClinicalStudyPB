@@ -1,15 +1,17 @@
 import type { AuthenticatedRequest } from '../studies/studiesApi';
 import type { criteriaApi, CriterionType } from '../studies/criteriaApi';
+import { CandidateSubmissionError, type CandidateInput } from './candidateValidation';
 
-export type CandidateStatus = 'Pendente de avaliação' | 'Participante ativo' | 'Consentimento pendente' | 'Não elegível';
+export const CANDIDATE_STATUSES = ['Novo', 'Em avaliação', 'Elegível', 'Inelegível', 'Incluído', 'Desistiu'] as const;
+export type CandidateStatus = typeof CANDIDATE_STATUSES[number];
 
-/** Modelo da listagem. O futuro adaptador deve mapear a resposta da API para este formato. */
+/** Modelo da listagem; título obtido das opções de estudos, nunca inferido do candidato. */
 export interface Candidate {
   id: string;
   name: string;
   studyId: string;
   studyTitle: string;
-  /** Data de inscrição no formato YYYY-MM-DD. */
+  /** registeredAt conforme retornado pela API (data ou timestamp). */
   enrollmentDate: string;
   status: CandidateStatus;
 }
@@ -20,16 +22,80 @@ export type CandidatesByStudyQuery = (
   signal?: AbortSignal,
 ) => Promise<readonly Candidate[]>;
 
-export class CandidatesQueryUnavailableError extends Error {
-  constructor() {
-    super('A consulta de candidatos por estudo ainda não está disponível. Não é possível verificar os candidatos cadastrados.');
-  }
+export class CandidatesApiError extends Error {
+  constructor(message: string, readonly status?: number) { super(message); }
 }
 
-// A listagem já existe no backend, mas exige Pesquisador proprietário do estudo.
-// Integrar quando houver autorização para o Coordenador, sem retornar dados fictícios.
-const listByStudy: CandidatesByStudyQuery = async () => {
-  throw new CandidatesQueryUnavailableError();
+export interface CandidateResponse {
+  id: string;
+  studyId: string;
+  name: string;
+  email: string | null;
+  status: CandidateStatus;
+  registeredAt: string;
+}
+
+/** Adaptação explícita: IDs e status do modelo local não pertencem ao corpo HTTP. */
+export function toCreateCandidateBody(input: CandidateInput): { name: string; email?: string } {
+  const email = input.email?.trim();
+  return { name: input.nome.trim(), ...(email ? { email } : {}) };
+}
+
+function isCandidateResponse(value: unknown): value is CandidateResponse {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<CandidateResponse>;
+  return typeof candidate.id === 'string' && candidate.id.length > 0
+    && typeof candidate.studyId === 'string' && typeof candidate.name === 'string'
+    && (candidate.email === null || typeof candidate.email === 'string')
+    && CANDIDATE_STATUSES.includes(candidate.status as CandidateStatus)
+    && typeof candidate.registeredAt === 'string' && /^\d{4}-\d{2}-\d{2}(?:$|[T ])/.test(candidate.registeredAt);
+}
+
+async function recruitmentRequest(request: AuthenticatedRequest, studyId: string, options: RequestInit): Promise<unknown> {
+  let response: Response;
+  try {
+    response = await request(`/studies/${encodeURIComponent(studyId)}/candidates`, options);
+  } catch {
+    throw new CandidatesApiError('Não foi possível comunicar com o servidor. Tente novamente.');
+  }
+  const body: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const messages: Record<number, string> = {
+      400: 'Dados inválidos. Confira os campos e a situação do estudo.',
+      401: 'Sua sessão expirou ou é inválida. Entre novamente para continuar.',
+      403: 'Você não tem permissão para cadastrar ou consultar candidatos neste estudo.',
+      404: 'Estudo não encontrado. Atualize os estudos disponíveis.',
+      409: 'O cadastro foi recusado por conflito. Consulte a listagem antes de tentar novamente.',
+    };
+    const message = (body as { message?: unknown } | null)?.message;
+    const detail = typeof message === 'string' ? message
+      : Array.isArray(message) ? message.filter((item): item is string => typeof item === 'string').join(' ') : '';
+    throw new CandidatesApiError(response.status === 400 && detail.trim() ? detail
+      : messages[response.status] ?? 'Não foi possível concluir a solicitação. Tente novamente.', response.status);
+  }
+  return body;
+}
+
+const listByStudy: CandidatesByStudyQuery = async (request, studyId, signal) => {
+  const body = await recruitmentRequest(request, studyId, { signal });
+  if (!Array.isArray(body) || !body.every(isCandidateResponse)) {
+    throw new CandidatesApiError('O servidor retornou uma listagem de candidatos inválida. Tente novamente.');
+  }
+  return body.filter((candidate) => candidate.studyId === studyId).map((candidate) => ({
+    id: candidate.id, studyId: candidate.studyId, name: candidate.name,
+    studyTitle: '', enrollmentDate: candidate.registeredAt, status: candidate.status,
+  }));
+};
+
+const create = async (request: AuthenticatedRequest, input: CandidateInput): Promise<void> => {
+  try {
+    await recruitmentRequest(request, input.id_estudo, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(toCreateCandidateBody(input)),
+    });
+  } catch (error) {
+    if (error instanceof CandidatesApiError) throw new CandidateSubmissionError(error.message);
+    throw error;
+  }
 };
 
 export type EligibilityCriterionResult = 'Atende' | 'Não atende' | 'Pendente';
@@ -44,8 +110,8 @@ export interface EvaluateCandidateInput {
   evaluations: CriterionEvaluationInput[];
 }
 
-/** Status devolvido pelo backend; não equivale aos rótulos da listagem atual. */
-export type CandidateRecruitmentStatus = 'Novo' | 'Em avaliação' | 'Elegível' | 'Inelegível' | 'Incluído' | 'Desistiu';
+/** Mesmo contrato de status no cadastro, na listagem e na avaliação. */
+export type CandidateRecruitmentStatus = CandidateStatus;
 
 export interface CandidateEligibilityAssessment {
   candidateId: string;
@@ -195,4 +261,4 @@ const include = async (request: AuthenticatedRequest, studyId: string, candidate
   return body;
 };
 
-export const candidatesApi = { listByStudy, listEligibilityCriteria, getEligibilityAssessment, registerEligibilityAssessment, getConsent, registerConsent, include };
+export const candidatesApi = { create, listByStudy, listEligibilityCriteria, getEligibilityAssessment, registerEligibilityAssessment, getConsent, registerConsent, include };

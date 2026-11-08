@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
-import { candidatesApi, CandidatesQueryUnavailableError, type Candidate } from './candidatesApi';
+import { candidatesApi, CandidatesApiError, type Candidate } from './candidatesApi';
 
 export type StudyCandidatesState =
   | { status: 'idle' }
   | { status: 'loading' }
   | { status: 'ready'; candidates: readonly Candidate[] }
-  | { status: 'error'; message: string }
-  | { status: 'unavailable'; message: string };
+  | { status: 'error'; message: string };
 
 export function useStudyCandidates(studyId: string) {
   const { request } = useAuth();
@@ -30,9 +29,11 @@ export function useStudyCandidates(studyId: string) {
         } });
       })
       .catch((error: unknown) => {
-        if (!controller.signal.aborted) setResult({ studyId, state: error instanceof CandidatesQueryUnavailableError
-          ? { status: 'unavailable', message: error.message }
-          : { status: 'error', message: 'Não foi possível consultar os candidatos deste estudo. Tente novamente.' },
+        if (!controller.signal.aborted) setResult({
+          studyId, state: {
+            status: 'error', message: error instanceof CandidatesApiError ? error.message
+              : 'Não foi possível consultar os candidatos deste estudo. Tente novamente.',
+          },
         });
       });
     return () => controller.abort();
