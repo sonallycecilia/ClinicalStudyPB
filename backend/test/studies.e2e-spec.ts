@@ -325,24 +325,62 @@ describe('Estudos clínicos com PostgreSQL (E2E)', () => {
       .expect(({ body }) => expect(body.title).toBe('Estudo persistente'));
   });
 
-  it('permite ao Coordenador consultar somente estudos na fase Recrutamento, com ID e título', async () => {
-    const path = '/studies/disponiveis-recrutamento';
-    await request(api()).get(path).set('Authorization', bearer(coordinatorToken))
-      .expect(200).expect(({ body }) => expect(body).toEqual([]));
+  
+it('permite ao Coordenador consultar somente estudos na fase Recrutamento, com ID e título', async () => {
+  const path = '/studies/disponiveis-recrutamento';
 
-    let recruitingStudy: { id: string; title: string } | undefined;
-    const database = fixture.app.get(DatabaseService);
-    for (const phase of ['Planejamento', 'Recrutamento', 'Execução', 'Encerrado']) {
-      const created = await request(api()).post('/studies').set('Authorization', bearer(researcherToken))
-        .send({ ...sample, title: `Estudo na fase ${phase}`, startDate: '2020-01-01' }).expect(201);
-      // Fixtures apenas no schema descartável do teste; não reclassifica dados de desenvolvimento.
-      await database.query('UPDATE estudos SET status = $1 WHERE id_estudo = $2', [phase, created.body.id]);
-      expect(created.body.status).toBe('Em andamento');
-      if (phase === 'Recrutamento') recruitingStudy = { id: created.body.id, title: created.body.title };
+  await request(api())
+    .get(path)
+    .set('Authorization', bearer(coordinatorToken))
+    .expect(200)
+    .expect(({ body }) => expect(body).toEqual([]));
+
+  let recruitingStudy: { id: string; title: string } | undefined;
+  const database = fixture.app.get(DatabaseService);
+
+  const phases = [
+    'planejamento',
+    'recrutamento',
+    'execução',
+    'encerrado',
+  ];
+
+  for (const phase of phases) {
+    const created = await request(api())
+      .post('/studies')
+      .set('Authorization', bearer(researcherToken))
+      .send({
+        ...sample,
+        title: `Estudo na fase ${phase}`,
+        startDate: '2020-01-01',
+      })
+      .expect(201);
+
+    // Fixtures apenas no schema descartável do teste.
+    await database.query(
+      'UPDATE estudos SET status = $1 WHERE id_estudo = $2',
+      [phase, created.body.id],
+    );
+
+    expect(created.body.status).toBe('planejamento');
+
+    if (phase === 'recrutamento') {
+      recruitingStudy = {
+        id: created.body.id,
+        title: created.body.title,
+      };
     }
-    await request(api()).get(path).set('Authorization', bearer(coordinatorToken))
-      .expect(200).expect(({ body }) => expect(body).toEqual([recruitingStudy]));
-  });
+  }
+
+  await request(api())
+    .get(path)
+    .set('Authorization', bearer(coordinatorToken))
+    .expect(200)
+    .expect(({ body }) => {
+      expect(body).toEqual([recruitingStudy]);
+    });
+});
+
 
   it('mantém a nova consulta restrita ao Coordenador e não libera as demais operações', async () => {
     const path = '/studies/disponiveis-recrutamento';
