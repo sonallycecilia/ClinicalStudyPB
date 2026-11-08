@@ -700,6 +700,7 @@ body:has(.modal-backdrop), body:has(.study-dialog-backdrop) { overflow: hidden; 
 .coord-filter select { width: 100%; height: 100%; padding: 0 18px 0 0; border: 0; outline: 0; appearance: none; color: #24444f; background: transparent; font-size: 10px; cursor: pointer; }
 .coord-filter svg { position: absolute; right: 9px; width: 14px; height: 14px; color: #688793; pointer-events: none; }
 
+.coord-candidates-page > .notice { width: calc(100% - var(--page-content-indent)); margin-left: var(--page-content-indent); margin-bottom: 20px; }
 .coord-candidates-page .coord-filter select { padding: 0 32px 0 12px; min-width: 0; text-overflow: ellipsis; }
 .coord-candidates-page .coord-filter svg { top: 50%; transform: translateY(-50%); }
 .coord-candidates-page .coord-filter-disabled { background: #edf1f3; border-color: #dce3e7; }
@@ -733,6 +734,8 @@ body:has(.modal-backdrop), body:has(.study-dialog-backdrop) { overflow: hidden; 
 .coord-candidates-table th:nth-child(2) { min-width: 175px; }
 .coord-candidates-table th:nth-child(3) { min-width: 140px; }
 .coord-candidates-table th:nth-child(4) { min-width: 140px; }
+.coord-candidates-table .coord-candidate-actions { width: 90px; min-width: 90px; padding-left: 14px; padding-right: 14px; text-align: center; }
+.coord-candidates-table .coord-row-actions { justify-content: center; }
 .coord-candidates-table .coord-empty-row { white-space: normal; line-height: 1.5; }
 .coord-visits-table th:nth-child(2) { min-width: 130px; }
 .coord-visits-table th:nth-child(3) { min-width: 130px; }
@@ -837,17 +840,28 @@ body:has(.modal-backdrop), body:has(.study-dialog-backdrop) { overflow: hidden; 
   .candidate-consent-form .modal-actions { flex-direction: column; align-items: stretch; }
   .candidate-consent-form .modal-actions .button { width: 100%; flex: auto; }
 }
-.candidate-eligibility-form { padding-top: 18px; color: #24444f; font-size: 13px; line-height: 1.6; }
-.eligibility-group { margin-top: 22px; }
+.eligibility-candidate-summary { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 18px; margin: 16px 0 8px; padding: 14px; border: 1px solid #e0eaed; border-radius: 10px; background: #fcfefe; }
+.eligibility-candidate-identity { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.eligibility-candidate-identity strong { color: #183843; font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
+.eligibility-candidate-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 36px; width: 36px; height: 36px; border-radius: 9px; color: #15766b; background: #def4ef; }
+.eligibility-candidate-details { min-width: 0; margin: 0; padding-left: 18px; border-left: 1px solid #e6eef0; }
+.eligibility-candidate-details > div { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(0, 1fr); align-items: center; gap: 12px; min-height: 30px; }
+.eligibility-candidate-details > div + div { padding-top: 6px; margin-top: 6px; border-top: 1px solid #edf2f3; }
+.eligibility-candidate-details dt { display: flex; align-items: center; gap: 8px; color: #708995; font-size: 11px; }
+.eligibility-candidate-details dt svg { flex-shrink: 0; }
+.eligibility-candidate-details dd { min-width: 0; margin: 0; color: #24444f; font-size: 12px; font-weight: 600; text-align: right; overflow-wrap: anywhere; }
+.eligibility-candidate-summary .coord-status { max-width: 100%; font-size: 11px; }
+.candidate-eligibility-form { padding-top: 4px; color: #24444f; font-size: 13px; line-height: 1.5; }
+.eligibility-group { margin-top: 12px; }
 .eligibility-group h3 { margin: 0; color: #183843; font-size: 16px; }
-.eligibility-help { margin: 8px 0 16px; color: #506975; }
-.eligibility-criterion { min-width: 0; margin: 16px 0; padding: 16px; border: 1px solid #dce8eb; border-radius: 10px; }
+.eligibility-criterion { min-width: 0; margin: 8px 0; padding: 10px 12px; border: 1px solid #dce8eb; border-radius: 10px; }
 .eligibility-criterion legend { max-width: 100%; padding: 0 6px; color: #183843; font-weight: 600; white-space: pre-wrap; overflow-wrap: anywhere; }
-.eligibility-options { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
+.eligibility-options { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
 .eligibility-options label { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 6px 12px; border: 1px solid #dce8eb; border-radius: 8px; cursor: pointer; }
-.eligibility-options label:has(input:checked) { border-color: var(--teal-dark); background: #e2f4f3; }
+.eligibility-options label:has(input:checked) { border-color: var(--teal-dark); background: #e2f4f3; font-weight: 600; }
+.eligibility-evaluation-meta { margin: 0 0 8px; color: #708995; font-size: 11px; }
 .eligibility-options input { width: 16px; height: 16px; accent-color: var(--teal-dark); }
-.eligibility-criterion textarea { display: block; width: 100%; min-height: 80px; margin-top: 8px; padding: 10px; border: 1px solid #dce8eb; border-radius: 8px; color: inherit; background: #fff; font: inherit; resize: vertical; }
+.eligibility-criterion textarea { display: block; width: 100%; min-height: 56px; margin-top: 4px; padding: 8px; border: 1px solid #dce8eb; border-radius: 8px; color: inherit; background: #fff; font: inherit; resize: vertical; }
 .eligibility-criterion small { display: block; text-align: right; color: #506975; }
 .eligibility-criterion textarea[aria-invalid='true'], .eligibility-options label:has(input[aria-invalid='true']) { border-color: #c8393d; }
 .candidate-eligibility-form .study-field-error { color: #b82c35; }
@@ -856,6 +870,8 @@ body:has(.modal-backdrop), body:has(.study-dialog-backdrop) { overflow: hidden; 
 .coord-modal :is(button, input, textarea):focus-visible { outline: 2px solid var(--teal-dark); outline-offset: 3px; }
 
 @media (max-width: 600px) {
+  .eligibility-candidate-summary { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .eligibility-candidate-details { padding: 10px 0 0; border-left: 0; border-top: 1px solid #e6eef0; }
   .eligibility-options { flex-direction: column; gap: 8px; }
   .eligibility-criterion { padding: 12px; }
   .eligibility-criterion textarea { font-size: 16px; }

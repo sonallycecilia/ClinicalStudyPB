@@ -25,16 +25,17 @@ export function CandidateEligibilityForm({ state, candidate, onRetry, onCancel, 
   onRegistered: (assessment: CandidateEligibilityAssessment) => void;
   onBusyChange: (busy: boolean) => void;
 }) {
-  const { request } = useAuth();
+  const { request, user } = useAuth();
   const [answers, setAnswers] = useState<Record<string, Answer>>({});
   const [errors, setErrors] = useState<Record<string, FieldErrors>>({});
-  const [checked, setChecked] = useState(false);
   const [saved, setSaved] = useState<CandidateEligibilityAssessment | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const submission = useRef(false);
   const lifecycle = useRef<AbortController | null>(null);
+  const loadedAssessment = useRef({ candidate, onRegistered });
+  loadedAssessment.current = { candidate, onRegistered };
   useEffect(() => {
     const controller = new AbortController();
     lifecycle.current = controller;
@@ -43,13 +44,16 @@ export function CandidateEligibilityForm({ state, candidate, onRetry, onCancel, 
   useEffect(() => {
     if (state.status !== 'ready') return;
     setSaved(state.assessment);
+    // A consulta pode ser mais recente que a listagem usada para abrir o modal.
+    if (state.assessment.status !== loadedAssessment.current.candidate.status) {
+      loadedAssessment.current.onRegistered(state.assessment);
+    }
     // Ao atualizar os critérios após uma recusa, preserva o preenchimento dos IDs ainda ativos.
     setAnswers((current) => Object.fromEntries(state.criteria.map(({ id }) => {
       const evaluation = state.assessment.evaluations.find((item) => item.criterionId === id);
       return [id, current[id] ?? { result: evaluation?.result ?? '', observation: evaluation?.observation ?? '' }];
     })));
   }, [state]);
-  const form = useRef<HTMLFormElement>(null);
   const criteria = state.status === 'ready' ? state.criteria.filter((criterion) => criterion.active) : [];
   const assessment = saved ?? (state.status === 'ready' ? state.assessment : null);
   const getAnswer = (id: string): Answer => {
@@ -62,7 +66,6 @@ export function CandidateEligibilityForm({ state, candidate, onRetry, onCancel, 
     const next = { ...getAnswer(id), [field]: value };
     setAnswers((current) => ({ ...current, [id]: next }));
     if (errors[id]) setErrors((current) => ({ ...current, [id]: validate(next) }));
-    setChecked(false);
     setConfirmed(false);
   }
 
@@ -71,7 +74,6 @@ export function CandidateEligibilityForm({ state, candidate, onRetry, onCancel, 
     const next = Object.fromEntries(criteria.map(({ id }) => [id, validate(getAnswer(id))]));
     setErrors(next);
     const invalid = criteria.some(({ id }) => next[id].result || next[id].observation);
-    setChecked(!invalid);
     if (invalid) {
       const first = criteria.find(({ id }) => next[id].result || next[id].observation)!;
       const field = next[first.id].result ? `eligibility-${first.id}-Atende` : `eligibility-${first.id}-observation`;
@@ -87,7 +89,6 @@ export function CandidateEligibilityForm({ state, candidate, onRetry, onCancel, 
     setSubmitting(true);
     onBusyChange(true);
     setSaveError(null);
-    setChecked(false);
     const signal = lifecycle.current!.signal;
     try {
       const result = await candidatesApi.registerEligibilityAssessment(request, candidate.studyId, candidate.id, {
@@ -110,38 +111,24 @@ export function CandidateEligibilityForm({ state, candidate, onRetry, onCancel, 
     }
   }
 
-  function clear() {
-    setAnswers(Object.fromEntries(criteria.map(({ id }) => [id, { result: '', observation: '' }])));
-    setErrors({});
-    setChecked(false);
-    setConfirmed(false);
-    form.current?.querySelector<HTMLInputElement>('input[type="radio"]')?.focus();
-  }
-
-  return <form ref={form} className="candidate-eligibility-form" aria-label="Avaliação de elegibilidade" aria-busy={state.status === 'loading' || submitting} noValidate onSubmit={register}>
+  return <form className="candidate-eligibility-form" aria-label="Avaliação de elegibilidade" aria-busy={state.status === 'loading' || submitting} noValidate onSubmit={register}>
     {state.status === 'loading' && <p role="status">Carregando critérios…</p>}
     {state.status === 'error' && <div className="study-criteria-load-error"><p className="form-error" role="alert">{state.message}</p>{state.retryable && <button type="button" className="button button-outline" onClick={onRetry}>Tentar novamente</button>}</div>}
     {state.status === 'ready' && criteria.length === 0 && <p role="status">Este estudo não possui critérios ativos para avaliação.</p>}
-    {state.status === 'ready' && assessment && <>
-      <p>Elegibilidade atual: <strong>{assessment.status}</strong></p>
-      {assessment.evaluations.length === 0 && <p role="status">Nenhuma avaliação registrada para este candidato.</p>}
-      {included && <p role="status">O candidato já foi incluído neste estudo e não pode ser reavaliado.</p>}
-    </>}
+    {state.status === 'ready' && included && <p role="status">O candidato já foi incluído neste estudo e não pode ser reavaliado.</p>}
     {criteria.length > 0 && <>
-      <p className="eligibility-help">Selecione um resultado para cada critério. Use Pendente quando ainda não houver conclusão. As observações são opcionais e aceitam até 2.000 caracteres por critério.</p>
       {TYPES.map((type) => <section className="eligibility-group" key={type} aria-label={`Critérios de ${type.toLocaleLowerCase()}`}>
         <h3>Critérios de {type.toLocaleLowerCase()}</h3>
-        <p className="eligibility-help">{type === 'Inclusão' ? 'Atende é favorável à elegibilidade; Não atende é desfavorável.' : 'Atende indica um impedimento à participação; Não atende é favorável à elegibilidade.'}</p>
         {criteria.filter((criterion) => criterion.type === type).length === 0 && <p>Nenhum critério de {type.toLocaleLowerCase()} ativo.</p>}
         {criteria.filter((criterion) => criterion.type === type).map((criterion) => {
           const answer = getAnswer(criterion.id);
           const error = errors[criterion.id];
           const prefix = `eligibility-${criterion.id}`;
           const evaluation = assessment?.evaluations.find((item) => item.criterionId === criterion.id);
+          const evaluatorName = evaluation?.evaluatorId === user?.id ? user?.name : undefined;
           return <fieldset key={criterion.id} className="eligibility-criterion" disabled={submitting || included}>
             <legend>{criterion.description}</legend>
-            <small>ID do critério: {criterion.id}</small>
-            {evaluation && <p>Última avaliação: <time dateTime={evaluation.evaluatedAt}>{new Date(evaluation.evaluatedAt).toLocaleString('pt-BR')}</time> · Responsável: {evaluation.evaluatorId}</p>}
+            {evaluation && <p className="eligibility-evaluation-meta">Última avaliação: <time dateTime={evaluation.evaluatedAt}>{new Date(evaluation.evaluatedAt).toLocaleString('pt-BR')}</time>{evaluatorName && <> · Responsável: {evaluatorName}</>}</p>}
             <div className="eligibility-options">
               {RESULTS.map((result) => <label key={result}>
                 <input type="radio" id={`${prefix}-${result}`} name={`${prefix}-result`} value={result} required checked={answer.result === result} onChange={() => update(criterion.id, 'result', result)} aria-invalid={Boolean(error?.result)} aria-describedby={error?.result ? `${prefix}-result-error` : undefined} />
@@ -150,22 +137,17 @@ export function CandidateEligibilityForm({ state, candidate, onRetry, onCancel, 
             </div>
             {error?.result && <p id={`${prefix}-result-error`} className="study-field-error" role="alert">{error.result}</p>}
             <label className="study-field" htmlFor={`${prefix}-observation`}>Observações (opcional)</label>
-            <textarea id={`${prefix}-observation`} value={answer.observation} maxLength={MAX_OBSERVATION_LENGTH} rows={3} onChange={(event) => update(criterion.id, 'observation', event.target.value)} onBlur={() => setErrors((current) => ({ ...current, [criterion.id]: { ...current[criterion.id], observation: validate(answer).observation } }))} aria-invalid={Boolean(error?.observation)} aria-describedby={`${prefix}-count${error?.observation ? ` ${prefix}-observation-error` : ''}`} />
+            <textarea id={`${prefix}-observation`} value={answer.observation} maxLength={MAX_OBSERVATION_LENGTH} rows={2} onChange={(event) => update(criterion.id, 'observation', event.target.value)} onBlur={() => setErrors((current) => ({ ...current, [criterion.id]: { ...current[criterion.id], observation: validate(answer).observation } }))} aria-invalid={Boolean(error?.observation)} aria-describedby={`${prefix}-count${error?.observation ? ` ${prefix}-observation-error` : ''}`} />
             <small id={`${prefix}-count`}>{answer.observation.length}/2.000 caracteres</small>
             {error?.observation && <p id={`${prefix}-observation-error`} className="study-field-error" role="alert">{error.observation}</p>}
           </fieldset>;
         })}
       </section>)}
     </>}
-    {checked && <p role="status" className="candidate-notice">Preenchimento conferido. A avaliação ainda não foi salva.</p>}
     {confirmed && <p role="status" className="candidate-notice">Avaliação registrada com sucesso. Resultado: {assessment?.status}.</p>}
     {saveError && <div role="alert"><p className="form-error">{saveError}</p><button type="button" className="button button-outline" onClick={() => { setSaveError(null); setConfirmed(false); onRetry(); }}>Atualizar critérios e avaliações</button></div>}
     <div className="modal-actions coord-modal-actions">
       <button type="button" className="button button-outline" disabled={submitting} onClick={onCancel}>Voltar aos detalhes</button>
-      {criteria.length > 0 && <>
-        <button type="button" className="button button-outline" disabled={submitting || included} onClick={clear}>Limpar preenchimento</button>
-        <button type="button" className="button button-outline" disabled={submitting || included} onClick={check}>Conferir preenchimento</button>
-      </>}
       <button type="submit" className="button button-primary" disabled={state.status !== 'ready' || criteria.length === 0 || submitting || included || confirmed}>{submitting ? 'Registrando…' : 'Registrar avaliação'}</button>
     </div>
   </form>;

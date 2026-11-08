@@ -5,42 +5,52 @@ import { candidatesApi, CandidatesApiError, type Candidate } from './candidatesA
 export type StudyCandidatesState =
   | { status: 'idle' }
   | { status: 'loading' }
-  | { status: 'ready'; candidates: readonly Candidate[] }
+  | { status: 'ready'; candidates: readonly Candidate[]; failures?: readonly { studyId: string; message: string }[] }
   | { status: 'error'; message: string };
 
-export function useStudyCandidates(studyId: string) {
+/** null aguarda os estudos autorizados; [] representa uma consulta válida sem estudos. */
+export function useStudyCandidates(studyIds: readonly string[] | null) {
   const { request } = useAuth();
   const [attempt, setAttempt] = useState(0);
-  const [result, setResult] = useState<{ studyId: string; state: StudyCandidatesState }>({
-    studyId: '', state: { status: 'idle' },
+  const scope = studyIds === null ? null : JSON.stringify([...new Set(studyIds)].sort());
+  const [result, setResult] = useState<{ scope: string | null; state: StudyCandidatesState }>({
+    scope: null, state: { status: 'idle' },
   });
 
   useEffect(() => {
-    if (!studyId) {
-      setResult({ studyId: '', state: { status: 'idle' } });
+    if (scope === null) {
+      setResult({ scope, state: { status: 'idle' } });
       return;
     }
     const controller = new AbortController();
-    setResult({ studyId, state: { status: 'loading' } });
-    void candidatesApi.listByStudy(request, studyId, controller.signal)
-      .then((candidates) => {
-        if (!controller.signal.aborted) setResult({ studyId, state: {
-          status: 'ready', candidates: candidates.filter((candidate) => candidate.studyId === studyId),
-        } });
-      })
-      .catch((error: unknown) => {
-        if (!controller.signal.aborted) setResult({
-          studyId, state: {
-            status: 'error', message: error instanceof CandidatesApiError ? error.message
-              : 'Não foi possível consultar os candidatos deste estudo. Tente novamente.',
-          },
+    const ids = JSON.parse(scope) as string[];
+    setResult({ scope, state: { status: 'loading' } });
+    void Promise.allSettled(ids.map((id) => candidatesApi.listByStudy(request, id, controller.signal)))
+      .then((results) => {
+        if (controller.signal.aborted) return;
+        const candidates = new Map<string, Candidate>();
+        const failures: { studyId: string; message: string }[] = [];
+        results.forEach((result, index) => {
+          const studyId = ids[index];
+          if (result.status === 'fulfilled') {
+            for (const candidate of result.value) {
+              if (candidate.studyId === studyId) candidates.set(`${studyId}:${candidate.id}`, candidate);
+            }
+          } else {
+            const error: unknown = result.reason;
+            failures.push({ studyId, message: error instanceof CandidatesApiError ? error.message
+              : 'Não foi possível consultar os candidatos deste estudo. Tente novamente.' });
+          }
         });
+        setResult({ scope, state: ids.length > 0 && failures.length === ids.length
+          ? { status: 'error', message: [...new Set(failures.map(({ message }) => message))].join(' ') }
+          : { status: 'ready', candidates: [...candidates.values()], failures } });
       });
     return () => controller.abort();
-  }, [request, studyId, attempt]);
+  }, [request, scope, attempt]);
 
   // Nunca exibe o resultado anterior durante a troca de estudo.
-  const state: StudyCandidatesState = !studyId ? { status: 'idle' }
-    : result.studyId !== studyId ? { status: 'loading' } : result.state;
+  const state: StudyCandidatesState = scope === null ? { status: 'idle' }
+    : result.scope !== scope ? { status: 'loading' } : result.state;
   return { state, reload: () => setAttempt((current) => current + 1) };
 }

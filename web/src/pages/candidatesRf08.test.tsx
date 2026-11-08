@@ -10,7 +10,7 @@ vi.mock('../auth/AuthContext', () => ({ useAuth: () => ({ request }) }));
 const studies = [{ id: 'study-1', title: 'Sono' }, { id: 'study-2', title: 'Atividade física' }];
 const row = { id: 'candidate-1', studyId: 'study-1', name: 'Ana Silva', email: null, status: 'Em avaliação', registeredAt: '2026-11-07 00:30:00.123+00' };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
-function renderPage() { render(<MemoryRouter><CoordinatorCandidatesPage /></MemoryRouter>); }
+function renderPage(studyId = 'study-1') { render(<MemoryRouter initialEntries={[`/?studyId=${studyId}`]}><CoordinatorCandidatesPage /></MemoryRouter>); }
 async function selectStudy(id: string) {
   await screen.findByRole('option', { name: 'Sono' });
   fireEvent.change(screen.getByRole('combobox', { name: 'Filtrar por estudo' }), { target: { value: id } });
@@ -35,8 +35,8 @@ describe('RF08 — telas com o adaptador HTTP real e transporte autenticado simu
       if (options?.method === 'POST') return new Promise<Response>((resolve) => { finish = resolve; });
       return json(persisted && path === `/studies/${studyId}/candidates` ? [{ ...row, studyId }] : []);
     });
-    renderPage();
-    await selectStudy('study-1');
+    renderPage(studyId);
+    await selectStudy(studyId);
     await screen.findByText('O estudo selecionado não possui candidatos cadastrados.');
     const dialog = await openForm(studyId);
     const form = within(dialog).getByRole('form');
@@ -55,17 +55,17 @@ describe('RF08 — telas com o adaptador HTTP real e transporte autenticado simu
     });
     persisted = true;
     await act(async () => finish(json({ ...row, studyId }, 201)));
-    await within(dialog).findByText('Candidato cadastrado com sucesso.');
-    fireEvent.submit(form);
+    await screen.findByText('Candidato cadastrado com sucesso!');
+    expect(screen.queryByRole('dialog')).toBeNull();
     const table = screen.getByRole('table', { name: 'Candidatos do estudo' });
     const candidate = await within(table).findByRole('row', { name: /Ana Silva/ });
     expect(within(candidate).getByText('07/11/2026')).toBeTruthy();
     expect(within(candidate).getByText(studies.find((study) => study.id === studyId)!.title)).toBeTruthy();
     expect((screen.getByRole('combobox', { name: 'Filtrar por estudo' }) as HTMLSelectElement).value).toBe(studyId);
-    expect(request.mock.calls.filter(([path, options]) => path === `/studies/${studyId}/candidates` && !options?.method)).toHaveLength(studyId === 'study-1' ? 2 : 1);
+    expect(request.mock.calls.filter(([path, options]) => path === `/studies/${studyId}/candidates` && !options?.method)).toHaveLength(2);
     expect(request.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1);
     expect(request.mock.calls.some(([path]) => /include|participant|consents|eligibility/.test(path))).toBe(false);
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Voltar à listagem' }));
+    expect(screen.queryByRole('button', { name: 'Voltar à listagem' })).toBeNull();
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.getByText('Ana Silva')).toBeTruthy();
   });

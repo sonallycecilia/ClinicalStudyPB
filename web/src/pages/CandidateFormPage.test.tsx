@@ -67,12 +67,13 @@ describe('página e rotas de cadastro de candidato no App', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.getByRole('heading', { name: 'Lista de candidatos e participantes' })).toBeTruthy();
     expect(screen.queryByText('Pessoa não salva')).toBeNull();
-    expect(request).toHaveBeenCalledTimes(2);
-    expect((request.mock.calls[1][1] as RequestInit).signal?.aborted).toBe(true);
+    expect(request).toHaveBeenCalledTimes(3);
+    expect((request.mock.calls[2][1] as RequestInit).signal?.aborted).toBe(true);
     expect((request.mock.calls[0][1] as RequestInit).signal?.aborted).toBe(false);
   });
 
   it('cadastra pela página e consulta o estudo correspondente ao voltar à listagem', async () => {
+    window.history.replaceState({}, '', '/coordenador/candidatos/novo?studyId=study-1');
     const candidate = { id: 'candidate-1', studyId: 'study-1', name: 'Ana Silva', email: 'ana@example.com', status: 'Novo', registeredAt: '2026-11-07T14:00:00Z' };
     request.mockImplementation(async (path: string, init?: RequestInit) => {
       if (path === '/studies/disponiveis-recrutamento') return jsonResponse(options);
@@ -84,11 +85,11 @@ describe('página e rotas de cadastro de candidato no App', () => {
     fireEvent.change(screen.getByLabelText(/^Estudo/), { target: { value: 'study-1' } });
     fireEvent.change(screen.getByLabelText('E-mail (opcional)'), { target: { value: 'ana@example.com' } });
     fireEvent.submit(screen.getByRole('form'));
-    await screen.findByText('Candidato cadastrado com sucesso.');
+    await screen.findByText('Candidato cadastrado com sucesso!');
     expect(request).toHaveBeenCalledWith('/studies/study-1/candidates', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Ana Silva', email: 'ana@example.com' }),
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Voltar à listagem' }));
+    expect(screen.queryByRole('button', { name: 'Voltar à listagem' })).toBeNull();
     expect(window.location.pathname).toBe('/coordenador/candidatos');
     await screen.findByRole('row', { name: /Ana Silva/ });
     expect((screen.getByRole('combobox', { name: 'Filtrar por estudo' }) as HTMLSelectElement).value).toBe('study-1');
