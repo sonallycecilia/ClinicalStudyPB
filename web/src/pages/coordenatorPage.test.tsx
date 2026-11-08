@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { StrictMode, type ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
-import { candidatesApi, ELIGIBILITY_UNAVAILABLE_MESSAGE, INCLUSION_UNAVAILABLE_MESSAGE, type Candidate } from '../candidates/candidatesApi';
+import { candidatesApi, INCLUSION_UNAVAILABLE_MESSAGE, type Candidate } from '../candidates/candidatesApi';
 import { CriteriaApiError, type EligibilityCriterion } from '../studies/criteriaApi';
 import {
   CoordinatorCandidatesPage,
@@ -425,23 +425,30 @@ describe('CoordinatorCandidatesPage', () => {
 });
 
 describe('Avaliação de elegibilidade do candidato', () => {
-  it('consulta critérios somente pela ação nos detalhes e mantém o registro indisponível sem chamar endpoints restritos', async () => {
+  beforeEach(() => {
+    vi.spyOn(candidatesApi, 'getEligibilityAssessment').mockImplementation(async (_request, studyId, candidateId) => ({
+      studyId, candidateId, status: candidateRows.find((candidate) => candidate.id === candidateId)!.status, evaluations: [],
+    }));
+  });
+  it('consulta critérios pela ação nos detalhes e respeita o acesso negado da API', async () => {
+    mockRequest.mockImplementation(async (path: string) => path.endsWith('/criteria')
+      ? new Response(JSON.stringify({ message: 'Você não tem permissão para acessar os critérios deste estudo.' }), { status: 403 })
+      : new Response(JSON.stringify(studyOptions)));
     const load = vi.spyOn(candidatesApi, 'listEligibilityCriteria');
     const save = vi.spyOn(candidatesApi, 'registerEligibilityAssessment');
     const { dialog } = await openEligibility();
-    await within(dialog).findByText('Consulta de critérios indisponível para o Coordenador.');
+    await within(dialog).findByRole('alert');
     expect(within(dialog).getByText('Lucas Martins')).toBeTruthy();
     expect(within(dialog).getByText('Estudo em recrutamento')).toBeTruthy();
-    expect(within(dialog).getByText(ELIGIBILITY_UNAVAILABLE_MESSAGE)).toBeTruthy();
+    expect(within(dialog).getByText('Você não tem permissão para acessar os critérios deste estudo.')).toBeTruthy();
     expect(load).toHaveBeenCalledOnce();
     expect(load).toHaveBeenCalledWith(mockRequest, 'study-1', expect.any(AbortSignal));
     const register = within(dialog).getByRole('button', { name: 'Registrar avaliação' }) as HTMLButtonElement;
     expect(register.disabled).toBe(true);
-    expect(register.getAttribute('aria-describedby')).toBe('eligibility-unavailable');
     fireEvent.click(register);
     fireEvent.submit(within(dialog).getByRole('form'));
     expect(save).not.toHaveBeenCalled();
-    expect(mockRequest).toHaveBeenCalledOnce();
+    expect(mockRequest).toHaveBeenCalledTimes(2);
     expect(within(dialog).queryByRole('radio')).toBeNull();
     expect(within(dialog).queryByText('Este estudo não possui critérios ativos para avaliação.')).toBeNull();
   });
@@ -492,8 +499,8 @@ describe('Avaliação de elegibilidade do candidato', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Conferir preenchimento' }));
     expect(within(dialog).queryByRole('alert')).toBeNull();
     expect(within(dialog).getByText('Preenchimento conferido. A avaliação ainda não foi salva.')).toBeTruthy();
-    expect(within(dialog).getByText('Elegível')).toBeTruthy();
-    expect((within(dialog).getByRole('button', { name: 'Registrar avaliação' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(within(dialog).getByText(/Elegibilidade atual:/).textContent).toContain('Elegível');
+    expect((within(dialog).getByRole('button', { name: 'Registrar avaliação' }) as HTMLButtonElement).disabled).toBe(false);
     expect(save).not.toHaveBeenCalled();
     expect(mockRequest).toHaveBeenCalledOnce();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Limpar preenchimento' }));
@@ -533,7 +540,7 @@ describe('Avaliação de elegibilidade do candidato', () => {
       .mockRejectedValueOnce(new Error('Falha'))
       .mockResolvedValueOnce(eligibilityCriteria);
     const { dialog } = await openEligibility();
-    await within(dialog).findByText('Não foi possível carregar os critérios. Tente novamente.');
+    await within(dialog).findByText('Não foi possível carregar os critérios e a avaliação. Tente novamente.');
     expect(within(dialog).queryByText('Este estudo não possui critérios ativos para avaliação.')).toBeNull();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Tentar novamente' }));
     await within(dialog).findByRole('group', { name: 'Possuir idade mínima de 18 anos' });
@@ -554,7 +561,7 @@ describe('Avaliação de elegibilidade do candidato', () => {
     const { trigger, dialog } = await openEligibility();
     await within(dialog).findByRole('group', { name: 'Possuir idade mínima de 18 anos' });
     const close = within(dialog).getByRole('button', { name: 'Fechar' });
-    const last = within(dialog).getByRole('button', { name: 'Conferir preenchimento' });
+    const last = within(dialog).getByRole('button', { name: 'Registrar avaliação' });
     expect(document.activeElement).toBe(close);
     act(() => last.focus());
     fireEvent.keyDown(last, { key: 'Tab' });

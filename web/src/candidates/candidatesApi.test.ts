@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { candidatesApi, CANDIDATE_STATUSES, ConsentUnavailableError, EligibilityUnavailableError, CandidateInclusionError, INVALID_INCLUSION_MESSAGE } from './candidatesApi';
+import { candidatesApi, CANDIDATE_STATUSES, ConsentUnavailableError, EligibilityApiError, CandidateInclusionError, INVALID_INCLUSION_MESSAGE } from './candidatesApi';
 import { toCandidateInput, CandidateSubmissionError } from './candidateValidation';
 
 const candidate = { id: 'candidate-1', studyId: 'study/1', name: 'Ana Silva', email: null, status: 'Novo', registeredAt: '2026-11-07 14:03:00.123+00' };
@@ -71,14 +71,52 @@ describe('RF08 — comunicação de candidatos', () => {
 });
 
 describe('contrato de elegibilidade para o Coordenador', () => {
-  it('bloqueia consulta e registro enquanto não houver autorização, sem enviar requisições', async () => {
-    const request = vi.fn();
-    await expect(candidatesApi.listEligibilityCriteria(request, 'study-1')).rejects.toBeInstanceOf(EligibilityUnavailableError);
-    await expect(candidatesApi.getEligibilityAssessment(request, 'study-1', 'candidate-1')).rejects.toBeInstanceOf(EligibilityUnavailableError);
-    await expect(candidatesApi.registerEligibilityAssessment(request, 'study-1', 'candidate-1', {
+  const assessment = { studyId: 'study/1', candidateId: 'candidate/1', status: 'Elegível', evaluations: [{
+    id: 'evaluation-1', criterionId: 'criterion-1', criterionType: 'Inclusão', criterionDescription: 'Idade',
+    result: 'Atende', observation: null, evaluatorId: 'coordinator-1', evaluatedAt: '2026-11-08 12:00:00.123+00',
+  }] };
+  it('delega critérios ao adaptador existente e repassa o cancelamento', async () => {
+    const request = vi.fn().mockResolvedValue(new Response('[]'));
+    const signal = new AbortController().signal;
+    await expect(candidatesApi.listEligibilityCriteria(request, 'study/1', signal)).resolves.toEqual([]);
+    expect(request).toHaveBeenCalledWith('/studies/study%2F1/criteria', { signal });
+  });
+  it('consulta avaliações pelos IDs e envia somente evaluations no POST', async () => {
+    const request = vi.fn().mockImplementation(async () => new Response(JSON.stringify(assessment)));
+    const signal = new AbortController().signal;
+    await expect(candidatesApi.getEligibilityAssessment(request, 'study/1', 'candidate/1', signal)).resolves.toEqual(assessment);
+    expect(request).toHaveBeenLastCalledWith('/studies/study%2F1/candidates/candidate%2F1/eligibility-assessments', { signal });
+    await expect(candidatesApi.registerEligibilityAssessment(request, 'study/1', 'candidate/1', {
+      evaluations: [{ criterionId: 'criterion-1', result: 'Atende', observation: 'Observação' }], status: 'Inelegível',
+    } as never, signal)).resolves.toEqual(assessment);
+    expect(request).toHaveBeenLastCalledWith('/studies/study%2F1/candidates/candidate%2F1/eligibility-assessments', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, signal,
+      body: JSON.stringify({ evaluations: [{ criterionId: 'criterion-1', result: 'Atende', observation: 'Observação' }] }),
+    });
+  });
+  it.each([null, {}, { ...assessment, candidateId: 'other' }, { ...assessment, studyId: 'other' },
+    { ...assessment, status: 'unknown' }, { ...assessment, evaluations: [null] },
+    { ...assessment, evaluations: [{ ...assessment.evaluations[0], result: 'Sim' }] },
+    { ...assessment, evaluations: [assessment.evaluations[0], assessment.evaluations[0]] },
+    { ...assessment, evaluations: [{ ...assessment.evaluations[0], evaluatedAt: 'invalid' }] },
+  ])('rejeita resposta inválida ou de outro candidato: %j', async (body) => {
+    const request = vi.fn().mockResolvedValue(new Response(JSON.stringify(body)));
+    await expect(candidatesApi.getEligibilityAssessment(request, 'study/1', 'candidate/1')).rejects.toBeInstanceOf(EligibilityApiError);
+  });
+  it('recusa sucesso incompleto, sem confirmar o registro', async () => {
+    const request = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ...assessment, evaluations: [] })));
+    await expect(candidatesApi.registerEligibilityAssessment(request, 'study/1', 'candidate/1', {
       evaluations: [{ criterionId: 'criterion-1', result: 'Atende' }],
-    })).rejects.toBeInstanceOf(EligibilityUnavailableError);
-    expect(request).not.toHaveBeenCalled();
+    })).rejects.toThrow('avaliação incompleta');
+  });
+  it.each([400, 401, 403, 404, 503])('preserva HTTP %s no erro', async (status) => {
+    const request = vi.fn().mockResolvedValue(new Response(JSON.stringify({ message: ['Dados recusados.'] }), { status }));
+    await expect(candidatesApi.getEligibilityAssessment(request, 'study/1', 'candidate/1')).rejects.toMatchObject({ status });
+  });
+  it('trata conexão e JSON inválido', async () => {
+    const request = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(new Response('invalid'));
+    await expect(candidatesApi.getEligibilityAssessment(request, 's', 'c')).rejects.toThrow('comunicar');
+    await expect(candidatesApi.getEligibilityAssessment(request, 's', 'c')).rejects.toThrow('avaliação inválida');
   });
 });
 

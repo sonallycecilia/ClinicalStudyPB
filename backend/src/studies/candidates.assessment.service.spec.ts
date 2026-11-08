@@ -25,7 +25,7 @@ describe('CandidatesService avaliação de elegibilidade', () => {
     transaction: jest.Mock<(operation: (client: PoolClient) => Promise<unknown>) => Promise<unknown>>;
   };
   let studies: {
-    assertStudyCanBeModified: jest.Mock<(id: string, ownerId: string) => Promise<unknown>>;
+    assertEligibilityStudyAccess: jest.Mock<(id: string, userId: string, modifying?: boolean) => Promise<unknown>>;
     findById: jest.Mock<(id: string, ownerId: string) => Promise<unknown>>;
   };
   let service: CandidatesService;
@@ -39,7 +39,8 @@ describe('CandidatesService avaliação de elegibilidade', () => {
       transaction: jest.fn(async (operation) => operation(client)),
     };
     studies = {
-      assertStudyCanBeModified: jest.fn<(id: string, ownerId: string) => Promise<unknown>>(),
+      assertEligibilityStudyAccess: jest.fn<(id: string, userId: string, modifying?: boolean) => Promise<unknown>>()
+        .mockResolvedValue({ researcherId }),
       findById: jest.fn<(id: string, ownerId: string) => Promise<unknown>>(),
     };
     service = new CandidatesService(
@@ -77,7 +78,7 @@ describe('CandidatesService avaliação de elegibilidade', () => {
       status: 'Elegível',
       evaluations: savedEvaluations,
     });
-    expect(studies.assertStudyCanBeModified).toHaveBeenCalledWith(studyId, researcherId);
+    expect(studies.assertEligibilityStudyAccess).toHaveBeenCalledWith(studyId, researcherId, true);
     expect(txQuery.mock.calls.filter(([sql]) => sql.includes('INSERT INTO avaliacoes_elegibilidade')))
       .toHaveLength(2);
     expect(txQuery.mock.calls.find(([sql]) => sql.includes('UPDATE candidatos'))?.[1])
@@ -146,6 +147,22 @@ describe('CandidatesService avaliação de elegibilidade', () => {
       evaluations: [{ criterionId: inclusionId, result: 'Atende' }],
     }, researcherId)).rejects.toThrow(NotFoundException);
     expect(txQuery).toHaveBeenCalledTimes(2);
+  });
+
+  it('revalida recrutamento dentro da transação para o Coordenador e registra sua identidade', async () => {
+    const coordinatorId = '00000000-0000-4000-8000-000000000099';
+    txQuery.mockResolvedValueOnce({ rows: [{ status: StudyStatus.Execucao }], rowCount: 1 });
+    await expect(service.evaluate(studyId, candidateId, {
+      evaluations: [{ criterionId: inclusionId, result: 'Atende' }],
+    }, coordinatorId)).rejects.toThrow('só pode avaliar candidatos de estudos em recrutamento');
+    expect(txQuery).toHaveBeenCalledTimes(1);
+    txQuery.mockReset();
+    mockSuccessfulAssessment('Elegível', []);
+    await service.evaluate(studyId, candidateId, {
+      evaluations: [{ criterionId: inclusionId, result: 'Atende' }, { criterionId: exclusionId, result: 'Não atende' }],
+    }, coordinatorId);
+    expect(txQuery.mock.calls[0][1]).toEqual([studyId, researcherId]);
+    expect(txQuery.mock.calls.find(([sql]) => sql.includes('INSERT INTO avaliacoes_elegibilidade'))?.[1]?.[2]).toBe(coordinatorId);
   });
 
   it('rejeita critérios de outro estudo e respostas duplicadas antes de gravar', async () => {

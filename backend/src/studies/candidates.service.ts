@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import type { QueryResultRow } from 'pg';
 import { DatabaseService } from '../database/database.service.js';
 import { StudyStatus } from './study.types.js';
@@ -299,9 +299,9 @@ export class CandidatesService {
     studyId: string,
     candidateId: string,
     input: EvaluateCandidateInput,
-    researcherId: string,
+    evaluatorId: string,
   ): Promise<CandidateEligibilityAssessment> {
-    await this.studiesService.assertStudyCanBeModified(studyId, researcherId);
+    const study = await this.studiesService.assertEligibilityStudyAccess(studyId, evaluatorId, true);
     this.validateEvaluations(input);
 
     return this.database.transaction(async (client) => {
@@ -310,11 +310,15 @@ export class CandidatesService {
          FROM estudos
          WHERE id_estudo = $1 AND id_pesquisador = $2
          FOR UPDATE`,
-        [studyId, researcherId],
+        [studyId, study.researcherId],
       );
       if (!studyResult.rows[0]) throw new NotFoundException('Estudo não encontrado.');
       if (studyResult.rows[0].status === StudyStatus.Encerrado) {
         throw new BadRequestException('Não é possível avaliar candidatos em um estudo encerrado.');
+      }
+      // Revalida a fase sob o mesmo bloqueio usado pela transição de estado do estudo.
+      if (evaluatorId !== study.researcherId && studyResult.rows[0].status !== StudyStatus.Recrutamento) {
+        throw new ForbiddenException('O Coordenador só pode avaliar candidatos de estudos em recrutamento.');
       }
 
       const candidateResult = await client.query<{ status: Candidate['status'] }>(
@@ -370,7 +374,7 @@ export class CandidatesService {
           [
             candidateId,
             evaluation.criterionId,
-            researcherId,
+            evaluatorId,
             evaluation.result,
             evaluation.observation ?? null,
           ],
@@ -426,9 +430,9 @@ export class CandidatesService {
   async getEligibilityAssessment(
     studyId: string,
     candidateId: string,
-    researcherId: string,
+    userId: string,
   ): Promise<CandidateEligibilityAssessment> {
-    await this.studiesService.findById(studyId, researcherId);
+    await this.studiesService.assertEligibilityStudyAccess(studyId, userId);
     const candidateResult = await this.database.query<{ status: Candidate['status'] }>(
       `SELECT status_recrutamento AS status
        FROM candidatos

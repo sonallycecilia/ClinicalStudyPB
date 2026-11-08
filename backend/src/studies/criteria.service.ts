@@ -33,8 +33,8 @@ export class CriteriaService {
     private readonly studiesService: StudiesService,
   ) {}
 
-  async list(studyId: string, researcherId: string): Promise<EligibilityCriterion[]> {
-    await this.assertStudyAccess(studyId, researcherId);
+  async list(studyId: string, userId: string): Promise<EligibilityCriterion[]> {
+    await this.studiesService.assertEligibilityStudyAccess(studyId, userId);
     const { rows } = await this.database.query<CriterionRow>(
       `SELECT ${CRITERION_COLUMNS}
        FROM criterios_elegibilidade

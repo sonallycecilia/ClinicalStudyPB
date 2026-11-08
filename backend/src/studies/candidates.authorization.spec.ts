@@ -160,7 +160,7 @@ describe('RF08 HTTP — controller, guards e services reais, persistência simul
 
   it.each([
     ['get', 'consents'], ['post', 'consents'],
-    ['get', 'eligibility-assessments'], ['post', 'eligibility-assessments'], ['post', 'include'],
+    ['post', 'include'],
   ] as const)('mantém %s /:candidateId/%s restrito ao Pesquisador', async (method, endpoint) => {
     await request(app.getHttpServer())[method](`${path}/${candidateId}/${endpoint}`)
       .set('Authorization', bearer(coordinator)).send({}).expect(403);

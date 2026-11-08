@@ -1,5 +1,5 @@
 import type { AuthenticatedRequest } from '../studies/studiesApi';
-import type { criteriaApi, CriterionType } from '../studies/criteriaApi';
+import { criteriaApi, type CriterionType } from '../studies/criteriaApi';
 import { CandidateSubmissionError, type CandidateInput } from './candidateValidation';
 
 export const CANDIDATE_STATUSES = ['Novo', 'Em avaliação', 'Elegível', 'Inelegível', 'Incluído', 'Desistiu'] as const;
@@ -127,34 +127,82 @@ export interface CandidateEligibilityAssessment {
   })[];
 }
 
-export const ELIGIBILITY_UNAVAILABLE_MESSAGE = 'A avaliação de elegibilidade ainda não está disponível para o Coordenador. A consulta e o registro dependem da liberação de acesso ao estudo. Nenhuma avaliação será salva.';
-
-export class EligibilityUnavailableError extends Error {
-  constructor() {
-    super(ELIGIBILITY_UNAVAILABLE_MESSAGE);
-    this.name = 'EligibilityUnavailableError';
+export class EligibilityApiError extends Error {
+  constructor(message: string, readonly status?: number) {
+    super(message);
+    this.name = 'EligibilityApiError';
   }
 }
 
-// Contrato preparado para S2-W2-06. Os três métodos permanecem indisponíveis:
-// os endpoints e os serviços exigem o Pesquisador proprietário do estudo.
-// Após a autorização, listEligibilityCriteria poderá delegar a criteriaApi.list.
-const listEligibilityCriteria: typeof criteriaApi.list = async () => {
-  throw new EligibilityUnavailableError();
-};
+const listEligibilityCriteria: typeof criteriaApi.list = (...args) => criteriaApi.list(...args);
+
+function isEligibilityAssessment(value: unknown, studyId: string, candidateId: string): value is CandidateEligibilityAssessment {
+  if (!value || typeof value !== 'object') return false;
+  const body = value as Partial<CandidateEligibilityAssessment>;
+  const ids = new Set<string>();
+  return body.studyId === studyId && body.candidateId === candidateId
+    && CANDIDATE_STATUSES.includes(body.status as CandidateStatus)
+    && Array.isArray(body.evaluations) && body.evaluations.every((item) => {
+      if (!item || typeof item !== 'object') return false;
+      const valid = typeof item.id === 'string' && item.id.length > 0
+        && typeof item.criterionId === 'string' && item.criterionId.length > 0 && !ids.has(item.criterionId)
+        && ['Inclusão', 'Exclusão'].includes(item.criterionType) && typeof item.criterionDescription === 'string'
+        && ['Atende', 'Não atende', 'Pendente'].includes(item.result)
+        && (item.observation === null || typeof item.observation === 'string')
+        && typeof item.evaluatorId === 'string' && item.evaluatorId.length > 0
+        && typeof item.evaluatedAt === 'string' && !Number.isNaN(Date.parse(item.evaluatedAt));
+      ids.add(item.criterionId);
+      return valid;
+    });
+}
+
+async function eligibilityRequest(request: AuthenticatedRequest, studyId: string, candidateId: string, options: RequestInit): Promise<CandidateEligibilityAssessment> {
+  let response: Response;
+  try {
+    response = await request(`/studies/${encodeURIComponent(studyId)}/candidates/${encodeURIComponent(candidateId)}/eligibility-assessments`, options);
+  } catch {
+    throw new EligibilityApiError('Não foi possível comunicar com o servidor. Consulte a avaliação antes de tentar registrar novamente.');
+  }
+  const body: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const messages: Record<number, string> = {
+      400: 'A avaliação foi recusada. Confira as respostas, os critérios ativos e a situação do candidato e do estudo.',
+      401: 'Sua sessão expirou ou é inválida. Entre novamente para continuar.',
+      403: 'Você não tem permissão para consultar ou registrar avaliações neste estudo.',
+      404: 'Estudo ou candidato não encontrado neste estudo. Atualize a listagem.',
+    };
+    const message = (body as { message?: unknown } | null)?.message;
+    const detail = typeof message === 'string' ? message
+      : Array.isArray(message) ? message.filter((item): item is string => typeof item === 'string').join(' ') : '';
+    throw new EligibilityApiError(response.status === 400 && detail.trim() ? detail
+      : messages[response.status] ?? 'Não foi possível concluir a avaliação. Consulte os dados e tente novamente.', response.status);
+  }
+  if (!isEligibilityAssessment(body, studyId, candidateId)
+    || (options.method === 'POST' && !['Elegível', 'Inelegível', 'Em avaliação'].includes(body.status))) {
+    throw new EligibilityApiError('O servidor retornou uma avaliação inválida. Consulte a avaliação antes de tentar registrar novamente.');
+  }
+  return body;
+}
 
 // GET /studies/:studyId/candidates/:candidateId/eligibility-assessments
 const getEligibilityAssessment: (
   request: AuthenticatedRequest, studyId: string, candidateId: string, signal?: AbortSignal,
-) => Promise<CandidateEligibilityAssessment> = async () => {
-  throw new EligibilityUnavailableError();
+) => Promise<CandidateEligibilityAssessment> = async (request, studyId, candidateId, signal) => {
+  return eligibilityRequest(request, studyId, candidateId, { signal });
 };
 
 // POST na mesma rota, com { evaluations }, sem enviar status calculado no frontend.
 const registerEligibilityAssessment: (
-  request: AuthenticatedRequest, studyId: string, candidateId: string, input: EvaluateCandidateInput,
-) => Promise<CandidateEligibilityAssessment> = async () => {
-  throw new EligibilityUnavailableError();
+  request: AuthenticatedRequest, studyId: string, candidateId: string, input: EvaluateCandidateInput, signal?: AbortSignal,
+) => Promise<CandidateEligibilityAssessment> = async (request, studyId, candidateId, input, signal) => {
+  const result = await eligibilityRequest(request, studyId, candidateId, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, signal,
+    body: JSON.stringify({ evaluations: input.evaluations.map(({ criterionId, result, observation }) => ({ criterionId, result, ...(observation != null ? { observation } : {}) })) }),
+  });
+  if (input.evaluations.some(({ criterionId }) => !result.evaluations.some((item) => item.criterionId === criterionId))) {
+    throw new EligibilityApiError('O servidor retornou uma avaliação incompleta. Consulte a avaliação antes de tentar registrar novamente.');
+  }
+  return result;
 };
 
 export type CandidateConsentStatus = 'Registrado' | 'Recusado' | 'Revogado';

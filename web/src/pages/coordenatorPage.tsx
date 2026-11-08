@@ -7,7 +7,7 @@ import { CandidateInclusionForm } from '../candidates/CandidateInclusionForm';
 import { useCandidateConsent } from '../candidates/useCandidateConsent';
 import { useCandidateEligibilityCriteria } from '../candidates/useCandidateEligibilityCriteria';
 import { useRecruitmentStudies } from '../candidates/useRecruitmentStudies';
-import { candidatesApi, CANDIDATE_STATUSES, type Candidate, type CandidateStatus } from '../candidates/candidatesApi';
+import { candidatesApi, CANDIDATE_STATUSES, type Candidate, type CandidateEligibilityAssessment, type CandidateStatus } from '../candidates/candidatesApi';
 import { useAuth } from '../auth/AuthContext';
 import { useStudyCandidates, type StudyCandidatesState } from '../candidates/useStudyCandidates';
 import { useCandidateListStudies } from '../candidates/useCandidateListStudies';
@@ -191,9 +191,9 @@ function CandidateRegistrationModal({ onClose, onCreated }: { onClose: () => voi
   </Modal>;
 }
 
-function CandidateEligibilitySection({ candidate, onBack }: { candidate: Candidate; onBack: () => void }) {
-  const criteria = useCandidateEligibilityCriteria(candidate.studyId);
-  return <CandidateEligibilityForm state={criteria.state} onRetry={criteria.reload} onCancel={onBack} />;
+function CandidateEligibilitySection({ candidate, onBack, onRegistered, onBusyChange }: { candidate: Candidate; onBack: () => void; onRegistered: (assessment: CandidateEligibilityAssessment) => void; onBusyChange: (busy: boolean) => void }) {
+  const criteria = useCandidateEligibilityCriteria(candidate.studyId, candidate.id);
+  return <CandidateEligibilityForm key={`${candidate.studyId}:${candidate.id}`} candidate={candidate} state={criteria.state} onRetry={criteria.reload} onCancel={onBack} onRegistered={onRegistered} onBusyChange={onBusyChange} />;
 }
 
 function CandidateConsentSection({ candidate, onBack }: { candidate: Candidate; onBack: () => void }) {
@@ -201,16 +201,17 @@ function CandidateConsentSection({ candidate, onBack }: { candidate: Candidate; 
   return <CandidateConsentForm candidate={candidate} state={consent.state} onRetry={consent.reload} onCancel={onBack} />;
 }
 
-function CandidateDetailsModal({ candidate, onClose }: { candidate: Candidate; onClose: () => void }) {
+function CandidateDetailsModal({ candidate, onClose, onRegistered }: { candidate: Candidate; onClose: () => void; onRegistered: (assessment: CandidateEligibilityAssessment) => void }) {
   const [view, setView] = useState<'details' | 'eligibility' | 'consent' | 'inclusion'>('details');
+  const submitting = useRef(false);
   const evaluating = view === 'eligibility';
-  return <Modal title={evaluating ? 'Avaliar elegibilidade' : view === 'consent' ? 'Registrar consentimento' : view === 'inclusion' ? 'Incluir participante' : 'Detalhes do candidato'} description={candidate.name} onClose={onClose} wide={view !== 'details'}>
+  return <Modal title={evaluating ? 'Avaliar elegibilidade' : view === 'consent' ? 'Registrar consentimento' : view === 'inclusion' ? 'Incluir participante' : 'Detalhes do candidato'} description={candidate.name} onClose={() => { if (!submitting.current) onClose(); }} wide={view !== 'details'}>
     {(view === 'details' || evaluating) && <div className="coord-detail-list">
       <div><span>Estudo de interesse</span><strong>{candidate.studyTitle}</strong></div>
       {!evaluating && <div><span>Data de inscrição</span><strong>{candidateDate(candidate.enrollmentDate)}</strong></div>}
       <div><span>Status atual</span><StatusBadge status={candidate.status} /></div>
     </div>}
-    {evaluating ? <CandidateEligibilitySection candidate={candidate} onBack={() => setView('details')} /> : view === 'consent' ? <CandidateConsentSection candidate={candidate} onBack={() => setView('details')} /> : view === 'inclusion' ? <CandidateInclusionForm candidate={candidate} onCancel={() => setView('details')} /> : <div className="modal-actions coord-modal-actions">
+    {evaluating ? <CandidateEligibilitySection candidate={candidate} onBack={() => setView('details')} onRegistered={onRegistered} onBusyChange={(busy) => { submitting.current = busy; }} /> : view === 'consent' ? <CandidateConsentSection candidate={candidate} onBack={() => setView('details')} /> : view === 'inclusion' ? <CandidateInclusionForm candidate={candidate} onCancel={() => setView('details')} /> : <div className="modal-actions coord-modal-actions">
       <button type="button" className="button button-primary" onClick={() => setView('eligibility')}>Avaliar elegibilidade</button>
       <button type="button" className="button button-outline" onClick={() => setView('consent')}>Registrar consentimento</button>
       <button type="button" className="button button-outline" onClick={() => setView('inclusion')}>Incluir participante</button>
@@ -336,7 +337,10 @@ export function CoordinatorCandidatesPage() {
       <CandidatesTable state={tableState} search={search} statusFilter={statusFilter} onOpen={setActiveCandidate} onRetry={candidates.reload} />
     </section>
     </div>
-    {activeCandidate && <CandidateDetailsModal key={activeCandidate.id} candidate={activeCandidate} onClose={() => setActiveCandidate(null)} />}
+    {activeCandidate && <CandidateDetailsModal key={`${activeCandidate.studyId}:${activeCandidate.id}`} candidate={activeCandidate} onClose={() => setActiveCandidate(null)} onRegistered={(assessment) => {
+      setActiveCandidate((current) => current?.id === assessment.candidateId && current.studyId === assessment.studyId ? { ...current, status: assessment.status } : current);
+      candidates.reload();
+    }} />}
   </div>;
 }
 

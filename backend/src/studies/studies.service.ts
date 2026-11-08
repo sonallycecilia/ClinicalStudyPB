@@ -143,6 +143,21 @@ export class StudiesService {
     return modifying ? this.assertStudyCanBeModified(id, userId) : this.findById(id, userId);
   }
 
+  /** RF09 aprovado: somente leitura de critérios e consulta/registro de avaliações.
+   * Não utilizar para edição de critérios, consentimento ou inclusão.
+   */
+  async assertEligibilityStudyAccess(id: string, userId: string, modifying = false): Promise<Study> {
+    const user = await this.usersService.findById(userId);
+    if (user.role === 'Coordenador' && user.status === 'Ativo') {
+      const study = await this.findByIdForOwnerCheck(id);
+      if (study.status !== StudyStatus.Recrutamento) {
+        throw new ForbiddenException('O Coordenador só pode consultar critérios e avaliar candidatos de estudos em recrutamento.');
+      }
+      return study;
+    }
+    return modifying ? this.assertStudyCanBeModified(id, userId) : this.findById(id, userId);
+  }
+
   async create(input: StudyInput, researcherId: string): Promise<Study> {
     const researcher = await this.assertResearcher(researcherId);
     const data = this.validateInput(input);

@@ -414,7 +414,7 @@ describe('Estudos clínicos com PostgreSQL (E2E)', () => {
       .expect(200).expect(({ body }) => expect(body).toHaveLength(1));
   });
 
-  it('RF08 não libera elegibilidade, consentimento ou inclusão para o Coordenador', async () => {
+  it('RF09 preserva consentimento e inclusão restritos ao Pesquisador', async () => {
     const created = await request(api()).post('/studies').set('Authorization', bearer(researcherToken))
       .send({ ...sample, title: 'RF08 permissões preservadas' }).expect(201);
     const studyPath = `/studies/${created.body.id}`;
@@ -423,7 +423,7 @@ describe('Estudos clínicos com PostgreSQL (E2E)', () => {
     const candidate = await request(api()).post(`${studyPath}/candidates`).set('Authorization', bearer(coordinatorToken))
       .send({ name: 'Candidato protegido' }).expect(201);
     const candidatePath = `${studyPath}/candidates/${candidate.body.id}`;
-    for (const endpoint of ['eligibility-assessments', 'consents']) {
+    for (const endpoint of ['consents']) {
       await request(api()).get(`${candidatePath}/${endpoint}`).set('Authorization', bearer(coordinatorToken)).expect(403);
       await request(api()).post(`${candidatePath}/${endpoint}`).set('Authorization', bearer(coordinatorToken)).send({}).expect(403);
     }

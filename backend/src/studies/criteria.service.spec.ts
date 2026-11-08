@@ -30,6 +30,7 @@ describe('CriteriaService', () => {
   };
   let transactionClient: TransactionClient;
   let studies: {
+    assertEligibilityStudyAccess: jest.Mock<(id: string, userId: string) => Promise<unknown>>;
     findById: jest.Mock<(id: string, ownerId: string) => Promise<unknown>>;
     assertStudyCanBeModified: jest.Mock<(id: string, ownerId: string) => Promise<unknown>>;
   };
@@ -49,6 +50,7 @@ describe('CriteriaService', () => {
         .mockImplementation((operation) => operation(transactionClient)),
     };
     studies = {
+      assertEligibilityStudyAccess: jest.fn<(id: string, userId: string) => Promise<unknown>>(),
       findById: jest.fn<(id: string, ownerId: string) => Promise<unknown>>(),
       assertStudyCanBeModified: jest.fn<(id: string, ownerId: string) => Promise<unknown>>()
         .mockResolvedValue({ status: StudyStatus.Planejamento }),
@@ -84,6 +86,7 @@ describe('CriteriaService', () => {
   it('retorna 404 quando o estudo associado não existe', async () => {
     const notFound = new NotFoundException('Estudo não encontrado.');
     studies.findById.mockRejectedValue(notFound);
+    studies.assertEligibilityStudyAccess.mockRejectedValue(notFound);
     await expect(service.list(studyId, researcherId)).rejects.toThrow(NotFoundException);
 
     studies.assertStudyCanBeModified.mockRejectedValue(notFound);
