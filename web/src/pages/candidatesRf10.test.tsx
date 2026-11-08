@@ -25,7 +25,7 @@ beforeEach(() => {
     throw new Error(`Requisição inesperada: ${url}`);
   });
 });
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 async function open(waitForConsent = true) {
   const view = render(<MemoryRouter initialEntries={['/coordenador/candidatos?studyId=s1']}><CoordinatorCandidatesPage /></MemoryRouter>);
@@ -33,7 +33,7 @@ async function open(waitForConsent = true) {
   fireEvent.click(within(row).getByRole('button', { name: 'Detalhes' }));
   fireEvent.click(screen.getByRole('button', { name: 'Registrar consentimento' }));
   const dialog = screen.getByRole('dialog', { name: 'Registrar consentimento' });
-  if (waitForConsent) await within(dialog).findByText(persisted.status ?? 'Não registrado', { selector: 'strong' });
+  if (waitForConsent) await within(dialog).findByText(persisted.status ?? 'Não registrado', { selector: '.coord-status' });
   return { dialog, view };
 }
 function fill(status: CandidateConsentStatus = 'Registrado') {
@@ -51,18 +51,22 @@ describe('RF10 — modal existente com adaptadores HTTP reais e transporte simul
     expect(within(dialog).getByText(/este registro é fictício e utilizado exclusivamente para fins educacionais/)).toBeTruthy();
     expect(within(dialog).queryByText(/Responsável pelo último registro \(ID\)/)).toBeNull();
     expect(within(dialog).queryByText('coordinator-id')).toBeNull();
+    expect(within(dialog).getAllByText(candidate.name)).toHaveLength(1);
+    expect(within(dialog).getAllByText('Sono')).toHaveLength(1);
+    expect(within(dialog).queryByText('Informe a versão definida para o estudo, com até 50 caracteres.')).toBeNull();
     if (status) {
-      expect(within(dialog).getByText('v-servidor', { selector: 'strong' })).toBeTruthy();
+      const lastRecord = within(dialog).getByRole('region', { name: 'Último registro' });
+      expect(within(lastRecord).getByText('v-servidor', { selector: 'dd' })).toBeTruthy();
       expect(within(dialog).getByText('Rafael Lima')).toBeTruthy();
-      expect(within(dialog).getByText('Nota persistida', { selector: 'strong' })).toBeTruthy();
+      expect(within(lastRecord).getByText('Nota persistida', { selector: 'dd' })).toBeTruthy();
       expect(dialog.querySelector('time')?.getAttribute('datetime')).toBe(persisted.registeredAt);
     } else {
-      expect(within(dialog).queryByText('Recusado', { selector: 'strong' })).toBeNull();
+      expect(within(dialog).queryByRole('region', { name: 'Último registro' })).toBeNull();
       expect((within(dialog).getByRole('textbox', { name: 'Versão do termo simulado *' }) as HTMLInputElement).value).toBe('');
     }
   });
 
-  it.each(['Registrado', 'Recusado', 'Revogado'] as const)('registra %s somente após HTTP válido, atualiza os campos e recupera após reabrir e remontar', async (status) => {
+  it.each(['Registrado', 'Recusado', 'Revogado'] as const)('registra %s somente após HTTP válido, retorna aos detalhes e recupera após reabrir e remontar', async (status) => {
     let finish!: (response: Response) => void;
     post = () => new Promise((resolve) => { finish = resolve; });
     const { dialog, view } = await open();
@@ -81,25 +85,42 @@ describe('RF10 — modal existente com adaptadores HTTP reais e transporte simul
     persisted = recorded(status);
     await act(async () => finish(json(persisted, 201)));
     await within(dialog).findByText('Consentimento simulado registrado com sucesso!');
-    expect(within(dialog).getByText(status, { selector: 'strong' })).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: 'Detalhes do candidato' })).toBe(dialog);
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    expect(within(dialog).queryByRole('form')).toBeNull();
+    expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Fechar' }));
+    for (const action of ['Avaliar elegibilidade', 'Registrar consentimento', 'Incluir participante']) expect(within(dialog).getByRole('button', { name: action })).toBeTruthy();
+    expect(posts()).toHaveLength(1);
+    expect(within(screen.getByRole('row', { name: /Ana Silva/ })).getByText('Elegível')).toBeTruthy();
+    expect(request.mock.calls.filter(([url]) => url === '/studies/s1/candidates')).toHaveLength(1);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Fechar confirmação de consentimento' }));
+    expect(within(dialog).queryByRole('status')).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Detalhes do candidato' })).toBe(dialog);
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar consentimento' }));
+    await screen.findByText(status, { selector: '.coord-status' });
     expect((within(dialog).getByRole('textbox', { name: 'Versão do termo simulado *' }) as HTMLInputElement).value).toBe('v-servidor');
     expect((within(dialog).getByRole('textbox', { name: 'Observações (opcional)' }) as HTMLTextAreaElement).value).toBe('Nota persistida');
     expect(within(dialog).getByText('Rafael Lima')).toBeTruthy();
     expect(dialog.querySelector('time')?.getAttribute('datetime')).toBe(persisted.registeredAt);
-    fireEvent.submit(form);
-    expect(posts()).toHaveLength(1);
-    expect(within(screen.getByRole('row', { name: /Ana Silva/ })).getByText('Elegível')).toBeTruthy();
-    expect(request.mock.calls.filter(([url]) => url === '/studies/s1/candidates')).toHaveLength(1);
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Fechar' }));
-    fireEvent.click(within(screen.getByRole('row', { name: /Ana Silva/ })).getByRole('button', { name: 'Detalhes' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Registrar consentimento' }));
-    await screen.findByText(status, { selector: 'strong' });
     expect((screen.getByRole('radio', { name: status }) as HTMLInputElement).checked).toBe(true);
     expect(request.mock.calls.filter(([url, options]) => url === path && options?.method !== 'POST')).toHaveLength(2);
     view.unmount(); // Reconstrói a página como no Ctrl+R, sem reutilizar dados em estado React.
     await open();
-    expect(screen.getByText(status, { selector: 'strong' })).toBeTruthy();
+    expect(screen.getByText(status, { selector: '.coord-status' })).toBeTruthy();
     expect(request.mock.calls.some(([url]) => /eligibility|\/include/.test(url))).toBe(false);
+  });
+
+  it('fecha a confirmação automaticamente após alguns segundos e mantém os detalhes abertos', async () => {
+    const { dialog } = await open();
+    fill();
+    vi.useFakeTimers();
+    await act(async () => fireEvent.submit(within(dialog).getByRole('form')));
+    expect(screen.getByRole('status').textContent).toContain('Consentimento simulado registrado com sucesso!');
+    act(() => { vi.advanceTimersByTime(5000); });
+    expect(screen.getByRole('status')).toBeTruthy();
+    act(() => { vi.advanceTimersByTime(1000); });
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Detalhes do candidato' })).toBe(dialog);
   });
 
   it('mantém as validações de versão obrigatória, 50 caracteres e observação de 2.000 caracteres', async () => {
@@ -121,6 +142,7 @@ describe('RF10 — modal existente com adaptadores HTTP reais e transporte simul
     fill();
     fireEvent.submit(within(dialog).getByRole('form'));
     await within(dialog).findByRole('alert');
+    expect(screen.getByRole('dialog', { name: 'Registrar consentimento' })).toBe(dialog);
     expect(within(dialog).queryByText('Consentimento simulado registrado com sucesso!')).toBeNull();
     expect((within(dialog).getByRole('textbox', { name: 'Versão do termo simulado *' }) as HTMLInputElement).value).toBe(' v-teste ');
     expect((within(dialog).getByRole('textbox', { name: 'Observações (opcional)' }) as HTMLTextAreaElement).value).toBe(' Nota RF10 ');

@@ -4,6 +4,7 @@ import {
   type Candidate, type CandidateConsent, type CandidateConsentStatus, type RegisterCandidateConsentInput,
 } from './candidatesApi';
 import type { CandidateConsentState } from './useCandidateConsent';
+import { CandidateSummary } from './CandidateSummary';
 
 const STATUSES: readonly CandidateConsentStatus[] = ['Registrado', 'Recusado', 'Revogado'];
 type Fields = { status: CandidateConsentStatus | ''; termVersion: string; observation: string };
@@ -18,13 +19,14 @@ function validate(fields: Fields): Errors {
   };
 }
 
-export function CandidateConsentForm({ candidate, state, onRetry, onCancel, onRegister, currentUser, onBusyChange }: {
+export function CandidateConsentForm({ candidate, state, onRetry, onCancel, onRegister, onRegistered, currentUser, onBusyChange }: {
   candidate: Pick<Candidate, 'id' | 'name' | 'studyId' | 'studyTitle'>;
   state: CandidateConsentState;
   onRetry: () => void;
   onCancel: () => void;
   /** Deve devolver somente a resposta persistida da API. */
   onRegister?: (input: RegisterCandidateConsentInput, signal?: AbortSignal) => Promise<CandidateConsent>;
+  onRegistered?: (consent: CandidateConsent) => void;
   currentUser?: { id: string; name: string } | null;
   onBusyChange?: (busy: boolean) => void;
 }) {
@@ -52,6 +54,7 @@ export function CandidateConsentForm({ candidate, state, onRetry, onCancel, onRe
   const fields: Fields = draft ?? { status: consent?.status ?? '', termVersion: consent?.termVersion ?? '', observation: consent?.observation ?? '' };
   const canRegister = Boolean(onRegister) && state.status === 'ready';
   const registrarName = consent?.registrarId === currentUser?.id ? currentUser?.name : undefined;
+  const tone = consent?.status === 'Registrado' ? 'success' : consent?.status === 'Recusado' ? 'danger' : consent?.status === 'Revogado' ? 'warning' : 'muted';
 
   function update<K extends keyof Fields>(field: K, value: Fields[K]) {
     const next = { ...fields, [field]: value };
@@ -83,6 +86,7 @@ export function CandidateConsentForm({ candidate, state, onRetry, onCancel, onRe
     setSaving(true);
     onBusyChange?.(true);
     const signal = lifecycle.current!.signal;
+    let registered: CandidateConsent | undefined;
     try {
       const response = await onRegister({
         status: fields.status as CandidateConsentStatus,
@@ -96,6 +100,7 @@ export function CandidateConsentForm({ candidate, state, onRetry, onCancel, onRe
       setSaved(response);
       setFields({ status: response.status, termVersion: response.termVersion!, observation: response.observation ?? '' });
       setSuccess(true);
+      registered = response;
     } catch (error: unknown) {
       if (!signal.aborted) setSaveError(error instanceof ConsentApiError || error instanceof ConsentUnavailableError ? error.message : 'Não foi possível registrar o consentimento simulado. Nenhum sucesso foi confirmado. Tente novamente.');
     } finally {
@@ -105,19 +110,21 @@ export function CandidateConsentForm({ candidate, state, onRetry, onCancel, onRe
         onBusyChange?.(false);
       }
     }
+    if (registered && !signal.aborted) onRegistered?.(registered);
   }
 
   return <form ref={form} className="candidate-consent-form" aria-label="Consentimento simulado" aria-busy={state.status === 'loading' || saving} noValidate onSubmit={submit}>
     <p className="candidate-notice"><strong>Simulação acadêmica:</strong> este registro é fictício e utilizado exclusivamente para fins educacionais. Não representa consentimento real nem substitui a assinatura de um termo de consentimento.</p>
-    <div className="coord-detail-list">
-      <div><span>Candidato</span><strong>{candidate.name}</strong></div>
-      <div><span>Estudo</span><strong>{candidate.studyTitle}</strong></div>
-      <div><span>Estado atual do consentimento simulado</span><strong>{consent ? consent.status ?? 'Não registrado' : 'Não consultado'}</strong></div>
-      {consent?.termVersion && <div><span>Versão do último termo</span><strong>{consent.termVersion}</strong></div>}
-      {consent?.registeredAt && <div><span>Data do último registro</span><strong><time dateTime={consent.registeredAt}>{new Date(consent.registeredAt).toLocaleString('pt-BR')}</time></strong></div>}
-      {registrarName && <div><span>Responsável pelo último registro</span><strong>{registrarName}</strong></div>}
-      {consent?.observation && <div><span>Observação do último registro</span><strong>{consent.observation}</strong></div>}
-    </div>
+    <CandidateSummary candidate={candidate} statusLabel="Estado do consentimento" status={<span className={`status-pill coord-status coord-status-${tone}`}><span />{consent ? consent.status ?? 'Não registrado' : 'Não consultado'}</span>} />
+    {consent?.status && <section className="consent-last-record" aria-labelledby={`${prefix}-last-record`}>
+      <h3 id={`${prefix}-last-record`}>Último registro</h3>
+      <dl>
+        {consent.termVersion && <div><dt>Versão do último termo</dt><dd>{consent.termVersion}</dd></div>}
+        {consent.registeredAt && <div><dt>Data e horário</dt><dd><time dateTime={consent.registeredAt}>{new Date(consent.registeredAt).toLocaleString('pt-BR')}</time></dd></div>}
+        {registrarName && <div><dt>Responsável pelo registro</dt><dd>{registrarName}</dd></div>}
+        {consent.observation && <div className="consent-last-observation"><dt>Observação anterior</dt><dd>{consent.observation}</dd></div>}
+      </dl>
+    </section>}
     {state.status === 'loading' && <p role="status">Consultando consentimento simulado…</p>}
     {state.status === 'error' && <div><p className="form-error" role="alert">{state.message}</p><button type="button" className="button button-outline" onClick={onRetry}>Tentar novamente</button></div>}
     {(!onRegister || state.status === 'unavailable') && <p id={`${prefix}-unavailable`} className="candidate-notice">{state.status === 'unavailable' ? state.message : CONSENT_UNAVAILABLE_MESSAGE}</p>}
@@ -132,8 +139,7 @@ export function CandidateConsentForm({ candidate, state, onRetry, onCancel, onRe
       </fieldset>
       {errors.status && <p id={`${prefix}-status-error`} className="study-field-error" role="alert">{errors.status}</p>}
       <label className="study-field" htmlFor={`${prefix}-version`}>Versão do termo simulado *</label>
-      <input id={`${prefix}-version`} required maxLength={50} value={fields.termVersion} onChange={(event) => update('termVersion', event.target.value)} onBlur={() => setErrors((current) => ({ ...current, termVersion: validate(fields).termVersion }))} aria-invalid={Boolean(errors.termVersion)} aria-describedby={`${prefix}-version-help${errors.termVersion ? ` ${prefix}-version-error` : ''}`} />
-      <small id={`${prefix}-version-help`}>Informe a versão definida para o estudo, com até 50 caracteres.</small>
+      <input id={`${prefix}-version`} required maxLength={50} value={fields.termVersion} onChange={(event) => update('termVersion', event.target.value)} onBlur={() => setErrors((current) => ({ ...current, termVersion: validate(fields).termVersion }))} aria-invalid={Boolean(errors.termVersion)} aria-describedby={errors.termVersion ? `${prefix}-version-error` : undefined} />
       {errors.termVersion && <p id={`${prefix}-version-error`} className="study-field-error" role="alert">{errors.termVersion}</p>}
       <label className="study-field" htmlFor={`${prefix}-observation`}>Observações (opcional)</label>
       <textarea id={`${prefix}-observation`} maxLength={2000} rows={3} value={fields.observation} onChange={(event) => update('observation', event.target.value)} onBlur={() => setErrors((current) => ({ ...current, observation: validate(fields).observation }))} aria-invalid={Boolean(errors.observation)} aria-describedby={`${prefix}-count${errors.observation ? ` ${prefix}-observation-error` : ''}`} />
@@ -142,7 +148,6 @@ export function CandidateConsentForm({ candidate, state, onRetry, onCancel, onRe
     </fieldset>
     {checked && <p role="status" className="candidate-notice">Preenchimento conferido. O consentimento não foi salvo.</p>}
     {saving && <p role="status">Registrando consentimento simulado…</p>}
-    {success && <p role="status" className="candidate-notice">Consentimento simulado registrado com sucesso!</p>}
     {saveError && <p role="alert" className="form-error">{saveError}</p>}
     <div className="modal-actions coord-modal-actions">
       <button type="button" className="button button-outline" disabled={saving} onClick={onCancel}>Cancelar</button>

@@ -3,11 +3,12 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { CandidateForm } from '../candidates/CandidateForm';
 import { CandidateEligibilityForm } from '../candidates/CandidateEligibilityForm';
 import { CandidateConsentForm } from '../candidates/CandidateConsentForm';
+import { CandidateSummary } from '../candidates/CandidateSummary';
 import { CandidateInclusionForm } from '../candidates/CandidateInclusionForm';
 import { useCandidateConsent } from '../candidates/useCandidateConsent';
 import { useCandidateEligibilityCriteria } from '../candidates/useCandidateEligibilityCriteria';
 import { useRecruitmentStudies } from '../candidates/useRecruitmentStudies';
-import { candidatesApi, CANDIDATE_STATUSES, type Candidate, type CandidateEligibilityAssessment, type CandidateStatus } from '../candidates/candidatesApi';
+import { candidatesApi, CANDIDATE_STATUSES, type Candidate, type CandidateConsent, type CandidateEligibilityAssessment, type CandidateStatus } from '../candidates/candidatesApi';
 import { useAuth } from '../auth/AuthContext';
 import { useStudyCandidates, type StudyCandidatesState } from '../candidates/useStudyCandidates';
 import { useCandidateListStudies } from '../candidates/useCandidateListStudies';
@@ -17,13 +18,10 @@ import {
   ChevronDown,
   Download,
   FileText,
-  FlaskConical,
   MoreVertical,
   Plus,
   RefreshCw,
   Search,
-  Tag,
-  UserRound,
   X,
 } from 'lucide-react';
 
@@ -199,33 +197,26 @@ function CandidateEligibilitySection({ candidate, onBack, onRegistered, onBusyCh
   return <CandidateEligibilityForm key={`${candidate.studyId}:${candidate.id}`} candidate={candidate} state={criteria.state} onRetry={criteria.reload} onCancel={onBack} onRegistered={onRegistered} onBusyChange={onBusyChange} />;
 }
 
-function CandidateConsentSection({ candidate, onBack, onBusyChange }: { candidate: Candidate; onBack: () => void; onBusyChange: (busy: boolean) => void }) {
+function CandidateConsentSection({ candidate, onBack, onBusyChange, onRegistered }: { candidate: Candidate; onBack: () => void; onBusyChange: (busy: boolean) => void; onRegistered: (consent: CandidateConsent) => void }) {
   const { request, user } = useAuth();
   const consent = useCandidateConsent(candidate.studyId, candidate.id);
-  return <CandidateConsentForm key={`${candidate.studyId}:${candidate.id}`} candidate={candidate} state={consent.state} onRetry={consent.reload} onCancel={onBack} currentUser={user} onBusyChange={onBusyChange} onRegister={(input, signal) => candidatesApi.registerConsent(request, candidate.studyId, candidate.id, input, signal)} />;
-}
-
-function CandidateSummary({ candidate, showEnrollmentDate = false }: { candidate: Candidate; showEnrollmentDate?: boolean }) {
-  return <section className="eligibility-candidate-summary" aria-label="Resumo do candidato">
-    <div className="eligibility-candidate-identity">
-      <span className="eligibility-candidate-icon"><UserRound size={21} aria-hidden="true" /></span>
-      <strong>{candidate.name}</strong>
-    </div>
-    <dl className="eligibility-candidate-details">
-      <div><dt><FlaskConical size={14} aria-hidden="true" />Estudo de interesse</dt><dd>{candidate.studyTitle}</dd></div>
-      {showEnrollmentDate && <div><dt><CalendarDays size={14} aria-hidden="true" />Data de inscrição</dt><dd><time dateTime={candidate.enrollmentDate.slice(0, 10)}>{candidateDate(candidate.enrollmentDate)}</time></dd></div>}
-      <div><dt><Tag size={14} aria-hidden="true" />Status atual</dt><dd><StatusBadge status={candidate.status} /></dd></div>
-    </dl>
-  </section>;
+  return <CandidateConsentForm key={`${candidate.studyId}:${candidate.id}`} candidate={candidate} state={consent.state} onRetry={consent.reload} onCancel={onBack} currentUser={user} onBusyChange={onBusyChange} onRegistered={onRegistered} onRegister={(input, signal) => candidatesApi.registerConsent(request, candidate.studyId, candidate.id, input, signal)} />;
 }
 
 function CandidateDetailsModal({ candidate, onClose, onRegistered }: { candidate: Candidate; onClose: () => void; onRegistered: (assessment: CandidateEligibilityAssessment) => void }) {
   const [view, setView] = useState<'details' | 'eligibility' | 'consent' | 'inclusion'>('details');
+  const [consentSuccess, setConsentSuccess] = useState<CandidateConsent | null>(null);
   const submitting = useRef(false);
   const evaluating = view === 'eligibility';
-  return <Modal title={evaluating ? 'Avaliar elegibilidade' : view === 'consent' ? 'Registrar consentimento' : view === 'inclusion' ? 'Incluir participante' : 'Detalhes do candidato'} description={view === 'details' || evaluating ? undefined : candidate.name} onClose={() => { if (!submitting.current) onClose(); }} wide={view !== 'details'}>
-    {(view === 'details' || evaluating) && <CandidateSummary candidate={candidate} showEnrollmentDate={view === 'details'} />}
-    {evaluating ? <CandidateEligibilitySection candidate={candidate} onBack={() => setView('details')} onRegistered={onRegistered} onBusyChange={(busy) => { submitting.current = busy; }} /> : view === 'consent' ? <CandidateConsentSection candidate={candidate} onBack={() => setView('details')} onBusyChange={(busy) => { submitting.current = busy; }} /> : view === 'inclusion' ? <CandidateInclusionForm candidate={candidate} onCancel={() => setView('details')} /> : <div className="modal-actions coord-modal-actions">
+  useEffect(() => {
+    if (!consentSuccess) return;
+    const timer = window.setTimeout(() => setConsentSuccess(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [consentSuccess]);
+  return <Modal title={evaluating ? 'Avaliar elegibilidade' : view === 'consent' ? 'Registrar consentimento' : view === 'inclusion' ? 'Incluir participante' : 'Detalhes do candidato'} description={view === 'inclusion' ? candidate.name : undefined} onClose={() => { if (!submitting.current) onClose(); }} wide={view !== 'details'}>
+    {view === 'details' && consentSuccess && <div className="notice" role="status"><span>Consentimento simulado registrado com sucesso!</span><button type="button" className="icon-button" aria-label="Fechar confirmação de consentimento" onClick={() => setConsentSuccess(null)}><X size={16} aria-hidden="true" /></button></div>}
+    {(view === 'details' || evaluating) && <CandidateSummary candidate={candidate} status={<StatusBadge status={candidate.status} />} enrollmentDate={view === 'details' ? candidate.enrollmentDate : undefined} />}
+    {evaluating ? <CandidateEligibilitySection candidate={candidate} onBack={() => setView('details')} onRegistered={onRegistered} onBusyChange={(busy) => { submitting.current = busy; }} /> : view === 'consent' ? <CandidateConsentSection candidate={candidate} onBack={() => setView('details')} onBusyChange={(busy) => { submitting.current = busy; }} onRegistered={(consent) => { setConsentSuccess(consent); setView('details'); }} /> : view === 'inclusion' ? <CandidateInclusionForm candidate={candidate} onCancel={() => setView('details')} /> : <div className="modal-actions coord-modal-actions">
       <button type="button" className="button button-primary" onClick={() => setView('eligibility')}>Avaliar elegibilidade</button>
       <button type="button" className="button button-outline" onClick={() => setView('consent')}>Registrar consentimento</button>
       <button type="button" className="button button-outline" onClick={() => setView('inclusion')}>Incluir participante</button>
