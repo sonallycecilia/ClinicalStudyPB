@@ -125,11 +125,30 @@ Para cada cenário executado, registrar:
 
 *Os quantitativos deverão ser atualizados conforme a execução dos cenários.*
 
-## 6. Registro de problemas encontrados
+## 6. Cobertura dos testes automatizados
 
-| ID do cenário | Problema identificado | Severidade | Responsável pela correção | Status |
-|---|---|---|---|---|
-| - | Nenhum problema registrado inicialmente. | - | - | - |
+Foi realizada uma execução local da suíte automatizada do backend com coleta de cobertura utilizando Jest.
+
+### Resultados preliminares
+
+| Métrica | Cobertura |
+|---|---:|
+| Statements | 90,67% |
+| Branches | 78,59% |
+| Functions | 97,18% |
+| Lines | 93,34% |
+
+### Execução
+
+A cobertura foi obtida localmente por meio do comando:
+
+```powershell
+node --env-file=.env --experimental-vm-modules node_modules/jest/bin/jest.js --config ./jest-coverage.config.cjs --coverage --runInBand
+```
+
+**Observação:** os resultados representam a execução local e ainda precisam ser confrontados com a execução no pipeline de CI. A cobertura será reavaliada conforme a ampliação dos testes automatizados.
+
+
 
 ## 7. Observações sobre a execução
 
