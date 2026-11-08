@@ -39,7 +39,7 @@ beforeEach(() => {
     throw new Error(`Requisição inesperada: ${path}`);
   });
 });
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 async function open(waitForCriteria = true) {
   render(<StrictMode><MemoryRouter initialEntries={['/?studyId=s1']}><CoordinatorCandidatesPage /></MemoryRouter></StrictMode>);
@@ -113,6 +113,7 @@ describe('RF09 — interface e adaptadores HTTP reais, transporte simulado', () 
     const dialog = await open();
     const summary = within(dialog).getByRole('region', { name: 'Resumo do candidato' });
     await within(summary).findByText('Inelegível');
+    expect(screen.getByRole('dialog', { name: 'Avaliar elegibilidade' })).toBe(dialog);
     expect(within(summary).queryByText('Em avaliação')).toBeNull();
     const row = await screen.findByRole('row', { name: /Ana Silva.*Inelegível/ });
     expect(within(row).getByText('Inelegível')).toBeTruthy();
@@ -143,10 +144,11 @@ describe('RF09 — interface e adaptadores HTTP reais, transporte simulado', () 
     fireEvent.click(within(screen.getByRole('group', { name: 'Idade mínima' })).getByRole('radio', { name: inclusion }));
     fireEvent.click(within(screen.getByRole('group', { name: 'Impedimento' })).getByRole('radio', { name: exclusion }));
     fireEvent.submit(within(dialog).getByRole('form'));
-    await within(dialog).findByText(`Avaliação registrada com sucesso. Resultado: ${status}.`);
+    await within(dialog).findByText('Avaliação registrada com sucesso!');
+    expect(screen.getByRole('dialog', { name: 'Detalhes do candidato' })).toBe(dialog);
+    expect(within(dialog).queryByRole('form')).toBeNull();
     expect(within(within(dialog).getByRole('region', { name: 'Resumo do candidato' })).getByText(status)).toBeTruthy();
     await screen.findByRole('row', { name: new RegExp(`Ana Silva.*${status}`) });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Voltar aos detalhes' }));
     fireEvent.click(screen.getByRole('button', { name: 'Avaliar elegibilidade' }));
     const summary = within(screen.getByRole('dialog')).getByRole('region', { name: 'Resumo do candidato' });
     await waitFor(() => expect((within(screen.getByRole('group', { name: 'Idade mínima' })).getByRole('radio', { name: inclusion }) as HTMLInputElement).checked).toBe(true));
@@ -154,7 +156,7 @@ describe('RF09 — interface e adaptadores HTTP reais, transporte simulado', () 
     expect(within(summary).getByText(status)).toBeTruthy();
   });
 
-  it.each(['Elegível', 'Inelegível', 'Em avaliação'] as const)('aguarda confirmação, bloqueia duplicatas, mostra %s retornado e reconsulta listagem e avaliação ao reabrir', async (status) => {
+  it.each(['Elegível', 'Inelegível', 'Em avaliação'] as const)('aguarda confirmação, retorna aos detalhes com %s e reconsulta listagem e avaliação ao reabrir', async (status) => {
     let finish!: (response: Response) => void;
     post = () => new Promise((resolve) => { finish = resolve; });
     const dialog = await open();
@@ -171,27 +173,50 @@ describe('RF09 — interface e adaptadores HTTP reais, transporte simulado', () 
     expect(form.getAttribute('aria-busy')).toBe('true');
     expect((within(dialog).getByRole('button', { name: 'Registrando…' }) as HTMLButtonElement).disabled).toBe(true);
     expect(within(dialog).queryByText(/Avaliação registrada com sucesso/)).toBeNull();
+    expect(within(within(dialog).getByRole('region', { name: 'Resumo do candidato' })).getByText('Novo')).toBeTruthy();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Fechar' }));
     fireEvent.keyDown(dialog, { key: 'Escape' });
     fireEvent.mouseDown(dialog.parentElement!);
     expect(screen.getByRole('dialog')).toBe(dialog);
     persisted = saved(status); // status deliberadamente independente das respostas do formulário
     await act(async () => finish(json(persisted, 201)));
-    expect(within(dialog).getByText(`Avaliação registrada com sucesso. Resultado: ${status}.`)).toBeTruthy();
-    expect((within(screen.getByRole('group', { name: 'Idade mínima' })).getByRole('textbox') as HTMLTextAreaElement).value).toBe('Resposta salva');
-    fireEvent.submit(form);
+    expect(within(dialog).getByRole('status').textContent).toContain('Avaliação registrada com sucesso!');
+    expect(screen.getByRole('dialog', { name: 'Detalhes do candidato' })).toBe(dialog);
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    expect(within(dialog).queryByRole('form')).toBeNull();
+    expect(within(within(dialog).getByRole('region', { name: 'Resumo do candidato' })).getByText(status)).toBeTruthy();
+    expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Fechar' }));
+    for (const action of ['Avaliar elegibilidade', 'Registrar consentimento', 'Incluir participante']) expect(within(dialog).getByRole('button', { name: action })).toBeTruthy();
     expect(posts()).toHaveLength(1);
     const row = await screen.findByRole('row', { name: new RegExp(`Ana Silva.*${status}`) });
     expect(within(row).getByText(status)).toBeTruthy();
     expect(request.mock.calls.filter(([path]) => path === '/studies/s1/candidates')).toHaveLength(2);
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Fechar' }));
-    fireEvent.click(within(row).getByRole('button', { name: 'Detalhes' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Fechar confirmação de avaliação' }));
+    expect(within(dialog).queryByRole('status')).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Detalhes do candidato' })).toBe(dialog);
     fireEvent.click(screen.getByRole('button', { name: 'Avaliar elegibilidade' }));
     const group = await screen.findByRole('group', { name: 'Idade mínima' });
     await waitFor(() => expect((within(group).getByRole('textbox') as HTMLTextAreaElement).value).toBe('Resposta salva'));
+    expect((within(group).getByRole('radio', { name: persisted.evaluations[0].result }) as HTMLInputElement).checked).toBe(true);
+    expect((within(screen.getByRole('group', { name: 'Impedimento' })).getByRole('radio', { name: persisted.evaluations[1].result }) as HTMLInputElement).checked).toBe(true);
     // StrictMode monta os efeitos duas vezes; cada abertura realiza uma nova consulta.
     expect(request.mock.calls.filter(([path, options]) => path === base && options?.method !== 'POST')).toHaveLength(4);
     expect(request.mock.calls.some(([path]) => /consents|\/include/.test(path))).toBe(false);
+  });
+
+  it('oculta a confirmação após seis segundos sem fechar os detalhes', async () => {
+    const dialog = await open();
+    answer();
+    vi.useFakeTimers();
+    await act(async () => fireEvent.submit(within(dialog).getByRole('form')));
+    expect(within(dialog).getByRole('status').textContent).toContain('Avaliação registrada com sucesso!');
+    act(() => { vi.advanceTimersByTime(5000); });
+    expect(within(dialog).getByRole('status')).toBeTruthy();
+    act(() => { vi.advanceTimersByTime(1000); });
+    expect(within(dialog).queryByRole('status')).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Detalhes do candidato' })).toBe(dialog);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Fechar' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('valida respostas obrigatórias e observações antes de enviar', async () => {
@@ -222,12 +247,17 @@ describe('RF09 — interface e adaptadores HTTP reais, transporte simulado', () 
     fireEvent.change(observation, { target: { value: 'Não perder' } });
     fireEvent.submit(within(dialog).getByRole('form'));
     await within(dialog).findByText(String(message));
+    expect(screen.getByRole('dialog', { name: 'Avaliar elegibilidade' })).toBe(dialog);
     expect(observation.value).toBe('Não perder');
+    expect((within(screen.getByRole('group', { name: 'Idade mínima' })).getByRole('radio', { name: 'Atende' }) as HTMLInputElement).checked).toBe(true);
+    expect((within(screen.getByRole('group', { name: 'Impedimento' })).getByRole('radio', { name: 'Não atende' }) as HTMLInputElement).checked).toBe(true);
     expect(within(dialog).queryByText(/Avaliação registrada com sucesso/)).toBeNull();
+    expect(within(within(dialog).getByRole('region', { name: 'Resumo do candidato' })).getByText('Novo')).toBeTruthy();
     expect(within(screen.getByRole('row', { name: /Ana Silva/ })).getByText('Novo')).toBeTruthy();
     post = async () => { persisted = saved(); return json(persisted, 201); };
     fireEvent.submit(within(dialog).getByRole('form'));
-    await within(dialog).findByText('Avaliação registrada com sucesso. Resultado: Elegível.');
+    await within(dialog).findByText('Avaliação registrada com sucesso!');
+    expect(screen.getByRole('dialog', { name: 'Detalhes do candidato' })).toBe(dialog);
   });
 
   it('atualiza critérios após desativação sem perder respostas dos critérios ainda ativos', async () => {

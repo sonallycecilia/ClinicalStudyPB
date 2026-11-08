@@ -17,12 +17,13 @@ function validate(answer: Answer): FieldErrors {
   };
 }
 
-export function CandidateEligibilityForm({ state, candidate, onRetry, onCancel, onRegistered, onBusyChange }: {
+export function CandidateEligibilityForm({ state, candidate, onRetry, onCancel, onRegistered, onSaved, onBusyChange }: {
   state: CandidateEligibilityCriteriaState;
   candidate: Candidate;
   onRetry: () => void;
   onCancel: () => void;
   onRegistered: (assessment: CandidateEligibilityAssessment) => void;
+  onSaved: (assessment: CandidateEligibilityAssessment) => void;
   onBusyChange: (busy: boolean) => void;
 }) {
   const { request, user } = useAuth();
@@ -90,6 +91,7 @@ export function CandidateEligibilityForm({ state, candidate, onRetry, onCancel, 
     onBusyChange(true);
     setSaveError(null);
     const signal = lifecycle.current!.signal;
+    let registered: CandidateEligibilityAssessment | undefined;
     try {
       const result = await candidatesApi.registerEligibilityAssessment(request, candidate.studyId, candidate.id, {
         evaluations: criteria.map(({ id }) => ({ criterionId: id, result: getAnswer(id).result as EligibilityCriterionResult, observation: getAnswer(id).observation })),
@@ -99,7 +101,7 @@ export function CandidateEligibilityForm({ state, candidate, onRetry, onCancel, 
       setAnswers(Object.fromEntries(result.evaluations.map((item) => [item.criterionId, { result: item.result, observation: item.observation ?? '' }])));
       setErrors({});
       setConfirmed(true);
-      onRegistered(result);
+      registered = result;
     } catch (error) {
       if (!signal.aborted) setSaveError(error instanceof EligibilityApiError ? error.message : 'Não foi possível registrar a avaliação. Consulte os dados e tente novamente.');
     } finally {
@@ -108,6 +110,10 @@ export function CandidateEligibilityForm({ state, candidate, onRetry, onCancel, 
         setSubmitting(false);
         onBusyChange(false);
       }
+    }
+    if (registered && !signal.aborted) {
+      onRegistered(registered);
+      onSaved(registered);
     }
   }
 
@@ -144,7 +150,6 @@ export function CandidateEligibilityForm({ state, candidate, onRetry, onCancel, 
         })}
       </section>)}
     </>}
-    {confirmed && <p role="status" className="candidate-notice">Avaliação registrada com sucesso. Resultado: {assessment?.status}.</p>}
     {saveError && <div role="alert"><p className="form-error">{saveError}</p><button type="button" className="button button-outline" onClick={() => { setSaveError(null); setConfirmed(false); onRetry(); }}>Atualizar critérios e avaliações</button></div>}
     <div className="modal-actions coord-modal-actions">
       <button type="button" className="button button-outline" disabled={submitting} onClick={onCancel}>Voltar aos detalhes</button>
