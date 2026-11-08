@@ -12,7 +12,7 @@ const recorded: CandidateConsent = {
   ...unrecorded, status: 'Registrado', termVersion: 'versao-teste',
   registeredAt: '2026-11-07T15:30:00Z', registrarId: 'researcher-test',
 };
-const defaults = { candidate, onRetry: vi.fn(), onCancel: vi.fn() };
+const defaults = { candidate, onRetry: vi.fn(), onCancel: vi.fn(), currentUser: { id: 'researcher-test', name: 'Pesquisadora de teste' } };
 
 function fill() {
   fireEvent.click(screen.getByRole('radio', { name: 'Registrado' }));
@@ -54,7 +54,7 @@ describe('CandidateConsentForm', () => {
     expect(screen.queryByRole('alert')).toBeNull();
     expect(screen.getByText('Preenchimento conferido. O consentimento não foi salvo.')).toBeTruthy();
     expect(screen.getByText('Não registrado')).toBeTruthy();
-    expect(screen.queryByText('Consentimento simulado registrado com sucesso.')).toBeNull();
+    expect(screen.queryByText('Consentimento simulado registrado com sucesso!')).toBeNull();
     fireEvent.change(screen.getByRole('textbox', { name: 'Observações (opcional)' }), { target: { value: 'Nota de teste' } });
     expect(screen.queryByText('Preenchimento conferido. O consentimento não foi salvo.')).toBeNull();
   });
@@ -82,7 +82,8 @@ describe('CandidateConsentForm', () => {
     render(<CandidateConsentForm {...defaults} state={{ status: 'ready', consent: status ? { ...recorded, status } : unrecorded }} />);
     expect(screen.getByText(status ?? 'Não registrado', { selector: 'strong' })).toBeTruthy();
     if (status) {
-      expect(screen.getByText('researcher-test')).toBeTruthy();
+      expect(screen.getByText('Pesquisadora de teste')).toBeTruthy();
+      expect(screen.queryByText('researcher-test')).toBeNull();
       expect(screen.getByText('versao-teste')).toBeTruthy();
       expect(document.querySelector('time')?.getAttribute('datetime')).toBe(recorded.registeredAt);
       expect(screen.queryByText('Não registrado')).toBeNull();
@@ -115,12 +116,12 @@ describe('CandidateConsentForm', () => {
     const form = screen.getByRole('form');
     fireEvent.submit(form);
     fireEvent.submit(form);
-    expect(onRegister).toHaveBeenCalledExactlyOnceWith({ status: 'Registrado', termVersion: 'versao-teste', observation: null });
-    expect(screen.queryByText('Consentimento simulado registrado com sucesso.')).toBeNull();
+    expect(onRegister).toHaveBeenCalledExactlyOnceWith({ status: 'Registrado', termVersion: 'versao-teste', observation: null }, expect.any(AbortSignal));
+    expect(screen.queryByText('Consentimento simulado registrado com sucesso!')).toBeNull();
     expect(screen.getByText('Não registrado')).toBeTruthy();
     expect((screen.getByRole('button', { name: 'Registrar consentimento' }) as HTMLButtonElement).disabled).toBe(true);
     await act(async () => { resolve(recorded); });
-    expect(screen.getByText('Consentimento simulado registrado com sucesso.')).toBeTruthy();
+    expect(screen.getByText('Consentimento simulado registrado com sucesso!')).toBeTruthy();
     expect(screen.getByText('Registrado', { selector: 'strong' })).toBeTruthy();
   });
 
@@ -130,7 +131,7 @@ describe('CandidateConsentForm', () => {
     fill();
     fireEvent.click(screen.getByRole('button', { name: 'Registrar consentimento' }));
     expect(await screen.findByRole('alert')).toBeTruthy();
-    expect(screen.queryByText('Consentimento simulado registrado com sucesso.')).toBeNull();
+    expect(screen.queryByText('Consentimento simulado registrado com sucesso!')).toBeNull();
     expect(screen.getByText('Não registrado')).toBeTruthy();
   });
 });

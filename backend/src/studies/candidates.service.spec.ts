@@ -4,6 +4,7 @@ import { DatabaseService } from '../database/database.service.js';
 import { StudiesService } from './studies.service.js';
 import { CandidatesService } from './candidates.service.js';
 import type { Candidate } from './candidates.types.js';
+import { StudyStatus } from './study.types.js';
 
 const studyId = '00000000-0000-4000-8000-000000000003';
 const researcherId = '00000000-0000-4000-8000-000000000002';
@@ -29,6 +30,7 @@ describe('CandidatesService', () => {
   };
   let transactionClient: TransactionClient;
   let studies: {
+    assertConsentStudyAccess: jest.Mock<(id: string, userId: string, modifying?: boolean) => Promise<unknown>>;
     assertCandidateStudyAccess: jest.Mock<(id: string, userId: string, modifying?: boolean) => Promise<unknown>>;
     findById: jest.Mock<(id: string, ownerId: string) => Promise<unknown>>;
     assertStudyCanBeModified: jest.Mock<(id: string, ownerId: string) => Promise<unknown>>;
@@ -49,6 +51,7 @@ describe('CandidatesService', () => {
         .mockImplementation((operation) => operation(transactionClient)),
     };
     studies = {
+      assertConsentStudyAccess: jest.fn<(id: string, userId: string, modifying?: boolean) => Promise<unknown>>().mockResolvedValue({ researcherId }),
       assertCandidateStudyAccess: jest.fn<(id: string, userId: string, modifying?: boolean) => Promise<unknown>>(),
       findById: jest.fn<(id: string, ownerId: string) => Promise<unknown>>(),
       assertStudyCanBeModified: jest.fn<(id: string, ownerId: string) => Promise<unknown>>(),
@@ -99,14 +102,15 @@ describe('CandidatesService', () => {
       registrarId: researcherId,
       observation: null,
     };
-    database.query.mockResolvedValue({ rows: [consent], rowCount: 1 });
+    transactionClient.query.mockResolvedValueOnce({ rows: [{ status: StudyStatus.Recrutamento }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [consent], rowCount: 1 });
     await expect(service.registerConsent(studyId, candidate.id, {
       status: 'Registrado',
       termVersion: 'simulado-v1',
     }, researcherId)).resolves.toEqual(consent);
-    expect(studies.assertStudyCanBeModified).toHaveBeenCalledWith(studyId, researcherId);
-    expect(database.query.mock.calls[0]?.[0]).toContain('FROM candidatos c');
-    expect(database.query.mock.calls[0]?.[1]).toEqual([
+    expect(studies.assertConsentStudyAccess).toHaveBeenCalledWith(studyId, researcherId, true);
+    expect(transactionClient.query.mock.calls[1]?.[0]).toContain('FROM candidatos c');
+    expect(transactionClient.query.mock.calls[1]?.[1]).toEqual([
       studyId, candidate.id, 'Registrado', 'simulado-v1', researcherId, null,
     ]);
   });
@@ -123,7 +127,7 @@ describe('CandidatesService', () => {
     };
     database.query.mockResolvedValueOnce({ rows: [consent], rowCount: 1 });
     await expect(service.getConsent(studyId, candidate.id, researcherId)).resolves.toEqual(consent);
-    expect(studies.findById).toHaveBeenCalledWith(studyId, researcherId);
+    expect(studies.assertConsentStudyAccess).toHaveBeenCalledWith(studyId, researcherId);
     expect(database.query.mock.calls[0]?.[0]).toContain('ORDER BY registrado_em DESC, id_consentimento DESC');
 
     const unrecorded = {
@@ -140,7 +144,8 @@ describe('CandidatesService', () => {
   });
 
   it('não registra consentimento para candidato de outro estudo e rejeita dados inválidos', async () => {
-    database.query.mockResolvedValue({ rows: [], rowCount: 0 });
+    transactionClient.query.mockResolvedValueOnce({ rows: [{ status: StudyStatus.Recrutamento }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 });
     await expect(service.registerConsent(studyId, candidate.id, {
       status: 'Registrado',
       termVersion: 'simulado-v1',
@@ -150,7 +155,15 @@ describe('CandidatesService', () => {
       status: 'Registrado',
       termVersion: '',
     }, researcherId)).rejects.toThrow(BadRequestException);
-    expect(database.query).toHaveBeenCalledTimes(1);
+    expect(transactionClient.query).toHaveBeenCalledTimes(2);
+  });
+
+  it('revalida a fase sob bloqueio antes de registrar consentimento como Coordenador', async () => {
+    transactionClient.query.mockResolvedValueOnce({ rows: [{ status: StudyStatus.Execucao }], rowCount: 1 });
+    await expect(service.registerConsent(studyId, candidate.id, { status: 'Registrado', termVersion: 'v1' }, 'coordinator-id'))
+      .rejects.toThrow('só pode registrar consentimentos de estudos em recrutamento');
+    expect(transactionClient.query).toHaveBeenCalledTimes(1);
+    expect(transactionClient.query.mock.calls[0][0]).toContain('FOR SHARE');
   });
 
   it('retorna não encontrado ao consultar consentimento de candidato inexistente no estudo', async () => {

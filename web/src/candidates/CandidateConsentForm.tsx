@@ -1,6 +1,6 @@
-import { useId, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import {
-  CONSENT_UNAVAILABLE_MESSAGE, ConsentUnavailableError,
+  CONSENT_UNAVAILABLE_MESSAGE, ConsentApiError, ConsentUnavailableError, isCandidateConsent,
   type Candidate, type CandidateConsent, type CandidateConsentStatus, type RegisterCandidateConsentInput,
 } from './candidatesApi';
 import type { CandidateConsentState } from './useCandidateConsent';
@@ -18,26 +18,40 @@ function validate(fields: Fields): Errors {
   };
 }
 
-export function CandidateConsentForm({ candidate, state, onRetry, onCancel, onRegister }: {
+export function CandidateConsentForm({ candidate, state, onRetry, onCancel, onRegister, currentUser, onBusyChange }: {
   candidate: Pick<Candidate, 'id' | 'name' | 'studyId' | 'studyTitle'>;
   state: CandidateConsentState;
   onRetry: () => void;
   onCancel: () => void;
-  /** Conectar somente após autorização e integração; deve devolver a resposta persistida da API. */
-  onRegister?: (input: RegisterCandidateConsentInput) => Promise<CandidateConsent>;
+  /** Deve devolver somente a resposta persistida da API. */
+  onRegister?: (input: RegisterCandidateConsentInput, signal?: AbortSignal) => Promise<CandidateConsent>;
+  currentUser?: { id: string; name: string } | null;
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const prefix = useId();
   const form = useRef<HTMLFormElement>(null);
   const submitting = useRef(false);
-  const [fields, setFields] = useState<Fields>({ status: '', termVersion: '', observation: '' });
+  const [draft, setFields] = useState<Fields | null>(null);
   const [errors, setErrors] = useState<Errors>({});
   const [checked, setChecked] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState<CandidateConsent | null>(null);
   const [success, setSuccess] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const lifecycle = useRef<AbortController | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    lifecycle.current = controller;
+    return () => controller.abort();
+  }, []);
+  useEffect(() => {
+    if (state.status !== 'ready') return;
+    setSaved(state.consent);
+  }, [state]);
   const consent = saved ?? (state.status === 'ready' ? state.consent : null);
+  const fields: Fields = draft ?? { status: consent?.status ?? '', termVersion: consent?.termVersion ?? '', observation: consent?.observation ?? '' };
   const canRegister = Boolean(onRegister) && state.status === 'ready';
+  const registrarName = consent?.registrarId === currentUser?.id ? currentUser?.name : undefined;
 
   function update<K extends keyof Fields>(field: K, value: Fields[K]) {
     const next = { ...fields, [field]: value };
@@ -50,7 +64,7 @@ export function CandidateConsentForm({ candidate, state, onRetry, onCancel, onRe
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (submitting.current) return;
+    if (submitting.current || success || (onRegister && !canRegister)) return;
     const next = validate(fields);
     setErrors(next);
     setChecked(false);
@@ -67,22 +81,29 @@ export function CandidateConsentForm({ candidate, state, onRetry, onCancel, onRe
     }
     submitting.current = true;
     setSaving(true);
+    onBusyChange?.(true);
+    const signal = lifecycle.current!.signal;
     try {
       const response = await onRegister({
         status: fields.status as CandidateConsentStatus,
         termVersion: fields.termVersion.trim(),
         observation: fields.observation.trim() || null,
-      });
-      if (response.candidateId !== candidate.id || response.studyId !== candidate.studyId || response.status === null) {
+      }, signal);
+      if (signal.aborted) return;
+      if (!isCandidateConsent(response, candidate.studyId, candidate.id) || response.status === null) {
         throw new Error('Resposta de consentimento inválida.');
       }
       setSaved(response);
+      setFields({ status: response.status, termVersion: response.termVersion!, observation: response.observation ?? '' });
       setSuccess(true);
     } catch (error: unknown) {
-      setSaveError(error instanceof ConsentUnavailableError ? error.message : 'Não foi possível registrar o consentimento simulado. Nenhum sucesso foi confirmado. Tente novamente.');
+      if (!signal.aborted) setSaveError(error instanceof ConsentApiError || error instanceof ConsentUnavailableError ? error.message : 'Não foi possível registrar o consentimento simulado. Nenhum sucesso foi confirmado. Tente novamente.');
     } finally {
       submitting.current = false;
-      setSaving(false);
+      if (!signal.aborted) {
+        setSaving(false);
+        onBusyChange?.(false);
+      }
     }
   }
 
@@ -94,11 +115,12 @@ export function CandidateConsentForm({ candidate, state, onRetry, onCancel, onRe
       <div><span>Estado atual do consentimento simulado</span><strong>{consent ? consent.status ?? 'Não registrado' : 'Não consultado'}</strong></div>
       {consent?.termVersion && <div><span>Versão do último termo</span><strong>{consent.termVersion}</strong></div>}
       {consent?.registeredAt && <div><span>Data do último registro</span><strong><time dateTime={consent.registeredAt}>{new Date(consent.registeredAt).toLocaleString('pt-BR')}</time></strong></div>}
-      {consent?.registrarId && <div><span>Responsável pelo último registro (ID)</span><strong>{consent.registrarId}</strong></div>}
+      {registrarName && <div><span>Responsável pelo último registro</span><strong>{registrarName}</strong></div>}
+      {consent?.observation && <div><span>Observação do último registro</span><strong>{consent.observation}</strong></div>}
     </div>
     {state.status === 'loading' && <p role="status">Consultando consentimento simulado…</p>}
     {state.status === 'error' && <div><p className="form-error" role="alert">{state.message}</p><button type="button" className="button button-outline" onClick={onRetry}>Tentar novamente</button></div>}
-    {!canRegister && <p id={`${prefix}-unavailable`} className="candidate-notice">{state.status === 'unavailable' ? state.message : CONSENT_UNAVAILABLE_MESSAGE}</p>}
+    {(!onRegister || state.status === 'unavailable') && <p id={`${prefix}-unavailable`} className="candidate-notice">{state.status === 'unavailable' ? state.message : CONSENT_UNAVAILABLE_MESSAGE}</p>}
     <fieldset className="consent-fields" disabled={saving}>
       <legend>Registrar novo resultado</legend>
       <fieldset className="consent-options">
@@ -120,12 +142,12 @@ export function CandidateConsentForm({ candidate, state, onRetry, onCancel, onRe
     </fieldset>
     {checked && <p role="status" className="candidate-notice">Preenchimento conferido. O consentimento não foi salvo.</p>}
     {saving && <p role="status">Registrando consentimento simulado…</p>}
-    {success && <p role="status" className="candidate-notice">Consentimento simulado registrado com sucesso.</p>}
+    {success && <p role="status" className="candidate-notice">Consentimento simulado registrado com sucesso!</p>}
     {saveError && <p role="alert" className="form-error">{saveError}</p>}
     <div className="modal-actions coord-modal-actions">
-      <button type="button" className="button button-outline" onClick={onCancel}>Cancelar</button>
-      {!canRegister && <button type="submit" className="button button-outline">Conferir preenchimento</button>}
-      <button type="submit" className="button button-primary" disabled={!canRegister || saving} aria-describedby={!canRegister ? `${prefix}-unavailable` : undefined}>Registrar consentimento</button>
+      <button type="button" className="button button-outline" disabled={saving} onClick={onCancel}>Cancelar</button>
+      {!onRegister && <button type="submit" className="button button-outline">Conferir preenchimento</button>}
+      <button type="submit" className="button button-primary" disabled={!canRegister || saving || success} aria-describedby={!onRegister || state.status === 'unavailable' ? `${prefix}-unavailable` : undefined}>Registrar consentimento</button>
     </div>
   </form>;
 }

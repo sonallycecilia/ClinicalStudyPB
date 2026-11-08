@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { candidatesApi, CANDIDATE_STATUSES, ConsentUnavailableError, EligibilityApiError, CandidateInclusionError, INVALID_INCLUSION_MESSAGE } from './candidatesApi';
+import { candidatesApi, CANDIDATE_STATUSES, ConsentApiError, EligibilityApiError, CandidateInclusionError, INVALID_INCLUSION_MESSAGE } from './candidatesApi';
 import { toCandidateInput, CandidateSubmissionError } from './candidateValidation';
 
 const candidate = { id: 'candidate-1', studyId: 'study/1', name: 'Ana Silva', email: null, status: 'Novo', registeredAt: '2026-11-07 14:03:00.123+00' };
@@ -163,12 +163,42 @@ describe('contrato de inclusão (para integração após autorização)', () => 
 });
 
 describe('contrato de consentimento para o Coordenador', () => {
-  it('bloqueia consulta e registro sem requisições ou persistência simulada', async () => {
-    const request = vi.fn();
-    await expect(candidatesApi.getConsent(request, 'study-1', 'candidate-1')).rejects.toBeInstanceOf(ConsentUnavailableError);
-    await expect(candidatesApi.registerConsent(request, 'study-1', 'candidate-1', {
-      status: 'Registrado', termVersion: 'versao-teste',
-    })).rejects.toBeInstanceOf(ConsentUnavailableError);
-    expect(request).not.toHaveBeenCalled();
+  const unrecorded = { studyId: 'study/1', candidateId: 'candidate/1', status: null, termVersion: null, registeredAt: null, registrarId: null, observation: null };
+  const consent = { ...unrecorded, status: 'Registrado', termVersion: 'v1', registeredAt: '2026-11-08 15:00:00.123+00', registrarId: 'coordinator-1' };
+  it.each([null, 'Registrado', 'Recusado', 'Revogado'])('consulta %s pelos IDs e repassa o cancelamento', async (status) => {
+    const body = status === null ? unrecorded : { ...consent, status };
+    const request = vi.fn().mockResolvedValue(new Response(JSON.stringify(body)));
+    const signal = new AbortController().signal;
+    await expect(candidatesApi.getConsent(request, 'study/1', 'candidate/1', signal)).resolves.toEqual(body);
+    expect(request).toHaveBeenCalledWith('/studies/study%2F1/candidates/candidate%2F1/consents', { signal });
+  });
+  it.each(['Registrado', 'Recusado', 'Revogado'] as const)('envia exatamente o contrato de %s e valida a confirmação', async (status) => {
+    const request = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ...consent, status }), { status: 201 }));
+    await candidatesApi.registerConsent(request, 'study/1', 'candidate/1', { status, termVersion: 'v1', observation: 'Nota' });
+    expect(request).toHaveBeenCalledExactlyOnceWith('/studies/study%2F1/candidates/candidate%2F1/consents', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: undefined,
+      body: JSON.stringify({ status, termVersion: 'v1', observation: 'Nota' }),
+    });
+  });
+  it.each([null, {}, { ...consent, studyId: 'other' }, { ...consent, candidateId: 'other' },
+    { ...consent, status: 'Aceito' }, { ...consent, registeredAt: 'invalid' }, { ...consent, termVersion: '' },
+    { ...consent, registrarId: null }, { ...unrecorded, observation: 'incoerente' },
+  ])('rejeita resposta inválida ou pertencente a outro candidato: %j', async (body) => {
+    const request = vi.fn().mockResolvedValue(new Response(JSON.stringify(body)));
+    await expect(candidatesApi.getConsent(request, 'study/1', 'candidate/1')).rejects.toBeInstanceOf(ConsentApiError);
+  });
+  it('não confirma POST com estado nulo ou JSON inválido', async () => {
+    const request = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify(unrecorded))).mockResolvedValueOnce(new Response('invalid'));
+    await expect(candidatesApi.registerConsent(request, 'study/1', 'candidate/1', { status: 'Registrado', termVersion: 'v1' })).rejects.toThrow('consentimento inválido');
+    await expect(candidatesApi.getConsent(request, 'study/1', 'candidate/1')).rejects.toThrow('consentimento inválido');
+  });
+  it.each([400, 401, 403, 404, 503])('trata HTTP %s sem sucesso', async (status) => {
+    const request = vi.fn().mockResolvedValue(new Response(JSON.stringify({ message: ['Dados recusados.'] }), { status }));
+    await expect(candidatesApi.getConsent(request, 'study/1', 'candidate/1')).rejects.toMatchObject({ status });
+  });
+  it('trata falhas de conexão e preserva a mensagem de validação do backend', async () => {
+    const request = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(new Response(JSON.stringify({ message: ['Versão inválida.'] }), { status: 400 }));
+    await expect(candidatesApi.getConsent(request, 's', 'c')).rejects.toThrow('comunicar');
+    await expect(candidatesApi.getConsent(request, 's', 'c')).rejects.toThrow('Versão inválida.');
   });
 });

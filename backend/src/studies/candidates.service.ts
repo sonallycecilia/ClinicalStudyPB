@@ -110,37 +110,50 @@ export class CandidatesService {
     studyId: string,
     candidateId: string,
     input: RegisterCandidateConsentInput,
-    researcherId: string,
+    registrarId: string,
   ): Promise<CandidateConsent> {
-    await this.studiesService.assertStudyCanBeModified(studyId, researcherId);
+    const study = await this.studiesService.assertConsentStudyAccess(studyId, registrarId, true);
     this.validateConsent(input);
 
-    const { rows } = await this.database.query<CandidateConsentRow>(
-      `INSERT INTO consentimentos
-        (id_candidato, status, versao_termo, id_registrado_por, observacao)
-       SELECT c.id_candidato, $3, $4, $5, $6
-       FROM candidatos c
-       WHERE c.id_estudo = $1 AND c.id_candidato = $2
-       RETURNING
-         id_candidato::text AS "candidateId",
-         $1::text AS "studyId",
-         status,
-         versao_termo AS "termVersion",
-         registrado_em::text AS "registeredAt",
-         id_registrado_por::text AS "registrarId",
-         observacao AS observation`,
-      [studyId, candidateId, input.status, input.termVersion, researcherId, input.observation ?? null],
-    );
-    if (!rows[0]) throw new NotFoundException('Candidato não encontrado neste estudo.');
-    return rows[0];
+    return this.database.transaction(async (client) => {
+      const locked = await client.query<{ status: StudyStatus }>(
+        'SELECT status FROM estudos WHERE id_estudo = $1 AND id_pesquisador = $2 FOR SHARE',
+        [studyId, study.researcherId],
+      );
+      if (!locked.rows[0]) throw new NotFoundException('Estudo não encontrado.');
+      if (locked.rows[0].status === StudyStatus.Encerrado) {
+        throw new BadRequestException('Não é possível registrar consentimento em um estudo encerrado.');
+      }
+      if (registrarId !== study.researcherId && locked.rows[0].status !== StudyStatus.Recrutamento) {
+        throw new ForbiddenException('O Coordenador só pode registrar consentimentos de estudos em recrutamento.');
+      }
+      const { rows } = await client.query<CandidateConsentRow>(
+        `INSERT INTO consentimentos
+          (id_candidato, status, versao_termo, id_registrado_por, observacao)
+         SELECT c.id_candidato, $3, $4, $5, $6
+         FROM candidatos c
+         WHERE c.id_estudo = $1 AND c.id_candidato = $2
+         RETURNING
+           id_candidato::text AS "candidateId",
+           $1::text AS "studyId",
+           status,
+           versao_termo AS "termVersion",
+           registrado_em::text AS "registeredAt",
+           id_registrado_por::text AS "registrarId",
+           observacao AS observation`,
+        [studyId, candidateId, input.status, input.termVersion, registrarId, input.observation ?? null],
+      );
+      if (!rows[0]) throw new NotFoundException('Candidato não encontrado neste estudo.');
+      return rows[0];
+    });
   }
 
   async getConsent(
     studyId: string,
     candidateId: string,
-    researcherId: string,
+    userId: string,
   ): Promise<CandidateConsent> {
-    await this.studiesService.findById(studyId, researcherId);
+    await this.studiesService.assertConsentStudyAccess(studyId, userId);
     const { rows } = await this.database.query<CandidateConsentRow>(
       `SELECT
          c.id_candidato::text AS "candidateId",

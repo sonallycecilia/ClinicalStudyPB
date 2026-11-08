@@ -85,6 +85,7 @@ export class CandidatesController {
   }
 
   @Post(':candidateId/consents')
+  @Roles('Pesquisador', 'Coordenador')
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }))
   @ApiOperation({ summary: 'Registrar o consentimento simulado do candidato' })
   @ApiParam({ name: 'studyId', description: 'UUID do estudo.', format: 'uuid' })
@@ -93,7 +94,7 @@ export class CandidatesController {
   @ApiCreatedResponse({ description: 'Estado do consentimento simulado registrado.', type: CandidateConsentResponseDto })
   @ApiBadRequestResponse({ description: 'Estado, versão ou observação inválidos; estudo encerrado.', type: ApiErrorResponseDto })
   @ApiUnauthorizedResponse({ description: 'Token ausente, inválido ou expirado.', type: ApiErrorResponseDto })
-  @ApiForbiddenResponse({ description: 'Somente o pesquisador proprietário pode registrar o consentimento.', type: ApiErrorResponseDto })
+  @ApiForbiddenResponse({ description: 'Exige pesquisador proprietário ou Coordenador ativo em estudo na fase de recrutamento.', type: ApiErrorResponseDto })
   @ApiNotFoundResponse({ description: 'Estudo ou candidato não encontrado neste estudo.', type: ApiErrorResponseDto })
   registerConsent(
     @Param('studyId', new ParseUUIDPipe()) studyId: string,
@@ -105,13 +106,14 @@ export class CandidatesController {
   }
 
   @Get(':candidateId/consents')
+  @Roles('Pesquisador', 'Coordenador')
   @ApiOperation({ summary: 'Consultar o estado mais recente do consentimento simulado' })
   @ApiParam({ name: 'studyId', description: 'UUID do estudo.', format: 'uuid' })
   @ApiParam({ name: 'candidateId', description: 'UUID do candidato.', format: 'uuid' })
   @ApiOkResponse({ description: 'Estado mais recente; status null indica que não há registro.', type: CandidateConsentResponseDto })
   @ApiBadRequestResponse({ description: 'Um dos parâmetros não é um UUID válido.', type: ApiErrorResponseDto })
   @ApiUnauthorizedResponse({ description: 'Token ausente, inválido ou expirado.', type: ApiErrorResponseDto })
-  @ApiForbiddenResponse({ description: 'Somente o pesquisador proprietário pode consultar o consentimento.', type: ApiErrorResponseDto })
+  @ApiForbiddenResponse({ description: 'Exige pesquisador proprietário ou Coordenador ativo em estudo na fase de recrutamento.', type: ApiErrorResponseDto })
   @ApiNotFoundResponse({ description: 'Estudo ou candidato não encontrado neste estudo.', type: ApiErrorResponseDto })
   getConsent(
     @Param('studyId', new ParseUUIDPipe()) studyId: string,

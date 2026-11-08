@@ -109,4 +109,12 @@ Os estudos iniciam em `planejamento` e persistem um dos estados `planejamento`, 
 
 `POST /studies/:studyId/candidates/:candidateId/eligibility-assessments` recebe `evaluations`, uma resposta para cada critério ativo do estudo (`criterionId`, `result` e `observation` opcional). O backend rejeita critérios duplicados, ausentes ou pertencentes a outro estudo e persiste a avaliação em uma transação. Todos os critérios de inclusão atendidos e os de exclusão não atendidos tornam o candidato `Elegível`; uma falha de inclusão ou critério de exclusão atendido torna-o `Inelegível`; respostas pendentes sem reprovação mantêm `Em avaliação`. Reenvios atualizam (upsert) a resposta anterior. `GET` no mesmo caminho consulta a avaliação persistida.
 
-Após aprovação específica do RF09, os Coordenadores ativos podem acessar exclusivamente `GET /studies/:studyId/criteria` e `GET/POST /studies/:studyId/candidates/:candidateId/eligibility-assessments` em estudos em `recrutamento`. A permissão é verificada nos guards e nos services; o registro revalida a fase sob bloqueio do estudo e persiste o usuário autenticado como avaliador. A propriedade continua obrigatória para Pesquisadores. Edição de critérios, consentimento e inclusão mantêm suas permissões anteriores. O frontend reutiliza o modal existente, consulta critérios e avaliações reais e apresenta o status calculado pelo backend.
+Os Coordenadores ativos podem acessar `GET /studies/:studyId/criteria` e `GET/POST /studies/:studyId/candidates/:candidateId/eligibility-assessments` em estudos em `recrutamento`. A permissão é verificada nos guards e nos services; o registro revalida a fase sob bloqueio do estudo e persiste o usuário autenticado como avaliador. A propriedade continua obrigatória para Pesquisadores. Edição de critérios e inclusão mantêm suas permissões anteriores. O frontend reutiliza o modal existente, consulta critérios e avaliações reais e apresenta o status calculado pelo backend. 
+
+### Consentimento simulado (RF10)
+
+`GET /studies/:studyId/candidates/:candidateId/consents` consulta o registro mais recente; `status: null` indica ausência de registro. `POST` no mesmo caminho recebe `status` (`Registrado`, `Recusado` ou `Revogado`), `termVersion` obrigatório com até 50 caracteres e `observation` opcional com até 2.000 caracteres.
+
+ Pesquisadores continuam restritos aos estudos próprios e não podem gravar em estudos encerrados. A identidade de quem registra vem da sessão autenticada. O consentimento não altera a elegibilidade nem realiza inclusão automática.
+
+O modal existente consulta e registra os dados reais, apresenta a resposta persistida e mantém o aviso de simulação acadêmica.

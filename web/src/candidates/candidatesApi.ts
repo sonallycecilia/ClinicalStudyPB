@@ -232,18 +232,66 @@ export class ConsentUnavailableError extends Error {
   }
 }
 
-// Contratos do GET e POST /studies/:studyId/candidates/:candidateId/consents.
-// Não chamar as rotas enquanto exigirem o Pesquisador proprietário do estudo.
+export class ConsentApiError extends Error {
+  constructor(message: string, readonly status?: number) {
+    super(message);
+    this.name = 'ConsentApiError';
+  }
+}
+
+/** Confere também a identidade antes de apresentar qualquer sucesso. */
+export function isCandidateConsent(value: unknown, studyId: string, candidateId: string): value is CandidateConsent {
+  if (!value || typeof value !== 'object') return false;
+  const consent = value as Partial<CandidateConsent>;
+  if (consent.studyId !== studyId || consent.candidateId !== candidateId) return false;
+  if (consent.status === null) return consent.termVersion === null && consent.registeredAt === null && consent.registrarId === null && consent.observation === null;
+  return ['Registrado', 'Recusado', 'Revogado'].includes(consent.status as string)
+    && typeof consent.termVersion === 'string' && consent.termVersion.trim().length > 0 && consent.termVersion.length <= 50
+    && typeof consent.registeredAt === 'string' && !Number.isNaN(Date.parse(consent.registeredAt))
+    && typeof consent.registrarId === 'string' && consent.registrarId.length > 0
+    && (consent.observation === null || (typeof consent.observation === 'string' && consent.observation.length <= 2000));
+}
+
+async function consentRequest(request: AuthenticatedRequest, studyId: string, candidateId: string, options: RequestInit): Promise<CandidateConsent> {
+  let response: Response;
+  try {
+    response = await request(`/studies/${encodeURIComponent(studyId)}/candidates/${encodeURIComponent(candidateId)}/consents`, options);
+  } catch {
+    throw new ConsentApiError('Não foi possível comunicar com o servidor. Consulte o consentimento antes de tentar registrar novamente.');
+  }
+  const body: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const messages: Record<number, string> = {
+      400: 'O consentimento foi recusado. Confira os campos e a situação do estudo.',
+      401: 'Sua sessão expirou ou é inválida. Entre novamente para continuar.',
+      403: 'Você não tem permissão para consultar ou registrar consentimentos neste estudo.',
+      404: 'Estudo ou candidato não encontrado neste estudo. Atualize a listagem.',
+    };
+    const message = (body as { message?: unknown } | null)?.message;
+    const detail = typeof message === 'string' ? message
+      : Array.isArray(message) ? message.filter((item): item is string => typeof item === 'string').join(' ') : '';
+    throw new ConsentApiError(response.status === 400 && detail.trim() ? detail
+      : messages[response.status] ?? 'Não foi possível concluir a solicitação de consentimento. Consulte os dados e tente novamente.', response.status);
+  }
+  if (!isCandidateConsent(body, studyId, candidateId) || (options.method === 'POST' && body.status === null)) {
+    throw new ConsentApiError('O servidor retornou um consentimento inválido. Consulte o registro antes de tentar novamente.');
+  }
+  return body;
+}
+
 const getConsent: (
   request: AuthenticatedRequest, studyId: string, candidateId: string, signal?: AbortSignal,
-) => Promise<CandidateConsent> = async () => {
-  throw new ConsentUnavailableError();
+) => Promise<CandidateConsent> = async (request, studyId, candidateId, signal) => {
+  return consentRequest(request, studyId, candidateId, { signal });
 };
 
 const registerConsent: (
-  request: AuthenticatedRequest, studyId: string, candidateId: string, input: RegisterCandidateConsentInput,
-) => Promise<CandidateConsent> = async () => {
-  throw new ConsentUnavailableError();
+  request: AuthenticatedRequest, studyId: string, candidateId: string, input: RegisterCandidateConsentInput, signal?: AbortSignal,
+) => Promise<CandidateConsent> = async (request, studyId, candidateId, input, signal) => {
+  return consentRequest(request, studyId, candidateId, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, signal,
+    body: JSON.stringify({ status: input.status, termVersion: input.termVersion, ...(input.observation !== undefined ? { observation: input.observation } : {}) }),
+  });
 };
 
 export interface CandidateInclusion {
