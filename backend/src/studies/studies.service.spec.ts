@@ -80,7 +80,7 @@ describe('StudiesService com PostgreSQL', () => {
     database.query.mockResolvedValue({ rows: [option], rowCount: 1 });
     await expect(service.listAvailableForRecruitment()).resolves.toEqual([option]);
     expect(database.query).toHaveBeenCalledWith(
-      expect.stringContaining('FROM estudos WHERE status = $1'), ['Recrutamento'],
+      expect.stringContaining('FROM estudos WHERE status = $1'), ['recrutamento'],
     );
     expect(users.findById).not.toHaveBeenCalled();
   });

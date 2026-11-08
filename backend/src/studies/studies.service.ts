@@ -112,7 +112,7 @@ export class StudiesService {
       `SELECT id_estudo::text AS id, titulo AS title
        FROM estudos WHERE status = $1
        ORDER BY titulo, id_estudo`,
-      ['Recrutamento'],
+      ['recrutamento'],
     );
     return rows;
   }
