@@ -10,7 +10,7 @@ vi.mock('../auth/AuthContext', () => ({ useAuth: () => ({ request }) }));
 const studies = [{ id: 'study-1', title: 'Sono' }, { id: 'study-2', title: 'Atividade física' }];
 const row = { id: 'candidate-1', studyId: 'study-1', name: 'Ana Silva', email: null, status: 'Em avaliação', registeredAt: '2026-11-07 00:30:00.123+00' };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
-function renderPage(studyId = 'study-1') { render(<MemoryRouter initialEntries={[`/?studyId=${studyId}`]}><CoordinatorCandidatesPage /></MemoryRouter>); }
+function renderPage(studyId = 'study-1') { return render(<MemoryRouter initialEntries={[`/?studyId=${studyId}`]}><CoordinatorCandidatesPage /></MemoryRouter>); }
 async function selectStudy(id: string) {
   await screen.findByRole('option', { name: 'Sono' });
   fireEvent.change(screen.getByRole('combobox', { name: 'Filtrar por estudo' }), { target: { value: id } });
@@ -27,7 +27,7 @@ beforeEach(() => request.mockReset());
 afterEach(cleanup);
 
 describe('RF08 — telas com o adaptador HTTP real e transporte autenticado simulado', () => {
-  it.each(['study-1', 'study-2'])('confirma somente após HTTP de sucesso, bloqueia duplicatas e consulta o estudo cadastrado %s', async (studyId) => {
+  it.each(['study-1', 'study-2'])('confirma somente após HTTP de sucesso, bloqueia duplicatas e recupera o cadastro após remontar no estudo %s', async (studyId) => {
     let finish!: (response: Response) => void;
     let persisted = false;
     request.mockImplementation(async (path: string, options?: RequestInit) => {
@@ -35,7 +35,7 @@ describe('RF08 — telas com o adaptador HTTP real e transporte autenticado simu
       if (options?.method === 'POST') return new Promise<Response>((resolve) => { finish = resolve; });
       return json(persisted && path === `/studies/${studyId}/candidates` ? [{ ...row, studyId }] : []);
     });
-    renderPage(studyId);
+    const view = renderPage(studyId);
     await selectStudy(studyId);
     await screen.findByText('O estudo selecionado não possui candidatos cadastrados.');
     const dialog = await openForm(studyId);
@@ -68,6 +68,13 @@ describe('RF08 — telas com o adaptador HTTP real e transporte autenticado simu
     expect(screen.queryByRole('button', { name: 'Voltar à listagem' })).toBeNull();
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.getByText('Ana Silva')).toBeTruthy();
+    view.unmount();
+    renderPage(studyId);
+    const reloaded = await screen.findByRole('row', { name: /Ana Silva/ });
+    expect(within(reloaded).getByText(studies.find((study) => study.id === studyId)!.title)).toBeTruthy();
+    expect(request.mock.calls.filter(([path, options]) => path === `/studies/${studyId}/candidates` && !options?.method)).toHaveLength(3);
+    expect(request.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1);
+    expect(screen.queryByText('Candidato cadastrado com sucesso!')).toBeNull();
   });
 
   it('impede campos inválidos antes de chamar o POST', async () => {
@@ -86,10 +93,14 @@ describe('RF08 — telas com o adaptador HTTP real e transporte autenticado simu
     [401, 'Sua sessão expirou ou é inválida. Entre novamente para continuar.'],
     [403, 'Você não tem permissão para cadastrar ou consultar candidatos neste estudo.'],
     [500, 'Não foi possível concluir a solicitação. Tente novamente.'],
-  ])('apresenta HTTP %s sem confirmar cadastro nem recarregar candidatos', async (status, message) => {
+    [0, 'Não foi possível comunicar com o servidor. Tente novamente.'],
+  ])('apresenta erro %s sem confirmar cadastro nem recarregar candidatos', async (status, message) => {
     request.mockImplementation(async (path: string, options?: RequestInit) => {
       if (path === '/studies/disponiveis-recrutamento') return json(studies);
-      if (options?.method === 'POST') return json({ message: 'Confira o e-mail informado.' }, Number(status));
+      if (options?.method === 'POST') {
+        if (status === 0) throw new TypeError('Failed to fetch: SQLSTATE detalhe interno');
+        return json({ message: status === 400 ? 'Confira o e-mail informado.' : 'SQLSTATE detalhe interno' }, Number(status));
+      }
       return json([]);
     });
     renderPage();
@@ -99,6 +110,8 @@ describe('RF08 — telas com o adaptador HTTP real e transporte autenticado simu
     fireEvent.submit(within(dialog).getByRole('form'));
     expect((await within(dialog).findByRole('alert')).textContent).toBe(message);
     expect(within(dialog).queryByText('Candidato cadastrado com sucesso.')).toBeNull();
+    expect(screen.queryByText('Candidato cadastrado com sucesso!')).toBeNull();
+    expect(within(dialog).queryByText(/SQLSTATE|Failed to fetch/)).toBeNull();
     expect((within(dialog).getByLabelText(/Nome completo/) as HTMLInputElement).value).toBe('  Ana Silva  ');
     expect((within(dialog).getByRole('button', { name: 'Cadastrar candidato' }) as HTMLButtonElement).disabled).toBe(false);
     expect(request.mock.calls.filter(([path, options]) => path.includes('/candidates') && !options?.method)).toHaveLength(1);

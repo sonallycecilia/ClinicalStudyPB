@@ -240,13 +240,17 @@ describe('RF09 — interface e adaptadores HTTP reais, transporte simulado', () 
     [503, 'Não foi possível concluir a avaliação. Consulte os dados e tente novamente.'],
     [0, 'Não foi possível comunicar com o servidor. Consulte a avaliação antes de tentar registrar novamente.'],
   ])('preserva preenchimento após falha %s e permite nova tentativa após corrigir a causa', async (status, message) => {
-    post = async () => { if (!status) throw new Error('offline'); return json({ message }, Number(status)); };
+    post = async () => {
+      if (!status) throw new Error('SQLSTATE detalhe interno');
+      return json({ message: status === 400 ? message : 'SQLSTATE detalhe interno' }, Number(status));
+    };
     const dialog = await open();
     answer();
     const observation = within(screen.getByRole('group', { name: 'Idade mínima' })).getByRole('textbox') as HTMLTextAreaElement;
     fireEvent.change(observation, { target: { value: 'Não perder' } });
     fireEvent.submit(within(dialog).getByRole('form'));
     await within(dialog).findByText(String(message));
+    expect(within(dialog).queryByText(/SQLSTATE/)).toBeNull();
     expect(screen.getByRole('dialog', { name: 'Avaliar elegibilidade' })).toBe(dialog);
     expect(observation.value).toBe('Não perder');
     expect((within(screen.getByRole('group', { name: 'Idade mínima' })).getByRole('radio', { name: 'Atende' }) as HTMLInputElement).checked).toBe(true);

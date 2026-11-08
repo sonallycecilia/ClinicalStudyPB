@@ -26,7 +26,11 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 const posts = () => request.mock.calls.filter(([, options]) => options?.method === 'POST');
 async function details() {
-  const view = render(<MemoryRouter initialEntries={['/coordenador/candidatos?studyId=s1']}><CoordinatorCandidatesPage /></MemoryRouter>);
+  let view!: ReturnType<typeof render>;
+  // Aguarda os efeitos encadeados de consulta dos estudos e dos candidatos.
+  await act(async () => {
+    view = render(<MemoryRouter initialEntries={['/coordenador/candidatos?studyId=s1']}><CoordinatorCandidatesPage /></MemoryRouter>);
+  });
   const row = await screen.findByRole('row', { name: /Ana Silva/ });
   fireEvent.click(within(row).getByRole('button', { name: 'Detalhes' }));
   return { view, dialog: screen.getByRole('dialog', { name: 'Detalhes do candidato' }) };

@@ -28,7 +28,11 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 async function open(waitForConsent = true) {
-  const view = render(<MemoryRouter initialEntries={['/coordenador/candidatos?studyId=s1']}><CoordinatorCandidatesPage /></MemoryRouter>);
+  let view!: ReturnType<typeof render>;
+  // Aguarda os efeitos encadeados de consulta dos estudos e dos candidatos.
+  await act(async () => {
+    view = render(<MemoryRouter initialEntries={['/coordenador/candidatos?studyId=s1']}><CoordinatorCandidatesPage /></MemoryRouter>);
+  });
   const row = await screen.findByRole('row', { name: /Ana Silva/ });
   fireEvent.click(within(row).getByRole('button', { name: 'Detalhes' }));
   fireEvent.click(screen.getByRole('button', { name: 'Registrar consentimento' }));
@@ -136,12 +140,23 @@ describe('RF10 — modal existente com adaptadores HTTP reais e transporte simul
     expect(posts()).toHaveLength(0);
   });
 
-  it.each([400, 401, 403, 404, 503, 0])('preserva valores e não confirma sucesso após falha %s', async (status) => {
-    post = async () => { if (!status) throw new Error('offline'); return json({ message: 'Versão recusada.' }, status); };
+  it.each([
+    [400, 'Versão recusada.'],
+    [401, 'Sua sessão expirou ou é inválida. Entre novamente para continuar.'],
+    [403, 'Você não tem permissão para consultar ou registrar consentimentos neste estudo.'],
+    [404, 'Estudo ou candidato não encontrado neste estudo. Atualize a listagem.'],
+    [503, 'Não foi possível concluir a solicitação de consentimento. Consulte os dados e tente novamente.'],
+    [0, 'Não foi possível comunicar com o servidor. Consulte o consentimento antes de tentar registrar novamente.'],
+  ] as const)('preserva valores e não confirma sucesso após falha %s', async (status, message) => {
+    post = async () => {
+      if (!status) throw new Error('SQLSTATE detalhe interno');
+      return json({ message: status === 400 ? 'Versão recusada.' : 'SQLSTATE detalhe interno' }, status);
+    };
     const { dialog } = await open();
     fill();
     fireEvent.submit(within(dialog).getByRole('form'));
-    await within(dialog).findByRole('alert');
+    expect((await within(dialog).findByRole('alert')).textContent).toBe(message);
+    expect(within(dialog).queryByText(/SQLSTATE/)).toBeNull();
     expect(screen.getByRole('dialog', { name: 'Registrar consentimento' })).toBe(dialog);
     expect(within(dialog).queryByText('Consentimento simulado registrado com sucesso!')).toBeNull();
     expect((within(dialog).getByRole('textbox', { name: 'Versão do termo simulado *' }) as HTMLInputElement).value).toBe(' v-teste ');
