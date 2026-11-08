@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { CandidateInclusionForm } from './CandidateInclusionForm';
 import { candidatesApi, INCLUSION_UNAVAILABLE_MESSAGE, INVALID_INCLUSION_MESSAGE, type CandidateInclusion } from './candidatesApi';
 
@@ -14,12 +14,18 @@ const confirm = () => screen.getByRole('button', { name: 'Confirmar inclusão' }
 afterEach(cleanup);
 
 describe('CandidateInclusionForm', () => {
-  it('exibe contexto e requisitos; bloqueia a confirmação sem integração e permite cancelar', () => {
+  it('reutiliza identificação compacta sem textos explicativos; bloqueia sem integração e permite cancelar', () => {
     const onCancel = vi.fn();
     render(<CandidateInclusionForm candidate={candidate} onCancel={onCancel} />);
     expect(screen.getByText(candidate.name)).toBeTruthy();
     expect(screen.getByText(candidate.studyTitle)).toBeTruthy();
-    expect(screen.getByText(/elegibilidade aprovada, consentimento simulado concedido e disponibilidade de vagas/)).toBeTruthy();
+    const summary = screen.getByRole('region', { name: 'Resumo do candidato' });
+    expect(within(summary).getByText(candidate.name)).toBeTruthy();
+    expect(within(summary).getByText('Estudo de interesse')).toBeTruthy();
+    expect(within(summary).getByText(candidate.studyTitle)).toBeTruthy();
+    expect(within(summary).queryByText('Status atual')).toBeNull();
+    expect(screen.queryByText(/A inclusão depende de elegibilidade aprovada/)).toBeNull();
+    expect(screen.queryByText('Confirma a inclusão deste candidato como participante?')).toBeNull();
     expect(screen.getByText(INCLUSION_UNAVAILABLE_MESSAGE)).toBeTruthy();
     expect(confirm().disabled).toBe(true);
     expect(document.getElementById(confirm().getAttribute('aria-describedby')!)?.textContent).toBe(INCLUSION_UNAVAILABLE_MESSAGE);
@@ -35,13 +41,15 @@ describe('CandidateInclusionForm', () => {
     let resolve!: (result: CandidateInclusion) => void;
     const onInclude = vi.fn(() => new Promise<CandidateInclusion>((done) => { resolve = done; }));
     const onCancel = vi.fn();
-    render(<CandidateInclusionForm candidate={candidate} onCancel={onCancel} onInclude={onInclude} />);
+    const onBusyChange = vi.fn();
+    render(<CandidateInclusionForm candidate={candidate} onCancel={onCancel} onInclude={onInclude} onBusyChange={onBusyChange} />);
     expect(onInclude).not.toHaveBeenCalled();
     fireEvent.click(confirm());
     fireEvent.click(confirm());
     fireEvent.submit(screen.getByRole('form'));
     expect(onInclude).toHaveBeenCalledExactlyOnceWith(candidate.studyId, candidate.id, expect.any(AbortSignal));
     expect(screen.getByRole('form').getAttribute('aria-busy')).toBe('true');
+    expect(onBusyChange).toHaveBeenLastCalledWith(true);
     expect(screen.getByRole('status').textContent).toBe('Incluindo participante…');
     expect(confirm().disabled).toBe(true);
     expect((screen.getByRole('button', { name: 'Cancelar' }) as HTMLButtonElement).disabled).toBe(true);
@@ -52,6 +60,7 @@ describe('CandidateInclusionForm', () => {
     expect(screen.getByText('3 / 5')).toBeTruthy();
     expect(screen.getByText('07/11/2026').getAttribute('datetime')).toBe(inclusion.includedAt);
     expect(screen.getByRole('form').getAttribute('aria-busy')).toBe('false');
+    expect(onBusyChange).toHaveBeenLastCalledWith(false);
     expect(screen.queryByRole('button', { name: 'Confirmar inclusão' })).toBeNull();
     fireEvent.submit(screen.getByRole('form'));
     expect(onInclude).toHaveBeenCalledOnce();
@@ -60,29 +69,36 @@ describe('CandidateInclusionForm', () => {
   });
 
   it.each([
-    [400, 'Candidato inelegível: avalie e aprove todos os critérios antes da inclusão.', 'Candidato inelegível: avalie e aprove todos os critérios antes da inclusão.'],
-    [400, 'Candidato inelegível: todos os critérios ativos devem estar avaliados e atendidos.', 'Candidato inelegível: todos os critérios ativos devem estar avaliados e atendidos.'],
-    [400, 'Consentimento ausente ou não concedido: registre o consentimento antes da inclusão.', 'Consentimento ausente ou não concedido: registre o consentimento antes da inclusão.'],
-    [400, 'Limite de vagas atingido: não há vagas disponíveis neste estudo.', 'Limite de vagas atingido: não há vagas disponíveis neste estudo.'],
-    [400, 'O candidato já foi incluído neste estudo.', 'O candidato já foi incluído neste estudo.'],
-    [400, 'Não é possível incluir participantes em um estudo encerrado.', 'Não é possível incluir participantes em um estudo encerrado.'],
-    [404, 'Candidato não encontrado neste estudo.', 'Candidato ou estudo não encontrado.'],
-    [404, 'Estudo não encontrado.', 'Candidato ou estudo não encontrado.'],
-    [401, 'Unauthorized', 'Sua sessão expirou ou não está autorizada.'],
-    [403, 'Forbidden resource', 'Você não tem permissão para incluir participantes neste estudo.'],
-    [500, 'Internal server error', 'Não foi possível confirmar a inclusão no servidor.'],
-  ])('apresenta recusa real da API (%s: %s) sem sucesso', async (status, message, expected) => {
-    const request = vi.fn().mockResolvedValue(new Response(JSON.stringify({ statusCode: status, message, error: 'Error' }), { status }));
+    [400, 'CANDIDATE_INELIGIBLE', 'O candidato não atende aos critérios de elegibilidade do estudo.'],
+    [400, 'ELIGIBILITY_PENDING', 'A avaliação de elegibilidade do candidato ainda não foi concluída.'],
+    [400, 'CONSENT_MISSING', 'O consentimento simulado do candidato ainda não foi registrado.'],
+    [400, 'CONSENT_NOT_GRANTED', 'O candidato não possui consentimento válido para participar.'],
+    [400, 'STUDY_FULL', 'O estudo não possui vagas disponíveis.'],
+    [400, 'CANDIDATE_ALREADY_INCLUDED', 'Este candidato já foi incluído no estudo.'],
+    [400, undefined, 'Não foi possível concluir a inclusão. Tente novamente.'],
+    [400, 'UNKNOWN_CODE', 'Não foi possível concluir a inclusão. Tente novamente.'],
+    [404, undefined, 'Estudo ou candidato não encontrado.'],
+    [401, undefined, 'Sua sessão expirou ou não está autorizada.'],
+    [403, undefined, 'Você não tem permissão para realizar esta inclusão.'],
+    [500, undefined, 'Não foi possível concluir a inclusão. Tente novamente.'],
+  ])('apresenta um único aviso por recusa (%s: %s) sem sucesso', async (status, code, expected) => {
+    const request = vi.fn().mockResolvedValue(new Response(JSON.stringify({ statusCode: status, code, message: 'Texto técnico alterado no servidor.', error: 'Error' }), { status }));
     const onInclude = (studyId: string, candidateId: string) => candidatesApi.include(request, studyId, candidateId);
     render(<CandidateInclusionForm candidate={candidate} onCancel={vi.fn()} onInclude={onInclude} />);
     fireEvent.click(confirm());
-    expect((await screen.findByRole('alert')).textContent).toContain(expected);
-    if (status === 400) {
-      expect(screen.getByRole('alert').textContent).toContain('Consulte a avaliação de elegibilidade');
-      expect(screen.getByRole('alert').textContent).toContain('consentimento simulado');
-    }
+    const alert = await screen.findByRole('alert');
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    expect(within(alert).getByRole('heading', { name: 'Não foi possível incluir o participante' })).toBeTruthy();
+    expect(alert.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+    expect(alert.querySelectorAll('p')).toHaveLength(1);
+    expect(alert.querySelector('p')?.textContent).toContain(expected);
+    expect(screen.queryByText('Texto técnico alterado no servidor.')).toBeNull();
+    expect(screen.queryByText(/Consulte a avaliação de elegibilidade, o consentimento/)).toBeNull();
+    expect(screen.getByText(candidate.name)).toBeTruthy();
+    expect(screen.getByText(candidate.studyTitle)).toBeTruthy();
     expect(screen.queryByText(success)).toBeNull();
     expect(screen.queryByText('Ativo')).toBeNull();
+    expect(screen.getByRole('form').getAttribute('aria-busy')).toBe('false');
     expect(confirm().disabled).toBe(false);
   });
 
@@ -92,7 +108,7 @@ describe('CandidateInclusionForm', () => {
     const onInclude = (studyId: string, candidateId: string) => candidatesApi.include(request, studyId, candidateId);
     render(<CandidateInclusionForm candidate={candidate} onCancel={vi.fn()} onInclude={onInclude} />);
     fireEvent.click(confirm());
-    expect((await screen.findByRole('alert')).textContent).toContain('Não foi possível comunicar com o servidor.');
+    expect((await screen.findByRole('alert')).textContent).toContain('Não foi possível concluir a inclusão. Tente novamente.');
     expect(screen.queryByText(success)).toBeNull();
     fireEvent.click(confirm());
     expect(await screen.findByText(success)).toBeTruthy();
@@ -103,7 +119,7 @@ describe('CandidateInclusionForm', () => {
     const onInclude = vi.fn().mockResolvedValue(response);
     render(<CandidateInclusionForm candidate={candidate} onCancel={vi.fn()} onInclude={onInclude} />);
     fireEvent.click(confirm());
-    expect((await screen.findByRole('alert')).textContent).toBe(INVALID_INCLUSION_MESSAGE);
+    expect(within(await screen.findByRole('alert')).getByText(INVALID_INCLUSION_MESSAGE)).toBeTruthy();
     expect(screen.queryByText(success)).toBeNull();
     expect(screen.queryByText('Ativo')).toBeNull();
   });
@@ -111,7 +127,7 @@ describe('CandidateInclusionForm', () => {
   it('não exibe detalhes técnicos de uma falha inesperada na integração', async () => {
     render(<CandidateInclusionForm candidate={candidate} onCancel={vi.fn()} onInclude={vi.fn().mockRejectedValue(new Error('technical detail'))} />);
     fireEvent.click(confirm());
-    expect((await screen.findByRole('alert')).textContent).toContain('Não foi possível confirmar a inclusão.');
+    expect((await screen.findByRole('alert')).textContent).toContain('Não foi possível concluir a inclusão. Tente novamente.');
     expect(screen.queryByText(/technical detail/)).toBeNull();
     expect(screen.queryByText(success)).toBeNull();
   });

@@ -809,6 +809,13 @@ body:has(.modal-backdrop), body:has(.study-dialog-backdrop) { overflow: hidden; 
 .coord-field input:focus, .coord-field select:focus { border-color: #83c7c4; outline: 0; box-shadow: 0 0 0 3px #e2f4f3; }
 .coord-modal-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px; padding-top: 16px; margin-top: 4px; border-top: 1px solid #edf2f3; }
 .coord-modal-actions .coord-primary-button, .coord-modal-actions .coord-secondary-button, .coord-modal-actions .coord-danger-button { min-height: 36px; font-size: 11px; }
+.coord-inclusion-action:disabled, .candidate-inclusion-form button:disabled { color: #708995; background: #fff; border-color: #dce8eb; cursor: default; opacity: 1; transform: none; }
+.candidate-inclusion-form[aria-busy='true'] button:disabled { cursor: progress; }
+.candidate-inclusion-error { display: flex; align-items: flex-start; gap: 10px; margin: 12px 0; padding: 12px 14px; border: 1px solid #f0d5d8; border-radius: 10px; color: #b82c35; background: #fff6f6; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.candidate-inclusion-error > svg { flex-shrink: 0; margin-top: 2px; }
+.candidate-inclusion-error > div { min-width: 0; }
+.candidate-inclusion-error h3 { margin: 0 0 4px; font-size: 13px; }
+.candidate-inclusion-error p { margin: 0; }
 .coord-wrap-actions { border-top: 0; }
 .coord-detail-list { display: grid; gap: 0; padding-top: 10px; }
 .coord-detail-list > div { min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid #edf2f3; }

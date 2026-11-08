@@ -33,6 +33,7 @@ import {
   CandidateConsentResponseDto,
   CandidateEligibilityAssessmentResponseDto,
   CandidateInclusionResponseDto,
+  CandidateInclusionErrorResponseDto,
   CandidateResponseDto,
   CreateCandidateRequestDto,
   EvaluateCandidateRequestDto,
@@ -131,7 +132,7 @@ export class CandidatesController {
   @ApiCreatedResponse({ description: 'Candidato incluído como participante ativo.', type: CandidateInclusionResponseDto })
   @ApiBadRequestResponse({
     description: 'Candidato inelegível, consentimento ausente ou vaga indisponível.',
-    type: ApiErrorResponseDto,
+    type: CandidateInclusionErrorResponseDto,
   })
   @ApiUnauthorizedResponse({ description: 'Token ausente, inválido ou expirado.', type: ApiErrorResponseDto })
   @ApiForbiddenResponse({ description: 'Exige Pesquisador proprietário ou Coordenador ativo em estudo em recrutamento.', type: ApiErrorResponseDto })

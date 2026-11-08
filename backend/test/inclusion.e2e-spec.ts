@@ -79,7 +79,7 @@ describe('RF11 — inclusão autorizada, transacional e concorrente no PostgreSQ
     fixture.app = await fixture.open();
     await request(api()).get(`${studyPath()}/candidates`).set('Authorization', auth(coordinatorToken)).expect(200)
       .expect(({ body }) => expect(body.find((candidate: { id: string }) => candidate.id === candidateId).status).toBe('Incluído'));
-    await include().expect(400).expect(({ body }) => expect(body.message).toContain('já foi incluído'));
+    await include().expect(400).expect(({ body }) => expect(body).toMatchObject({ statusCode: 400, error: 'Bad Request', code: 'CANDIDATE_ALREADY_INCLUDED', message: 'O candidato já foi incluído neste estudo.' }));
     await unchanged('Incluído', 1);
   });
 
@@ -104,31 +104,33 @@ describe('RF11 — inclusão autorizada, transacional e concorrente no PostgreSQ
   });
 
   it.each([
-    ['Não atende', 'Não atende', 'Inelegível'], ['Atende', 'Atende', 'Inelegível'], ['Pendente', 'Não atende', 'Em avaliação'],
-  ])('rejeita avaliação %s/%s sem participação ou alteração de contador', async (inc, exc, status) => {
+    ['Não atende', 'Não atende', 'Inelegível', 'CANDIDATE_INELIGIBLE'],
+    ['Atende', 'Atende', 'Inelegível', 'CANDIDATE_INELIGIBLE'],
+    ['Pendente', 'Não atende', 'Em avaliação', 'ELIGIBILITY_PENDING'],
+  ])('rejeita avaliação %s/%s sem participação ou alteração de contador', async (inc, exc, status, code) => {
     await evaluate(candidateId, inc, exc); await consent();
-    await include().expect(400);
+    await include().expect(400).expect(({ body }) => expect(body).toMatchObject({ statusCode: 400, error: 'Bad Request', code, message: 'Candidato inelegível: avalie e aprove todos os critérios antes da inclusão.' }));
     await unchanged(status);
   });
 
   it('revalida critérios ativos e rejeita avaliação incompleta mesmo com status Elegível', async () => {
     await evaluate(); await consent();
     await request(api()).post(`${studyPath()}/criteria`).set('Authorization', auth(ownerToken)).send({ type: 'Inclusão', description: 'Critério novo sem avaliação' }).expect(201);
-    await include().expect(400).expect(({ body }) => expect(body.message).toContain('todos os critérios ativos'));
+    await include().expect(400).expect(({ body }) => expect(body).toMatchObject({ code: 'ELIGIBILITY_PENDING', message: 'Candidato inelegível: todos os critérios ativos devem estar avaliados e atendidos.' }));
     await unchanged('Elegível');
   });
 
   it.each([null, 'Recusado', 'Revogado'])('rejeita último consentimento %s sem gravar', async (status) => {
     await evaluate();
     if (status) { await consent(); await consent(status); }
-    await include().expect(400).expect(({ body }) => expect(body.message).toContain('Consentimento ausente ou não concedido'));
+    await include().expect(400).expect(({ body }) => expect(body).toMatchObject({ code: status ? 'CONSENT_NOT_GRANTED' : 'CONSENT_MISSING', message: 'Consentimento ausente ou não concedido: registre o consentimento antes da inclusão.' }));
     await unchanged('Elegível');
   });
 
   it('rejeita ausência de vagas sem gravar parcialmente', async () => {
     await evaluate(); await consent();
     await db().query('UPDATE estudos SET participantes_vinculados = limite_participantes WHERE id_estudo = $1', [studyId]);
-    await include().expect(400).expect(({ body }) => expect(body.message).toContain('Limite de vagas atingido'));
+    await include().expect(400).expect(({ body }) => expect(body).toMatchObject({ code: 'STUDY_FULL', message: 'Limite de vagas atingido: não há vagas disponíveis neste estudo.' }));
     expect((await db().query('SELECT * FROM participacoes_estudo WHERE id_candidato = $1', [candidateId])).rows).toHaveLength(0);
     expect((await db().query('SELECT participantes_vinculados FROM estudos WHERE id_estudo = $1', [studyId])).rows[0]?.participantes_vinculados).toBe(5);
   });
@@ -149,7 +151,7 @@ describe('RF11 — inclusão autorizada, transacional e concorrente no PostgreSQ
     await evaluate(); await consent();
     const responses = await Promise.all([include().then((response) => response), include(ownerToken).then((response) => response)]);
     expect(responses.map(({ status }) => status).sort((left, right) => left - right)).toEqual([201, 400]);
-    expect(responses.find(({ status }) => status === 400)?.body.message).toContain('já foi incluído');
+    expect(responses.find(({ status }) => status === 400)?.body.code).toBe('CANDIDATE_ALREADY_INCLUDED');
     await unchanged('Incluído', 1);
   });
 
@@ -160,7 +162,7 @@ describe('RF11 — inclusão autorizada, transacional e concorrente no PostgreSQ
     await db().query('UPDATE estudos SET limite_participantes = 1 WHERE id_estudo = $1', [studyId]);
     const responses = await Promise.all([include().then((response) => response), include(ownerToken, second.body.id).then((response) => response)]);
     expect(responses.map(({ status }) => status).sort((left, right) => left - right)).toEqual([201, 400]);
-    expect(responses.find(({ status }) => status === 400)?.body.message).toContain('Limite de vagas atingido');
+    expect(responses.find(({ status }) => status === 400)?.body.code).toBe('STUDY_FULL');
     const stored = await db().query('SELECT c.status_recrutamento AS status, p.id_participacao AS participation FROM candidatos c LEFT JOIN participacoes_estudo p ON p.id_candidato = c.id_candidato WHERE c.id_estudo = $1', [studyId]);
     expect(stored.rows.filter(({ participation }) => participation)).toHaveLength(1);
     expect(stored.rows.map(({ status }) => String(status)).sort((left, right) => left.localeCompare(right))).toEqual(['Elegível', 'Incluído']);

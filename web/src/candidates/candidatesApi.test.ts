@@ -154,11 +154,38 @@ describe('contrato de inclusão (para integração após autorização)', () => 
     await expect(candidatesApi.include(request, 'study-1', 'candidate-1')).rejects.toBeInstanceOf(CandidateInclusionError);
   });
 
-  it('preserva motivos de recusa sem depender do texto completo e suporta mensagens do NestJS em lista', async () => {
+  it('não deduz motivos a partir de mensagens antigas em lista sem código estruturado', async () => {
     const request = vi.fn().mockResolvedValue(new Response(JSON.stringify({ statusCode: 400, error: 'Bad Request', message: ['Novo motivo fornecido pela API.', 'Consulte o estudo.'] }), { status: 400 }));
     await expect(candidatesApi.include(request, 'study-1', 'candidate-1')).rejects.toMatchObject({
-      status: 400, message: 'Novo motivo fornecido pela API. Consulte o estudo.',
+      status: 400, message: 'Não foi possível concluir a inclusão. Tente novamente.',
     });
+  });
+
+  it.each([
+    ['CANDIDATE_INELIGIBLE', 'O candidato não atende aos critérios de elegibilidade do estudo.'],
+    ['ELIGIBILITY_PENDING', 'A avaliação de elegibilidade do candidato ainda não foi concluída.'],
+    ['CONSENT_MISSING', 'O consentimento simulado do candidato ainda não foi registrado.'],
+    ['CONSENT_NOT_GRANTED', 'O candidato não possui consentimento válido para participar.'],
+    ['STUDY_FULL', 'O estudo não possui vagas disponíveis.'],
+    ['CANDIDATE_ALREADY_INCLUDED', 'Este candidato já foi incluído no estudo.'],
+  ])('identifica %s pelo code e pelo HTTP real, independentemente do texto', async (code, message) => {
+    const request = vi.fn().mockResolvedValue(new Response(JSON.stringify({ code, message: 'Texto pode mudar.', statusCode: 500 }), { status: 400 }));
+    await expect(candidatesApi.include(request, 'study-1', 'candidate-1')).rejects.toMatchObject({ status: 400, code, message });
+  });
+
+  it.each([undefined, null, 400, 'UNKNOWN_CODE', 'INCLUSION_REQUIREMENTS_NOT_MET', '__proto__', 'constructor'])('usa fallback para código ausente, inválido ou desconhecido: %s', async (code) => {
+    const request = vi.fn().mockResolvedValue(new Response(JSON.stringify({ code, message: 'Limite de vagas atingido: não há vagas disponíveis neste estudo.' }), { status: 400 }));
+    await expect(candidatesApi.include(request, 'study-1', 'candidate-1')).rejects.toMatchObject({ status: 400, message: 'Não foi possível concluir a inclusão. Tente novamente.' });
+  });
+
+  it.each([
+    [401, 'Sua sessão expirou ou não está autorizada. Entre novamente para continuar.'],
+    [403, 'Você não tem permissão para realizar esta inclusão.'],
+    [404, 'Estudo ou candidato não encontrado.'],
+    [500, 'Não foi possível concluir a inclusão. Tente novamente.'],
+  ])('preserva HTTP %s sem interpretar code de domínio fora do HTTP 400', async (status, message) => {
+    const request = vi.fn().mockResolvedValue(new Response(JSON.stringify({ code: 'CONSENT_MISSING', message: 'Detalhes internos.' }), { status }));
+    await expect(candidatesApi.include(request, 'study-1', 'candidate-1')).rejects.toMatchObject({ status, message });
   });
 });
 

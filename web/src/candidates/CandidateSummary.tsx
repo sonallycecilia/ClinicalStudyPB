@@ -4,7 +4,7 @@ import type { Candidate } from './candidatesApi';
 
 export function CandidateSummary({ candidate, status, statusLabel = 'Status atual', enrollmentDate }: {
   candidate: Pick<Candidate, 'name' | 'studyTitle'>;
-  status: ReactNode;
+  status?: ReactNode;
   statusLabel?: string;
   enrollmentDate?: string;
 }) {
@@ -16,7 +16,7 @@ export function CandidateSummary({ candidate, status, statusLabel = 'Status atua
     <dl className="eligibility-candidate-details">
       <div><dt><FlaskConical size={14} aria-hidden="true" />Estudo de interesse</dt><dd>{candidate.studyTitle}</dd></div>
       {enrollmentDate && <div><dt><CalendarDays size={14} aria-hidden="true" />Data de inscrição</dt><dd><time dateTime={enrollmentDate.slice(0, 10)}>{enrollmentDate.slice(0, 10).split('-').reverse().join('/')}</time></dd></div>}
-      <div><dt><Tag size={14} aria-hidden="true" />{statusLabel}</dt><dd>{status}</dd></div>
+      {status != null && <div><dt><Tag size={14} aria-hidden="true" />{statusLabel}</dt><dd>{status}</dd></div>}
     </dl>
   </section>;
 }

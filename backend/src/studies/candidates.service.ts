@@ -9,6 +9,7 @@ import type {
   CandidateConsentStatus,
   CandidateEligibilityAssessment,
   CandidateInclusion,
+  CandidateInclusionErrorCode,
   CreateCandidateInput,
   EligibilityCriterionResult,
   EvaluateCandidateInput,
@@ -70,6 +71,10 @@ const CANDIDATE_COLUMNS = `
   email AS email,
   status_recrutamento AS status,
   cadastrado_em::text AS "registeredAt"`;
+
+function inclusionRejection(code: CandidateInclusionErrorCode, message: string) {
+  return new BadRequestException({ statusCode: 400, message, error: 'Bad Request', code });
+}
 
 @Injectable()
 export class CandidatesService {
@@ -215,7 +220,11 @@ export class CandidatesService {
       const candidateRecord = candidateResult.rows[0];
       if (!candidateRecord) throw new NotFoundException('Candidato não encontrado neste estudo.');
       if (candidateRecord.status !== 'Elegível') {
-        throw new BadRequestException(
+        const code: CandidateInclusionErrorCode = candidateRecord.status === 'Incluído' ? 'CANDIDATE_ALREADY_INCLUDED'
+          : candidateRecord.status === 'Inelegível' ? 'CANDIDATE_INELIGIBLE'
+            : candidateRecord.status === 'Novo' || candidateRecord.status === 'Em avaliação' ? 'ELIGIBILITY_PENDING'
+              : 'INCLUSION_REQUIREMENTS_NOT_MET';
+        throw inclusionRejection(code,
           candidateRecord.status === 'Incluído'
             ? 'O candidato já foi incluído neste estudo.'
             : 'Candidato inelegível: avalie e aprove todos os critérios antes da inclusão.',
@@ -239,7 +248,11 @@ export class CandidatesService {
           type === 'Inclusão' ? result === 'Atende' : result === 'Não atende',
         );
       if (!meetsAllCriteria) {
-        throw new BadRequestException(
+        const failed = criteriaResult.rows.some(({ type, result }) =>
+          type === 'Inclusão' ? result === 'Não atende' : result === 'Atende');
+        const code = failed ? 'CANDIDATE_INELIGIBLE'
+          : criteriaResult.rows.length > 0 ? 'ELIGIBILITY_PENDING' : 'INCLUSION_REQUIREMENTS_NOT_MET';
+        throw inclusionRejection(code,
           'Candidato inelegível: todos os critérios ativos devem estar avaliados e atendidos.',
         );
       }
@@ -253,7 +266,7 @@ export class CandidatesService {
         [candidateId],
       );
       if (consentResult.rows[0]?.status !== 'Registrado') {
-        throw new BadRequestException(
+        throw inclusionRejection(consentResult.rows[0] ? 'CONSENT_NOT_GRANTED' : 'CONSENT_MISSING',
           'Consentimento ausente ou não concedido: registre o consentimento antes da inclusão.',
         );
       }
@@ -271,7 +284,7 @@ export class CandidatesService {
         Number(participationCountResult.rows[0]?.count ?? 0),
       );
       if (participantsLinked >= Number(study.participantLimit)) {
-        throw new BadRequestException('Limite de vagas atingido: não há vagas disponíveis neste estudo.');
+        throw inclusionRejection('STUDY_FULL', 'Limite de vagas atingido: não há vagas disponíveis neste estudo.');
       }
 
       const participationResult = await client.query<CandidateInclusionRow>(

@@ -305,10 +305,20 @@ export interface CandidateInclusion {
 }
 
 export const INCLUSION_UNAVAILABLE_MESSAGE = 'A inclusão de participantes não está disponível nesta visualização. Nenhuma inclusão será realizada.';
-export const INVALID_INCLUSION_MESSAGE = 'O servidor não retornou uma confirmação válida da inclusão. Consulte os candidatos antes de tentar novamente.';
+export const INCLUSION_ERROR_MESSAGE = 'Não foi possível concluir a inclusão. Tente novamente.';
+export const INVALID_INCLUSION_MESSAGE = INCLUSION_ERROR_MESSAGE;
+
+const INCLUSION_ERROR_MESSAGES: Record<string, string> = {
+  CANDIDATE_INELIGIBLE: 'O candidato não atende aos critérios de elegibilidade do estudo.',
+  ELIGIBILITY_PENDING: 'A avaliação de elegibilidade do candidato ainda não foi concluída.',
+  CONSENT_MISSING: 'O consentimento simulado do candidato ainda não foi registrado.',
+  CONSENT_NOT_GRANTED: 'O candidato não possui consentimento válido para participar.',
+  STUDY_FULL: 'O estudo não possui vagas disponíveis.',
+  CANDIDATE_ALREADY_INCLUDED: 'Este candidato já foi incluído no estudo.',
+};
 
 export class CandidateInclusionError extends Error {
-  constructor(message: string, readonly status?: number) {
+  constructor(message: string, readonly status?: number, readonly code?: string) {
     super(message);
     this.name = 'CandidateInclusionError';
   }
@@ -334,23 +344,22 @@ const include = async (request: AuthenticatedRequest, studyId: string, candidate
   try {
     response = await request(`/studies/${encodeURIComponent(studyId)}/candidates/${encodeURIComponent(candidateId)}/include`, { method: 'POST', ...(signal ? { signal } : {}) });
   } catch {
-    throw new CandidateInclusionError('Não foi possível comunicar com o servidor. Nenhum sucesso foi confirmado. Consulte os candidatos antes de tentar novamente.');
+    throw new CandidateInclusionError(INCLUSION_ERROR_MESSAGE);
   }
   const body: unknown = await response.json().catch(() => null);
   if (!response.ok) {
     const fallbacks: Record<number, string> = {
-      400: 'A inclusão foi recusada. Verifique os requisitos do candidato e a situação do estudo.',
       401: 'Sua sessão expirou ou não está autorizada. Entre novamente para continuar.',
-      403: 'Você não tem permissão para incluir participantes neste estudo.',
-      404: 'Candidato ou estudo não encontrado. Consulte a lista de candidatos novamente.',
+      403: 'Você não tem permissão para realizar esta inclusão.',
+      404: 'Estudo ou candidato não encontrado.',
     };
-    const message = (body as { message?: unknown } | null)?.message;
-    // NestJS não fornece códigos de domínio: preserva o motivo real do 400,
-    // sem tentar classificar erros comparando frases ou palavras da mensagem.
-    const detail = typeof message === 'string' ? message
-      : Array.isArray(message) ? message.filter((item): item is string => typeof item === 'string').join(' ') : '';
-    throw new CandidateInclusionError(response.status === 400 && detail.trim() ? detail
-      : fallbacks[response.status] ?? 'Não foi possível confirmar a inclusão no servidor. Consulte os candidatos antes de tentar novamente.', response.status);
+    const value = (body as { code?: unknown } | null)?.code;
+    const code = typeof value === 'string' ? value : undefined;
+    // Só códigos de domínio conhecidos em uma recusa de negócio identificam a causa.
+    // Mensagens textuais, códigos desconhecidos e respostas sem code não são classificados.
+    const message = response.status === 400 && code && Object.hasOwn(INCLUSION_ERROR_MESSAGES, code)
+      ? INCLUSION_ERROR_MESSAGES[code] : fallbacks[response.status] ?? INCLUSION_ERROR_MESSAGE;
+    throw new CandidateInclusionError(message, response.status, code);
   }
   if (!isCandidateInclusion(body, studyId, candidateId)) throw new CandidateInclusionError(INVALID_INCLUSION_MESSAGE);
   return body;

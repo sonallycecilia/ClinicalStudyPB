@@ -241,18 +241,36 @@ describe('CandidatesService', () => {
     expect(transactionClient.query).toHaveBeenCalledTimes(2);
   });
 
-  it('bloqueia inclusão se algum critério ativo não foi aprovado', async () => {
+  it.each([
+    [[{ type: 'Inclusão', result: null }], 'ELIGIBILITY_PENDING'],
+    [[{ type: 'Exclusão', result: 'Pendente' }], 'ELIGIBILITY_PENDING'],
+    [[{ type: 'Inclusão', result: 'Não atende' }], 'CANDIDATE_INELIGIBLE'],
+    [[{ type: 'Exclusão', result: 'Atende' }, { type: 'Inclusão', result: null }], 'CANDIDATE_INELIGIBLE'],
+    [[], 'INCLUSION_REQUIREMENTS_NOT_MET'],
+  ])('identifica a recusa pelos critérios reais %j com código %s', async (rows, code) => {
     transactionClient.query
       .mockResolvedValueOnce({
         rows: [{ status: 'recrutamento', participantLimit: 5, participantsLinked: 2 }],
         rowCount: 1,
       })
       .mockResolvedValueOnce({ rows: [{ status: 'Elegível' }], rowCount: 1 })
-      .mockResolvedValueOnce({ rows: [{ type: 'Inclusão', result: null }], rowCount: 1 });
+      .mockResolvedValueOnce({ rows, rowCount: rows.length });
 
     await expect(service.include(studyId, candidate.id, researcherId))
-      .rejects.toThrow('todos os critérios ativos devem estar avaliados');
+      .rejects.toMatchObject({ response: { statusCode: 400, error: 'Bad Request', code, message: 'Candidato inelegível: todos os critérios ativos devem estar avaliados e atendidos.' } });
     expect(transactionClient.query).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([
+    ['Novo', 'ELIGIBILITY_PENDING'], ['Em avaliação', 'ELIGIBILITY_PENDING'],
+    ['Inelegível', 'CANDIDATE_INELIGIBLE'], ['Incluído', 'CANDIDATE_ALREADY_INCLUDED'],
+    ['Desistiu', 'INCLUSION_REQUIREMENTS_NOT_MET'],
+  ])('identifica status persistido %s sem inferir outro motivo (%s)', async (status, code) => {
+    transactionClient.query
+      .mockResolvedValueOnce({ rows: [{ status: 'recrutamento', participantLimit: 5, participantsLinked: 0 }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ status }], rowCount: 1 });
+    await expect(service.include(studyId, candidate.id, researcherId)).rejects.toMatchObject({ response: expect.objectContaining({ code }) });
+    expect(transactionClient.query).toHaveBeenCalledTimes(2);
   });
 
   it('bloqueia inclusão quando não há registro de consentimento', async () => {

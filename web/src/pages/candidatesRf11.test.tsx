@@ -44,7 +44,13 @@ describe('RF11 — modal com integração HTTP autenticada', () => {
     const form = within(dialog).getByRole('form', { name: 'Inclusão de participante' });
     expect(within(form).getByText(candidate.name)).toBeTruthy();
     expect(within(form).getByText('Sono')).toBeTruthy();
-    expect(within(form).getByText('Confirma a inclusão deste candidato como participante?')).toBeTruthy();
+    const summary = within(form).getByRole('region', { name: 'Resumo do candidato' });
+    expect(within(summary).getByText(candidate.name)).toBeTruthy();
+    expect(within(summary).getByText('Estudo de interesse')).toBeTruthy();
+    expect(within(dialog).getAllByText(candidate.name)).toHaveLength(1);
+    expect(within(dialog).queryByText(/A inclusão depende de elegibilidade aprovada/)).toBeNull();
+    expect(within(dialog).queryByText('Confirma a inclusão deste candidato como participante?')).toBeNull();
+    expect(within(form).getAllByRole('button').map((button) => button.textContent)).toEqual(['Cancelar', 'Confirmar inclusão']);
     expect(posts()).toHaveLength(0);
     fireEvent.click(within(form).getByRole('button', { name: 'Cancelar' }));
     expect(screen.getByRole('dialog', { name: 'Detalhes do candidato' })).toBe(dialog);
@@ -76,6 +82,7 @@ describe('RF11 — modal com integração HTTP autenticada', () => {
     expect(screen.getByRole('dialog', { name: 'Detalhes do candidato' })).toBe(dialog);
     expect(screen.getAllByRole('dialog')).toHaveLength(1);
     expect(within(dialog).queryByRole('form')).toBeNull();
+    expect(dialog.querySelector('[aria-busy="true"]')).toBeNull();
     expect(within(dialog).getByRole('status').textContent).toContain(success);
     expect(within(within(dialog).getByRole('region', { name: 'Resumo do candidato' })).getByText('Incluído')).toBeTruthy();
     const row = await screen.findByRole('row', { name: /Ana Silva.*Incluído/ });
@@ -108,24 +115,33 @@ describe('RF11 — modal com integração HTTP autenticada', () => {
   });
 
   it.each([
-    [400, 'Candidato inelegível: avalie e aprove todos os critérios antes da inclusão.', 'Inelegível'],
-    [400, 'Candidato inelegível: todos os critérios ativos devem estar avaliados e atendidos.', 'Em avaliação'],
-    [400, 'Consentimento ausente ou não concedido: registre o consentimento antes da inclusão.', 'Elegível'],
-    [400, 'Limite de vagas atingido: não há vagas disponíveis neste estudo.', 'Elegível'],
-    [400, 'O candidato já foi incluído neste estudo.', 'Elegível'],
-    [400, 'Não é possível incluir participantes em um estudo encerrado.', 'Elegível'],
-    [401, 'Sua sessão expirou ou não está autorizada.', 'Elegível'],
-    [403, 'Você não tem permissão para incluir participantes neste estudo.', 'Elegível'],
-    [404, 'Candidato ou estudo não encontrado.', 'Elegível'],
-    [500, 'Não foi possível confirmar a inclusão no servidor.', 'Elegível'],
-    [0, 'Não foi possível comunicar com o servidor.', 'Elegível'],
-  ] as const)('mantém confirmação e status após recusa %s: %s', async (status, message, candidateStatus) => {
+    [400, 'CANDIDATE_INELIGIBLE', 'O candidato não atende aos critérios de elegibilidade do estudo.', 'Inelegível'],
+    [400, 'ELIGIBILITY_PENDING', 'A avaliação de elegibilidade do candidato ainda não foi concluída.', 'Em avaliação'],
+    [400, 'CONSENT_MISSING', 'O consentimento simulado do candidato ainda não foi registrado.', 'Elegível'],
+    [400, 'CONSENT_NOT_GRANTED', 'O candidato não possui consentimento válido para participar.', 'Elegível'],
+    [400, 'STUDY_FULL', 'O estudo não possui vagas disponíveis.', 'Elegível'],
+    [400, 'CANDIDATE_ALREADY_INCLUDED', 'Este candidato já foi incluído no estudo.', 'Elegível'],
+    [400, undefined, 'Não foi possível concluir a inclusão. Tente novamente.', 'Elegível'],
+    [400, 'UNKNOWN_CODE', 'Não foi possível concluir a inclusão. Tente novamente.', 'Elegível'],
+    [401, undefined, 'Sua sessão expirou ou não está autorizada.', 'Elegível'],
+    [403, undefined, 'Você não tem permissão para realizar esta inclusão.', 'Elegível'],
+    [404, undefined, 'Estudo ou candidato não encontrado.', 'Elegível'],
+    [500, undefined, 'Não foi possível concluir a inclusão. Tente novamente.', 'Elegível'],
+    [0, undefined, 'Não foi possível concluir a inclusão. Tente novamente.', 'Elegível'],
+  ] as const)('mantém confirmação e status após recusa %s: %s', async (status, code, message, candidateStatus) => {
     persistedStatus = candidateStatus;
-    post = async () => { if (!status) throw new TypeError('offline'); return json({ message }, status); };
+    post = async () => { if (!status) throw new TypeError('offline'); return json({ code, message: 'Motivo interno do servidor.' }, status); };
     const { dialog } = await open();
     fireEvent.submit(within(dialog).getByRole('form'));
-    expect((await within(dialog).findByRole('alert')).textContent).toContain(message);
+    const alert = await within(dialog).findByRole('alert');
+    expect(within(dialog).getAllByRole('alert')).toHaveLength(1);
+    expect(within(alert).getByRole('heading', { name: 'Não foi possível incluir o participante' })).toBeTruthy();
+    expect(alert.querySelector('p')?.textContent).toContain(message);
+    expect(alert.querySelectorAll('p')).toHaveLength(1);
+    expect(within(dialog).getByText(candidate.name)).toBeTruthy();
+    expect(within(dialog).getByText('Sono')).toBeTruthy();
     expect(screen.getByRole('dialog', { name: 'Incluir participante' })).toBe(dialog);
+    expect(within(dialog).getByRole('form').getAttribute('aria-busy')).toBe('false');
     expect(within(dialog).queryByText(success)).toBeNull();
     expect(within(screen.getByRole('row', { name: /Ana Silva/ })).getByText(candidateStatus)).toBeTruthy();
     expect(request.mock.calls.filter(([url]) => url === '/studies/s1/candidates')).toHaveLength(1);

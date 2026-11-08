@@ -1,8 +1,10 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { TriangleAlert } from 'lucide-react';
 import {
-  CandidateInclusionError, INCLUSION_UNAVAILABLE_MESSAGE, INVALID_INCLUSION_MESSAGE, isCandidateInclusion,
+  CandidateInclusionError, INCLUSION_ERROR_MESSAGE, INCLUSION_UNAVAILABLE_MESSAGE, INVALID_INCLUSION_MESSAGE, isCandidateInclusion,
   type Candidate, type CandidateInclusion,
 } from './candidatesApi';
+import { CandidateSummary } from './CandidateSummary';
 
 export function CandidateInclusionForm({ candidate, onCancel, onInclude, onIncluded, onBusyChange }: {
   candidate: Pick<Candidate, 'id' | 'name' | 'studyId' | 'studyTitle'>;
@@ -41,7 +43,7 @@ export function CandidateInclusionForm({ candidate, onCancel, onInclude, onInclu
       included = response;
     } catch (reason: unknown) {
       if (!signal.aborted) setError(reason instanceof CandidateInclusionError ? reason
-        : new CandidateInclusionError('Não foi possível confirmar a inclusão. Consulte os candidatos antes de tentar novamente.'));
+        : new CandidateInclusionError(INCLUSION_ERROR_MESSAGE));
     } finally {
       submitting.current = false;
       if (!signal.aborted) {
@@ -52,20 +54,13 @@ export function CandidateInclusionForm({ candidate, onCancel, onInclude, onInclu
     if (included && !signal.aborted) onIncluded?.(included);
   }
 
-  return <form aria-label="Inclusão de participante" aria-busy={saving} onSubmit={submit}>
-    <div className="coord-detail-list">
-      <div><span>Candidato</span><strong>{candidate.name}</strong></div>
-      <div><span>Estudo</span><strong>{candidate.studyTitle}</strong></div>
-    </div>
-    {!result && <>
-      <p className="coord-help-copy">A inclusão depende de elegibilidade aprovada, consentimento simulado concedido e disponibilidade de vagas no estudo.</p>
-      <p className="coord-help-copy">Confirma a inclusão deste candidato como participante?</p>
-    </>}
+  return <form className="candidate-inclusion-form" aria-label="Inclusão de participante" aria-busy={saving} onSubmit={submit}>
+    <CandidateSummary candidate={candidate} />
     {!onInclude && <p id={noticeId} className="candidate-notice">{INCLUSION_UNAVAILABLE_MESSAGE}</p>}
     {saving && <p role="status">Incluindo participante…</p>}
-    {error && <div role="alert" className="form-error">
-      <p>{error.message}</p>
-      {error.status === 400 && <p>Consulte a avaliação de elegibilidade, o consentimento simulado (o último registro deve estar concedido como Registrado, sem recusa ou revogação) e a situação e as vagas do estudo antes de tentar novamente.</p>}
+    {error && <div role="alert" className="candidate-inclusion-error">
+      <TriangleAlert size={18} aria-hidden="true" />
+      <div><h3>Não foi possível incluir o participante</h3><p>{error.message}</p></div>
     </div>}
     {result && <>
       <p role="status" className="candidate-notice">Participante incluído com sucesso!</p>

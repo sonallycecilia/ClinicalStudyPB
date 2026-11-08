@@ -77,3 +77,11 @@ export interface CandidateInclusion {
   participantsLinked: number;
   participantLimit: number;
 }
+
+export const CANDIDATE_INCLUSION_ERROR_CODES = [
+  'CANDIDATE_INELIGIBLE', 'ELIGIBILITY_PENDING', 'CONSENT_MISSING',
+  'CONSENT_NOT_GRANTED', 'STUDY_FULL', 'CANDIDATE_ALREADY_INCLUDED',
+  'INCLUSION_REQUIREMENTS_NOT_MET',
+] as const;
+
+export type CandidateInclusionErrorCode = typeof CANDIDATE_INCLUSION_ERROR_CODES[number];

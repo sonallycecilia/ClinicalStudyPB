@@ -226,7 +226,7 @@ function CandidateDetailsModal({ candidate, onClose, onRegistered, onIncluded }:
     const timer = window.setTimeout(() => setInclusionSuccess(null), 6000);
     return () => window.clearTimeout(timer);
   }, [inclusionSuccess]);
-  return <Modal title={evaluating ? 'Avaliar elegibilidade' : view === 'consent' ? 'Registrar consentimento' : view === 'inclusion' ? 'Incluir participante' : 'Detalhes do candidato'} description={view === 'inclusion' ? candidate.name : undefined} onClose={() => { if (!submitting.current) onClose(); }} wide={view !== 'details'}>
+  return <Modal title={evaluating ? 'Avaliar elegibilidade' : view === 'consent' ? 'Registrar consentimento' : view === 'inclusion' ? 'Incluir participante' : 'Detalhes do candidato'} onClose={() => { if (!submitting.current) onClose(); }} wide={view !== 'details'}>
     {view === 'details' && consentSuccess && <div className="notice" role="status"><span>Consentimento simulado registrado com sucesso!</span><button type="button" className="icon-button" aria-label="Fechar confirmação de consentimento" onClick={() => setConsentSuccess(null)}><X size={16} aria-hidden="true" /></button></div>}
     {view === 'details' && eligibilitySuccess && <div className="notice" role="status"><span>Avaliação registrada com sucesso!</span><button type="button" className="icon-button" aria-label="Fechar confirmação de avaliação" onClick={() => setEligibilitySuccess(null)}><X size={16} aria-hidden="true" /></button></div>}
     {view === 'details' && inclusionSuccess && <div className="notice" role="status"><span>Participante incluído com sucesso!</span><button type="button" className="icon-button" aria-label="Fechar confirmação de inclusão" onClick={() => setInclusionSuccess(null)}><X size={16} aria-hidden="true" /></button></div>}
@@ -234,7 +234,7 @@ function CandidateDetailsModal({ candidate, onClose, onRegistered, onIncluded }:
     {evaluating ? <CandidateEligibilitySection candidate={candidate} onBack={() => setView('details')} onRegistered={onRegistered} onSaved={(assessment) => { setEligibilitySuccess(assessment); setView('details'); }} onBusyChange={(busy) => { submitting.current = busy; }} /> : view === 'consent' ? <CandidateConsentSection candidate={candidate} onBack={() => setView('details')} onBusyChange={(busy) => { submitting.current = busy; }} onRegistered={(consent) => { setConsentSuccess(consent); setView('details'); }} /> : view === 'inclusion' ? <CandidateInclusionForm candidate={candidate} onCancel={() => setView('details')} onBusyChange={(busy) => { submitting.current = busy; }} onInclude={(studyId, candidateId, signal) => candidatesApi.include(request, studyId, candidateId, signal)} onIncluded={(inclusion) => { onIncluded(inclusion); setInclusionSuccess(inclusion); setView('details'); }} /> : <div className="modal-actions coord-modal-actions">
       <button type="button" className="button button-primary" onClick={() => setView('eligibility')}>Avaliar elegibilidade</button>
       <button type="button" className="button button-outline" onClick={() => setView('consent')}>Registrar consentimento</button>
-      <button type="button" className="button button-outline" disabled={candidate.status === 'Incluído'} onClick={() => setView('inclusion')}>Incluir participante</button>
+      <button type="button" className="button button-outline coord-inclusion-action" disabled={candidate.status === 'Incluído'} onClick={() => setView('inclusion')}>Incluir participante</button>
     </div>}
   </Modal>;
 }
