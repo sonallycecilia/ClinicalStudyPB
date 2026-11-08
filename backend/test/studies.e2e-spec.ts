@@ -299,6 +299,42 @@ describe('Estudos clínicos com PostgreSQL (E2E)', () => {
       .expect(201)
       .expect(({ body }) => expect(body.status).toBe('Inelegível'));
 
+    const pendingAssessment = await request(api())
+      .post(`/studies/${study.body.id}/candidates/${candidate.body.id}/eligibility-assessments`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ evaluations: [
+        { criterionId: inclusion.body.id, result: 'Atende' },
+        { criterionId: exclusion.body.id, result: 'Pendente', observation: '  Aguardando confirmação.  ' },
+      ] })
+      .expect(201);
+    expect(pendingAssessment.body.status).toBe('Em avaliação');
+    expect(pendingAssessment.body.evaluations).toHaveLength(2);
+    expect(pendingAssessment.body.evaluations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ criterionId: exclusion.body.id, result: 'Pendente', observation: 'Aguardando confirmação.' }),
+    ]));
+
+    await request(api())
+      .get(`/studies/${study.body.id}/candidates/${candidate.body.id}/eligibility-assessments`)
+      .set('Authorization', bearer(researcherToken))
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.status).toBe('Em avaliação');
+        expect(body.evaluations).toHaveLength(2);
+        expect(body.evaluations).toEqual(expect.arrayContaining([
+          expect.objectContaining({ criterionId: inclusion.body.id, result: 'Atende' }),
+          expect.objectContaining({ criterionId: exclusion.body.id, result: 'Pendente', observation: 'Aguardando confirmação.' }),
+        ]));
+      });
+
+    await request(api())
+      .post(`/studies/${study.body.id}/candidates/${candidate.body.id}/eligibility-assessments`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ evaluations: [
+        { criterionId: inclusion.body.id, result: 'Atende' },
+        { criterionId: inclusion.body.id, result: 'Atende' },
+      ] })
+      .expect(400);
+
     await request(api())
       .post(`/studies/${study.body.id}/candidates/${candidate.body.id}/eligibility-assessments`)
       .set('Authorization', bearer(researcherToken))
@@ -313,6 +349,154 @@ describe('Estudos clínicos com PostgreSQL (E2E)', () => {
       .set('Authorization', bearer(researcherToken))
       .send({ evaluations: [{ criterionId: inclusion.body.id, result: 'Atende' }] })
       .expect(400);
+
+    await request(api())
+      .get(`/studies/${study.body.id}/candidates/${candidate.body.id}/eligibility-assessments`)
+      .set('Authorization', bearer(researcherToken))
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.status).toBe('Em avaliação');
+        expect(body.evaluations).toHaveLength(2);
+      });
+  });
+
+  it('registra consentimento e inclui apenas candidatos aptos, respeitando o limite de vagas', async () => {
+    const study = await request(api()).post('/studies')
+      .set('Authorization', bearer(researcherToken))
+      .send({ ...sample, title: 'Estudo de inclusão', participantLimit: 1 })
+      .expect(201);
+
+    const inclusion = await request(api()).post(`/studies/${study.body.id}/criteria`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ type: 'Inclusão', description: 'Ter 18 anos ou mais.' })
+      .expect(201);
+    const exclusion = await request(api()).post(`/studies/${study.body.id}/criteria`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ type: 'Exclusão', description: 'Possuir contraindicação.' })
+      .expect(201);
+
+    async function createCandidate(name: string) {
+      return (await request(api()).post(`/studies/${study.body.id}/candidates`)
+        .set('Authorization', bearer(researcherToken))
+        .send({ name })
+        .expect(201)).body;
+    }
+
+    async function assessCandidate(candidateId: string, inclusionResult: 'Atende' | 'Não atende') {
+      return request(api())
+        .post(`/studies/${study.body.id}/candidates/${candidateId}/eligibility-assessments`)
+        .set('Authorization', bearer(researcherToken))
+        .send({
+          evaluations: [
+            { criterionId: inclusion.body.id, result: inclusionResult },
+            { criterionId: exclusion.body.id, result: 'Não atende' },
+          ],
+        })
+        .expect(201);
+    }
+
+    async function registerConsent(candidateId: string, status: 'Registrado' | 'Recusado') {
+      return request(api())
+        .post(`/studies/${study.body.id}/candidates/${candidateId}/consents`)
+        .set('Authorization', bearer(researcherToken))
+        .send({ status, termVersion: 'simulado-v1' })
+        .expect(201);
+    }
+
+    const eligibleWithoutConsent = await createCandidate('Elegível sem consentimento');
+    const consentPath = `/studies/${study.body.id}/candidates/${eligibleWithoutConsent.id}/consents`;
+    const inclusionPath = `/studies/${study.body.id}/candidates/${eligibleWithoutConsent.id}/include`;
+    await request(api()).get(consentPath).expect(401);
+    await request(api()).post(consentPath)
+      .set('Authorization', bearer(otherResearcherToken))
+      .send({ status: 'Registrado', termVersion: 'simulado-v1' })
+      .expect(403);
+    await request(api()).post(inclusionPath)
+      .set('Authorization', bearer(otherResearcherToken))
+      .expect(403);
+    await request(api()).post(consentPath)
+      .set('Authorization', bearer(researcherToken))
+      .send({ status: 'Concedido', termVersion: 'simulado-v1' })
+      .expect(400);
+    await request(api()).get(consentPath)
+      .set('Authorization', bearer(researcherToken))
+      .expect(200)
+      .expect(({ body }) => expect(body.status).toBeNull());
+
+    await assessCandidate(eligibleWithoutConsent.id, 'Atende');
+    await request(api())
+      .post(inclusionPath)
+      .set('Authorization', bearer(researcherToken))
+      .expect(400);
+
+    await registerConsent(eligibleWithoutConsent.id, 'Recusado');
+    await request(api())
+      .get(`/studies/${study.body.id}/candidates/${eligibleWithoutConsent.id}/consents`)
+      .set('Authorization', bearer(researcherToken))
+      .expect(200)
+      .expect(({ body }) => expect(body).toMatchObject({
+        candidateId: eligibleWithoutConsent.id,
+        studyId: study.body.id,
+        status: 'Recusado',
+        registrarId: researcher.id,
+      }));
+
+    await registerConsent(eligibleWithoutConsent.id, 'Registrado');
+    await request(api())
+      .get(`/studies/${study.body.id}/candidates/${eligibleWithoutConsent.id}/consents`)
+      .set('Authorization', bearer(researcherToken))
+      .expect(200)
+      .expect(({ body }) => expect(body.status).toBe('Registrado'));
+
+    const included = await request(api())
+      .post(`/studies/${study.body.id}/candidates/${eligibleWithoutConsent.id}/include`)
+      .set('Authorization', bearer(researcherToken))
+      .expect(201);
+    expect(included.body).toMatchObject({
+      candidateId: eligibleWithoutConsent.id,
+      studyId: study.body.id,
+      participationStatus: 'Ativo',
+      participantsLinked: 1,
+      participantLimit: 1,
+    });
+
+    await request(api())
+      .post(inclusionPath)
+      .set('Authorization', bearer(researcherToken))
+      .expect(400);
+
+    const ineligibleCandidate = await createCandidate('Candidato inelegível');
+    await assessCandidate(ineligibleCandidate.id, 'Não atende');
+    await registerConsent(ineligibleCandidate.id, 'Registrado');
+    await request(api())
+      .post(`/studies/${study.body.id}/candidates/${ineligibleCandidate.id}/include`)
+      .set('Authorization', bearer(researcherToken))
+      .expect(400);
+
+    const candidateAtCapacity = await createCandidate('Candidato sem vaga');
+    await assessCandidate(candidateAtCapacity.id, 'Atende');
+    await registerConsent(candidateAtCapacity.id, 'Registrado');
+    await request(api())
+      .post(`/studies/${study.body.id}/candidates/${candidateAtCapacity.id}/include`)
+      .set('Authorization', bearer(researcherToken))
+      .expect(400);
+
+    await request(api())
+      .get(`/studies/${study.body.id}/candidates`)
+      .set('Authorization', bearer(researcherToken))
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toEqual(expect.arrayContaining([
+          expect.objectContaining({ id: eligibleWithoutConsent.id, status: 'Incluído' }),
+          expect.objectContaining({ id: ineligibleCandidate.id, status: 'Inelegível' }),
+          expect.objectContaining({ id: candidateAtCapacity.id, status: 'Elegível' }),
+        ]));
+      });
+    await request(api())
+      .get(`/studies/${study.body.id}`)
+      .set('Authorization', bearer(researcherToken))
+      .expect(200)
+      .expect(({ body }) => expect(body.participantsLinked).toBe(1));
   });
 
   it('persiste os estudos após reiniciar a aplicação', async () => {
