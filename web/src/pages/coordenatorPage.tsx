@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { CandidateForm } from '../candidates/CandidateForm';
 import { CandidateEligibilityForm } from '../candidates/CandidateEligibilityForm';
 import { CandidateConsentForm } from '../candidates/CandidateConsentForm';
@@ -7,7 +7,8 @@ import { CandidateInclusionForm } from '../candidates/CandidateInclusionForm';
 import { useCandidateConsent } from '../candidates/useCandidateConsent';
 import { useCandidateEligibilityCriteria } from '../candidates/useCandidateEligibilityCriteria';
 import { useRecruitmentStudies } from '../candidates/useRecruitmentStudies';
-import type { Candidate, CandidateStatus } from '../candidates/candidatesApi';
+import { candidatesApi, CANDIDATE_STATUSES, type Candidate, type CandidateStatus } from '../candidates/candidatesApi';
+import { useAuth } from '../auth/AuthContext';
 import { useStudyCandidates, type StudyCandidatesState } from '../candidates/useStudyCandidates';
 import { useCandidateListStudies } from '../candidates/useCandidateListStudies';
 import {
@@ -67,13 +68,13 @@ function initials(name: string) {
 }
 
 function StatusBadge({ status }: { status: VisitStatus | CandidateStatus | RequestStatus }) {
-  const tone = status === 'Confirmada' || status === 'Participante ativo' || status === 'Aprovada'
+  const tone = status === 'Confirmada' || status === 'Incluído' || status === 'Elegível' || status === 'Aprovada'
     ? 'success'
-    : status === 'Aguardando' || status === 'Pendente de avaliação' || status === 'Pendente'
+    : status === 'Aguardando' || status === 'Novo' || status === 'Em avaliação' || status === 'Pendente'
       ? 'warning'
-      : status === 'Reagendamento' || status === 'Consentimento pendente'
+      : status === 'Reagendamento'
         ? 'purple'
-        : status === 'Recusada'
+        : status === 'Recusada' || status === 'Inelegível'
           ? 'danger'
           : 'muted';
   return <span className={`status-pill coord-status coord-status-${tone}`}><span />{status}</span>;
@@ -170,11 +171,23 @@ function initialsFormName(value: string) {
   return value.trim() ? initials(value) : '??';
 }
 
-function CandidateRegistrationModal({ onClose }: { onClose: () => void }) {
+function CandidateRegistrationModal({ onClose, onCreated }: { onClose: () => void; onCreated: (studyId: string) => void }) {
   const studies = useRecruitmentStudies();
+  const { request } = useAuth();
+  const submitting = useRef(false);
+  const close = () => { if (!submitting.current) onClose(); };
 
-  return <Modal title="Cadastrar candidato" description="Informe os dados do candidato e selecione o estudo de interesse." onClose={onClose}>
-    <CandidateForm studies={studies} onCancel={onClose} />
+  return <Modal title="Cadastrar candidato" description="Informe os dados do candidato e selecione o estudo de interesse." onClose={close}>
+    <CandidateForm studies={studies} onCancel={close} onSubmit={async (input) => {
+      // Impede fechar e reabrir outro formulário enquanto o cadastro está em andamento.
+      submitting.current = true;
+      try {
+        await candidatesApi.create(request, input);
+        onCreated(input.id_estudo);
+      } finally {
+        submitting.current = false;
+      }
+    }} />
   </Modal>;
 }
 
@@ -252,7 +265,8 @@ export function CoordinatorDashboardPage() {
 }
 
 function candidateDate(value: string) {
-  return value.split('-').reverse().join('/');
+  // Preserva a data de calendário enviada pelo servidor, inclusive em timestamps do PostgreSQL.
+  return value.slice(0, 10).split('-').reverse().join('/');
 }
 
 function CandidatesTable({ state, search, statusFilter, onOpen, onRetry }: {
@@ -268,7 +282,6 @@ function CandidatesTable({ state, search, statusFilter, onOpen, onRetry }: {
   let feedback: ReactNode;
   if (state.status === 'loading') feedback = <span role="status">Consultando candidatos…</span>;
   else if (state.status === 'error') feedback = <div role="alert"><p>{state.message}</p><button type="button" className="button button-outline coord-secondary-button" onClick={onRetry}>Tentar novamente</button></div>;
-  else if (state.status === 'unavailable') feedback = <span role="status">{state.message}</span>;
   else if (state.status === 'idle') feedback = <span role="status">Selecione um estudo para consultar os candidatos.</span>;
   else feedback = <span role="status">{state.candidates.length === 0
     ? 'O estudo selecionado não possui candidatos cadastrados.'
@@ -280,15 +293,20 @@ function CandidatesTable({ state, search, statusFilter, onOpen, onRetry }: {
 }
 
 export function CoordinatorCandidatesPage() {
+  const location = useLocation();
   const [showNew, setShowNew] = useState(false);
   const closeRegistration = useCallback(() => setShowNew(false), []);
   const [search, setSearch] = useState('');
-  const [studyId, setStudyId] = useState('');
+  const [studyId, setStudyId] = useState(() => typeof location.state?.candidateStudyId === 'string' ? location.state.candidateStudyId : '');
   const [statusFilter, setStatusFilter] = useState('Todos os status');
   const [activeCandidate, setActiveCandidate] = useState<Candidate | null>(null);
   const studies = useCandidateListStudies();
   const candidates = useStudyCandidates(studyId);
   const options = studies.state.status === 'ready' ? studies.state.options : [];
+  const tableState: StudyCandidatesState = candidates.state.status === 'ready'
+    ? { status: 'ready', candidates: candidates.state.candidates.map((candidate) => ({
+      ...candidate, studyTitle: options.find((study) => study.id === candidate.studyId)?.title ?? '',
+    })) } : candidates.state;
   const studiesLoading = studies.state.status === 'loading';
   const studyPlaceholder = studies.state.status === 'loading' ? 'Carregando estudos…'
     : studies.state.status === 'error' ? 'Falha ao carregar estudos'
@@ -296,20 +314,26 @@ export function CoordinatorCandidatesPage() {
 
   return <div className="coord-page coord-candidates-page">
     <PageHeader title="Candidatos e participantes" action="Novo candidato" onAction={() => setShowNew(true)} />
-    {showNew && <CandidateRegistrationModal onClose={closeRegistration} />}
+    {showNew && <CandidateRegistrationModal onClose={closeRegistration} onCreated={(createdStudyId) => {
+      setSearch('');
+      setStatusFilter('Todos os status');
+      setActiveCandidate(null);
+      if (createdStudyId === studyId) candidates.reload();
+      else setStudyId(createdStudyId);
+    }} />}
     <div className="page-content-offset">
     <section className="table-card coord-panel coord-list-panel">
       <div className="study-list-heading coord-panel-heading"><h2>Lista de candidatos e participantes</h2><div className="study-list-tools coord-table-tools"><SearchField value={search} onChange={setSearch} placeholder="Buscar por nome..." /><FilterSelect value={studyId} onChange={(id) => { setStudyId(id); setActiveCandidate(null); }} label="Filtrar por estudo" disabled={options.length === 0} describedBy={options.length === 0 ? 'candidate-list-study-help candidate-list-study-feedback' : 'candidate-list-study-help'} options={[
         { value: '', label: studyPlaceholder },
         ...options.map((study) => ({ value: study.id, label: options.some((other) => other.id !== study.id && other.title === study.title) ? `${study.title} (${study.id})` : study.title })),
-      ]} /><FilterSelect value={statusFilter} onChange={setStatusFilter} label="Filtrar por status" options={['Todos os status', 'Pendente de avaliação', 'Participante ativo', 'Consentimento pendente', 'Não elegível']} />
+      ]} /><FilterSelect value={statusFilter} onChange={setStatusFilter} label="Filtrar por status" options={['Todos os status', ...CANDIDATE_STATUSES]} />
         <button type="button" className="icon-button coord-refresh-button" aria-label="Atualizar estudos" title="Atualizar estudos" aria-busy={studiesLoading} disabled={studiesLoading} onClick={studies.reload}><RefreshCw className="coord-refresh-icon" size={16} aria-hidden="true" /></button>
       </div></div>
       <p id="candidate-list-study-help" className="coord-help-copy">A seleção exibe apenas estudos em recrutamento. A consulta dos estudos nas demais fases ainda não está disponível para o coordenador.</p>
       {studiesLoading && <p id="candidate-list-study-feedback" role="status" className="coord-help-copy">Carregando estudos…</p>}
       {studies.state.status === 'error' && <p id="candidate-list-study-feedback" role="alert" className="coord-help-copy">Não foi possível carregar os estudos. Use o ícone de atualização para tentar novamente.</p>}
       {studies.state.status === 'ready' && options.length === 0 && <p id="candidate-list-study-feedback" role="status" className="coord-help-copy">Nenhum estudo em recrutamento disponível para seleção. Não foi possível consultar candidatos.</p>}
-      <CandidatesTable state={candidates.state} search={search} statusFilter={statusFilter} onOpen={setActiveCandidate} onRetry={candidates.reload} />
+      <CandidatesTable state={tableState} search={search} statusFilter={statusFilter} onOpen={setActiveCandidate} onRetry={candidates.reload} />
     </section>
     </div>
     {activeCandidate && <CandidateDetailsModal key={activeCandidate.id} candidate={activeCandidate} onClose={() => setActiveCandidate(null)} />}
