@@ -10,7 +10,7 @@
 
 Definir os cenários e critérios de validação das funcionalidades correspondentes aos requisitos RF05 a RF11, verificando o comportamento esperado, as regras de negócio, a integridade dos dados e o tratamento de situações inválidas.
 
-Este documento servirá como referência para o planejamento e a execução dos testes de qualidade da Sprint 2.
+Este documento serve como referência para o planejamento, a execução e o acompanhamento dos testes de qualidade da Sprint 2, contemplando testes manuais e automatizados.
 
 ## 2. Critérios gerais de qualidade
 
@@ -23,8 +23,12 @@ Durante a validação, deverão ser considerados:
 - Aplicação das regras de negócio definidas.
 - Tratamento adequado de entradas inválidas e operações não permitidas.
 - Retorno de mensagens e códigos HTTP coerentes com o resultado da operação.
+- Isolamento dos dados entre pesquisadores, quando aplicável.
+- Integridade dos dados após operações de atualização e reavaliação.
 
 ## 3. Cenários de teste
+
+Os cenários abaixo representam os comportamentos que devem ser validados. A existência de testes automatizados não significa, necessariamente, que o cenário também tenha sido executado manualmente.
 
 ### RF05 — Definir critérios de inclusão e exclusão para cada estudo
 
@@ -85,79 +89,4 @@ Durante a validação, deverão ser considerados:
 | CT-RF10-02 | Consultar consentimento registrado | Informação retornada corretamente. |
 | CT-RF10-03 | Verificar persistência do consentimento | Registro permanece disponível após nova consulta. |
 | CT-RF10-04 | Tentar incluir candidato sem consentimento | Inclusão impedida. |
-
-### RF11 — Incluir candidatos elegíveis e com consentimento registrado, respeitando o limite de vagas
-
-| ID | Cenário | Resultado esperado |
-|---|---|---|
-| CT-RF11-01 | Incluir candidato elegível e com consentimento registrado | Candidato incluído como participante. |
-| CT-RF11-02 | Tentar incluir candidato inelegível | Inclusão impedida. |
-| CT-RF11-03 | Tentar incluir candidato sem consentimento | Inclusão impedida. |
-| CT-RF11-04 | Tentar incluir candidato com limite de vagas atingido | Inclusão impedida. |
-| CT-RF11-05 | Verificar quantidade de participantes após inclusão | Quantidade atualizada corretamente. |
-| CT-RF11-06 | Tentar incluir novamente o mesmo candidato | Duplicidade impedida, conforme regra de negócio. |
-
-## 4. Registro da execução
-
-Para cada cenário executado, registrar:
-
-- **Data da execução:**
-- **Responsável:**
-- **Ambiente:**
-- **Versão/branch testada:**
-- **Dados utilizados:**
-- **Passos executados:**
-- **Resultado esperado:**
-- **Resultado obtido:**
-- **Status:** Aprovado / Reprovado / Bloqueado.
-- **Evidência:** link para captura de tela, resposta da API ou log.
-- **Observações:** descrição de falhas ou comportamentos inesperados.
-
-## 5. Resumo dos resultados
-
-| Status | Quantidade |
-|---|---:|
-| Aprovados | 0 |
-| Reprovados | 0 |
-| Bloqueados | 0 |
-| Não executados | 36 |
-| **Total** | **36** |
-
-*Os quantitativos deverão ser atualizados conforme a execução dos cenários.*
-
-## 6. Cobertura dos testes automatizados
-
-Foi realizada uma execução local da suíte automatizada do backend com coleta de cobertura utilizando Jest.
-
-### Resultados preliminares
-
-| Métrica | Cobertura |
-|---|---:|
-| Statements | 90,67% |
-| Branches | 78,59% |
-| Functions | 97,18% |
-| Lines | 93,34% |
-
-### Execução
-
-A cobertura foi obtida localmente por meio do comando:
-
-```powershell
-node --env-file=.env --experimental-vm-modules node_modules/jest/bin/jest.js --config ./jest-coverage.config.cjs --coverage --runInBand
-```
-
-**Observação:** os resultados representam a execução local e ainda precisam ser confrontados com a execução no pipeline de CI. A cobertura será reavaliada conforme a ampliação dos testes automatizados.
-
-
-
-## 7. Observações sobre a execução
-
-- Os cenários deverão ser executados considerando os endpoints e as funcionalidades efetivamente implementados.
-- As regras de transição dos estados do estudo deverão ser verificadas conforme as regras de negócio documentadas.
-- Os dados utilizados nos testes deverão permitir a reprodução dos cenários.
-- Cenários cuja funcionalidade ainda não esteja implementada deverão ser registrados como bloqueados, com a respectiva justificativa.
-- Os resultados deverão ser acompanhados de evidências.
-
-## 8. Conclusão
-
-A conclusão da validação será registrada após a execução dos cenários, considerando os resultados obtidos, os problemas identificados e as funcionalidades que permanecerem pendentes.
+| CT-RF10-05 | Tentar incluir candidato com consentimento recus
