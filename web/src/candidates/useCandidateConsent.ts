@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
-import { candidatesApi, ConsentUnavailableError, type CandidateConsent } from './candidatesApi';
+import { candidatesApi, ConsentApiError, ConsentUnavailableError, type CandidateConsent } from './candidatesApi';
 
 export type CandidateConsentState =
   | { status: 'loading' }
@@ -30,7 +30,7 @@ export function useCandidateConsent(studyId: string, candidateId: string) {
         if (controller.signal.aborted) return;
         setResult({ studyId, candidateId, state: error instanceof ConsentUnavailableError
           ? { status: 'unavailable', message: error.message }
-          : { status: 'error', message: 'Não foi possível consultar o consentimento simulado. Tente novamente.' },
+          : { status: 'error', message: error instanceof ConsentApiError ? error.message : 'Não foi possível consultar o consentimento simulado. Tente novamente.' },
         });
       });
     return () => controller.abort();

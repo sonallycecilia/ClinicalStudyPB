@@ -74,7 +74,7 @@ export function toCandidateInput(values: CandidateFormValues): CandidateInput {
   };
 }
 
-/** A futura camada de API poderá traduzir erros para os campos, sem acoplar URLs ao formulário. */
+/** Erros da integração, sem acoplar URLs ao formulário. */
 export class CandidateSubmissionError extends Error {
   constructor(message: string, public readonly fieldErrors: CandidateFieldErrors = {}) {
     super(message);

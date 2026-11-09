@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { StrictMode, type ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
-import { candidatesApi, ELIGIBILITY_UNAVAILABLE_MESSAGE, type Candidate } from '../candidates/candidatesApi';
+import { candidatesApi, type Candidate } from '../candidates/candidatesApi';
 import { CriteriaApiError, type EligibilityCriterion } from '../studies/criteriaApi';
 import {
   CoordinatorCandidatesPage,
@@ -22,10 +22,10 @@ beforeEach(() => {
 });
 
 const candidateRows: Candidate[] = [
-  { id: 'candidate-1', name: 'Lucas Martins', studyId: 'study-1', studyTitle: 'Estudo em recrutamento', enrollmentDate: '2026-10-16', status: 'Consentimento pendente' },
-  { id: 'candidate-2', name: 'Mariana Alves', studyId: 'study-1', studyTitle: 'Estudo em recrutamento', enrollmentDate: '2026-10-20', status: 'Pendente de avaliação' },
-  { id: 'candidate-3', name: 'Lucas Santos', studyId: 'study-2', studyTitle: 'Estudo em recrutamento', enrollmentDate: '2026-10-19', status: 'Consentimento pendente' },
-  { id: 'candidate-4', name: 'Lucas Lima', studyId: 'study-1', studyTitle: 'Estudo em recrutamento', enrollmentDate: '2026-10-18', status: 'Pendente de avaliação' },
+  { id: 'candidate-1', name: 'Lucas Martins', studyId: 'study-1', studyTitle: 'Estudo em recrutamento', enrollmentDate: '2026-10-16', status: 'Elegível' },
+  { id: 'candidate-2', name: 'Mariana Alves', studyId: 'study-1', studyTitle: 'Estudo em recrutamento', enrollmentDate: '2026-10-20', status: 'Em avaliação' },
+  { id: 'candidate-3', name: 'Lucas Santos', studyId: 'study-2', studyTitle: 'Estudo em recrutamento', enrollmentDate: '2026-10-19', status: 'Elegível' },
+  { id: 'candidate-4', name: 'Lucas Lima', studyId: 'study-1', studyTitle: 'Estudo em recrutamento', enrollmentDate: '2026-10-18', status: 'Em avaliação' },
 ];
 
 const eligibilityCriteria: EligibilityCriterion[] = [
@@ -40,7 +40,7 @@ async function openEligibility() {
   renderCoordinator(<CoordinatorCandidatesPage />);
   await selectStudy();
   const row = await screen.findByRole('row', { name: /Lucas Martins/ });
-  const trigger = within(row).getByRole('button', { name: 'Abrir' });
+  const trigger = within(row).getByRole('button', { name: 'Detalhes' });
   trigger.focus();
   fireEvent.click(trigger);
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Avaliar elegibilidade' })); });
@@ -54,7 +54,7 @@ async function selectStudy(id = 'study-1') {
 }
 
 function renderCoordinator(element: ReactNode) {
-  return render(<MemoryRouter>{element}</MemoryRouter>);
+  return render(<MemoryRouter initialEntries={['/?studyId=study-1']}>{element}</MemoryRouter>);
 }
 
 afterEach(() => cleanup());
@@ -109,14 +109,20 @@ describe('CoordinatorCandidatesPage', () => {
     expect(screen.getByText('Lucas Martins')).toBeTruthy();
     expect(screen.queryByText('Mariana Alves')).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Abrir' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Detalhes' }));
     const dialog = screen.getByRole('dialog', { name: 'Detalhes do candidato' });
-    expect(within(dialog).getByText('16/10/2026')).toBeTruthy();
+    const summary = within(dialog).getByRole('region', { name: 'Resumo do candidato' });
+    expect(within(summary).getByText('Lucas Martins')).toBeTruthy();
+    expect(within(summary).getByText('Estudo em recrutamento')).toBeTruthy();
+    expect(within(summary).getByText('16/10/2026')).toBeTruthy();
+    expect(within(summary).getByText('Elegível')).toBeTruthy();
     expect(within(dialog).getByRole('button', { name: 'Avaliar elegibilidade' })).toBeTruthy();
+    expect(within(dialog).getByRole('button', { name: 'Registrar consentimento' })).toBeTruthy();
+    expect(within(dialog).getByRole('button', { name: 'Incluir participante' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Tornar ativo' })).toBeNull();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Fechar' }));
     const candidateRow = screen.getByRole('row', { name: /Lucas Martins/ });
-    expect(within(candidateRow).getByText('Consentimento pendente')).toBeTruthy();
+    expect(within(candidateRow).getByText('Elegível')).toBeTruthy();
   });
 
   it('combina estudo, nome e status, distinguindo estudos com o mesmo título', async () => {
@@ -126,7 +132,7 @@ describe('CoordinatorCandidatesPage', () => {
     await selectStudy();
     await screen.findByText('Mariana Alves');
     fireEvent.change(screen.getByPlaceholderText('Buscar por nome...'), { target: { value: ' LUCAS ' } });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Filtrar por status' }), { target: { value: 'Consentimento pendente' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filtrar por status' }), { target: { value: 'Elegível' } });
     expect(screen.getByText('Lucas Martins')).toBeTruthy();
     expect(screen.queryByText('Mariana Alves')).toBeNull();
     expect(screen.queryByText('Lucas Lima')).toBeNull();
@@ -141,8 +147,10 @@ describe('CoordinatorCandidatesPage', () => {
     expect(screen.getByText('Nenhum candidato encontrado para os filtros selecionados.')).toBeTruthy();
     expect(screen.queryByText('O estudo selecionado não possui candidatos cadastrados.')).toBeNull();
     fireEvent.change(screen.getByRole('combobox', { name: 'Filtrar por estudo' }), { target: { value: '' } });
-    expect(screen.queryByText('Lucas Santos')).toBeNull();
-    expect(query).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(query).toHaveBeenCalledTimes(4));
+    fireEvent.change(screen.getByPlaceholderText('Buscar por nome...'), { target: { value: 'Lucas' } });
+    await screen.findByText('Lucas Santos');
+    expect(screen.getByText('Lucas Martins')).toBeTruthy();
   });
 
   it('exibe lista vazia somente após uma consulta bem-sucedida sem candidatos', async () => {
@@ -182,14 +190,17 @@ describe('CoordinatorCandidatesPage', () => {
     expect(query).toHaveBeenLastCalledWith(mockRequest, 'study-1', expect.any(AbortSignal));
   });
 
-  it('informa a API indisponível sem dados fictícios, contagens ou mensagem de lista vazia', async () => {
+  it('informa acesso negado pela API sem dados fictícios, contagens ou mensagem de lista vazia', async () => {
+    mockRequest.mockImplementation(async (path: string) => path.includes('/candidates')
+      ? new Response(JSON.stringify({ message: 'Forbidden' }), { status: 403 })
+      : new Response(JSON.stringify(studyOptions)));
     renderCoordinator(<CoordinatorCandidatesPage />);
     await selectStudy();
-    await screen.findByText('A consulta de candidatos por estudo ainda não está disponível. Não é possível verificar os candidatos cadastrados.');
+    await screen.findByText('Você não tem permissão para cadastrar ou consultar candidatos neste estudo.');
     expect(screen.queryByText('O estudo selecionado não possui candidatos cadastrados.')).toBeNull();
     expect(screen.queryByText('Mariana Alves')).toBeNull();
     expect(screen.queryByRole('region', { name: 'Indicadores' })).toBeNull();
-    expect(mockRequest).toHaveBeenCalledOnce();
+    expect(mockRequest).toHaveBeenCalledTimes(2);
     expect(mockRequest).toHaveBeenCalledWith('/studies/disponiveis-recrutamento', { signal: expect.any(AbortSignal) });
     expect(screen.getByText(/A seleção exibe apenas estudos em recrutamento/)).toBeTruthy();
   });
@@ -216,15 +227,15 @@ describe('CoordinatorCandidatesPage', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  it('permite recarregar os estudos após falha sem consultar candidatos', async () => {
-    const query = vi.spyOn(candidatesApi, 'listByStudy');
+  it('permite recarregar os estudos após falha e consulta candidatos quando os estudos ficam disponíveis', async () => {
+    const query = vi.spyOn(candidatesApi, 'listByStudy').mockResolvedValue(candidateRows);
     mockRequest.mockRejectedValueOnce(new Error('Falha'));
     renderCoordinator(<CoordinatorCandidatesPage />);
     await screen.findByText('Não foi possível carregar os estudos. Use o ícone de atualização para tentar novamente.');
     expect((screen.getByRole('combobox', { name: 'Filtrar por estudo' }) as HTMLSelectElement).disabled).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Atualizar estudos' }));
     await screen.findByRole('option', { name: 'Estudo em recrutamento' });
-    expect(query).not.toHaveBeenCalled();
+    await waitFor(() => expect(query).toHaveBeenCalledWith(mockRequest, 'study-1', expect.any(AbortSignal)));
   });
 
   it('não confunde ausência de estudos em recrutamento com ausência de candidatos', async () => {
@@ -246,7 +257,7 @@ describe('CoordinatorCandidatesPage', () => {
     mockRequest
       .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
       .mockReturnValueOnce(new Promise<Response>((resolve) => { resolveStudies = resolve; }));
-    const query = vi.spyOn(candidatesApi, 'listByStudy');
+    const query = vi.spyOn(candidatesApi, 'listByStudy').mockResolvedValue(candidateRows);
     renderCoordinator(<CoordinatorCandidatesPage />);
     await screen.findByRole('option', { name: 'Nenhum estudo disponível' });
     const refresh = screen.getByRole('button', { name: 'Atualizar estudos' }) as HTMLButtonElement;
@@ -264,12 +275,12 @@ describe('CoordinatorCandidatesPage', () => {
 
     await act(async () => resolveStudies({ ok: true, json: async () => studyOptions } as Response));
     expect(studySelect.disabled).toBe(false);
-    expect(screen.getByRole('option', { name: 'Selecione um estudo' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'Todos os estudos' })).toBeTruthy();
     expect(screen.getByRole('option', { name: 'Estudo em recrutamento' })).toBeTruthy();
     expect(refresh.disabled).toBe(false);
     expect(refresh.getAttribute('aria-busy')).toBe('false');
     expect(screen.queryByText('Nenhum estudo em recrutamento disponível para seleção. Não foi possível consultar candidatos.')).toBeNull();
-    expect(query).not.toHaveBeenCalled();
+    await waitFor(() => expect(query).toHaveBeenCalledWith(mockRequest, 'study-1', expect.any(AbortSignal)));
   });
 
   it.each(['vazio', 'erro'])('encerra o carregamento da atualização com resultado %s e permite tentar novamente', async (outcome) => {
@@ -298,10 +309,12 @@ describe('CoordinatorCandidatesPage', () => {
     fireEvent.click(refresh);
     await screen.findByRole('option', { name: 'Estudo em recrutamento' });
     expect((screen.getByRole('combobox', { name: 'Filtrar por estudo' }) as HTMLSelectElement).disabled).toBe(false);
-    expect(mockRequest).toHaveBeenCalledTimes(3);
+    expect(mockRequest.mock.calls.filter(([path]) => path === '/studies/disponiveis-recrutamento')).toHaveLength(3);
+    await waitFor(() => expect(mockRequest).toHaveBeenCalledWith('/studies/study-1/candidates', { signal: expect.any(AbortSignal) }));
   });
 
   it('abre o formulário compartilhado e consulta os estudos do cadastro somente ao abrir o modal', async () => {
+    vi.spyOn(candidatesApi, 'listByStudy').mockResolvedValue(candidateRows);
     renderCoordinator(<CoordinatorCandidatesPage />);
     await screen.findByRole('option', { name: 'Estudo em recrutamento' });
     expect(mockRequest).toHaveBeenCalledOnce();
@@ -314,7 +327,7 @@ describe('CoordinatorCandidatesPage', () => {
     fireEvent.change(study, { target: { value: 'study-1' } });
     expect(study.value).toBe('study-1');
     expect(study.required).toBe(true);
-    expect((within(dialog).getByRole('button', { name: 'Cadastrar candidato' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(dialog).getByRole('button', { name: 'Cadastrar candidato' }) as HTMLButtonElement).disabled).toBe(false);
     expect(mockRequest).toHaveBeenCalledTimes(2);
     expect(mockRequest).toHaveBeenCalledWith('/studies/disponiveis-recrutamento', { signal: expect.any(AbortSignal) });
   });
@@ -359,7 +372,7 @@ describe('CoordinatorCandidatesPage', () => {
     await selectStudy();
     await screen.findByText('Lucas Martins');
     fireEvent.change(screen.getByPlaceholderText('Buscar por nome...'), { target: { value: 'Lucas Martins' } });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Filtrar por status' }), { target: { value: 'Consentimento pendente' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filtrar por status' }), { target: { value: 'Elegível' } });
     const trigger = screen.getByRole('button', { name: 'Novo candidato' });
     trigger.focus();
     fireEvent.click(trigger);
@@ -369,7 +382,7 @@ describe('CoordinatorCandidatesPage', () => {
     expect(screen.queryByText('Pessoa não salva')).toBeNull();
     expect((screen.getByPlaceholderText('Buscar por nome...') as HTMLInputElement).value).toBe('Lucas Martins');
     expect((screen.getByRole('combobox', { name: 'Filtrar por estudo' }) as HTMLSelectElement).value).toBe('study-1');
-    expect((screen.getByRole('combobox', { name: 'Filtrar por status' }) as HTMLSelectElement).value).toBe('Consentimento pendente');
+    expect((screen.getByRole('combobox', { name: 'Filtrar por status' }) as HTMLSelectElement).value).toBe('Elegível');
     expect(screen.getByText('Lucas Martins')).toBeTruthy();
     expect(document.activeElement).toBe(trigger);
     expect((mockRequest.mock.calls[1][1] as RequestInit).signal?.aborted).toBe(true);
@@ -386,13 +399,14 @@ describe('CoordinatorCandidatesPage', () => {
     trigger.focus();
     fireEvent.click(trigger);
     const close = screen.getByRole('button', { name: 'Fechar' });
-    const cancel = screen.getByRole('button', { name: 'Cancelar' });
-    act(() => cancel.focus());
-    fireEvent.keyDown(cancel, { key: 'Tab' });
+    await within(screen.getByRole('dialog')).findByRole('option', { name: 'Estudo em recrutamento' });
+    const submit = screen.getByRole('button', { name: 'Cadastrar candidato' });
+    act(() => submit.focus());
+    fireEvent.keyDown(submit, { key: 'Tab' });
     expect(document.activeElement).toBe(close);
     fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
-    expect(document.activeElement).toBe(cancel);
-    fireEvent.keyDown(cancel, { key: 'Escape' });
+    expect(document.activeElement).toBe(submit);
+    fireEvent.keyDown(submit, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(document.activeElement).toBe(trigger);
   });
@@ -421,23 +435,30 @@ describe('CoordinatorCandidatesPage', () => {
 });
 
 describe('Avaliação de elegibilidade do candidato', () => {
-  it('consulta critérios somente pela ação nos detalhes e mantém o registro indisponível sem chamar endpoints restritos', async () => {
+  beforeEach(() => {
+    vi.spyOn(candidatesApi, 'getEligibilityAssessment').mockImplementation(async (_request, studyId, candidateId) => ({
+      studyId, candidateId, status: candidateRows.find((candidate) => candidate.id === candidateId)!.status, evaluations: [],
+    }));
+  });
+  it('consulta critérios pela ação nos detalhes e respeita o acesso negado da API', async () => {
+    mockRequest.mockImplementation(async (path: string) => path.endsWith('/criteria')
+      ? new Response(JSON.stringify({ message: 'Você não tem permissão para acessar os critérios deste estudo.' }), { status: 403 })
+      : new Response(JSON.stringify(studyOptions)));
     const load = vi.spyOn(candidatesApi, 'listEligibilityCriteria');
     const save = vi.spyOn(candidatesApi, 'registerEligibilityAssessment');
     const { dialog } = await openEligibility();
-    await within(dialog).findByText('Consulta de critérios indisponível para o Coordenador.');
+    await within(dialog).findByRole('alert');
     expect(within(dialog).getByText('Lucas Martins')).toBeTruthy();
     expect(within(dialog).getByText('Estudo em recrutamento')).toBeTruthy();
-    expect(within(dialog).getByText(ELIGIBILITY_UNAVAILABLE_MESSAGE)).toBeTruthy();
+    expect(within(dialog).getByText('Você não tem permissão para acessar os critérios deste estudo.')).toBeTruthy();
     expect(load).toHaveBeenCalledOnce();
     expect(load).toHaveBeenCalledWith(mockRequest, 'study-1', expect.any(AbortSignal));
     const register = within(dialog).getByRole('button', { name: 'Registrar avaliação' }) as HTMLButtonElement;
     expect(register.disabled).toBe(true);
-    expect(register.getAttribute('aria-describedby')).toBe('eligibility-unavailable');
     fireEvent.click(register);
     fireEvent.submit(within(dialog).getByRole('form'));
     expect(save).not.toHaveBeenCalled();
-    expect(mockRequest).toHaveBeenCalledOnce();
+    expect(mockRequest).toHaveBeenCalledTimes(2);
     expect(within(dialog).queryByRole('radio')).toBeNull();
     expect(within(dialog).queryByText('Este estudo não possui critérios ativos para avaliação.')).toBeNull();
   });
@@ -448,11 +469,11 @@ describe('Avaliação de elegibilidade do candidato', () => {
     renderCoordinator(<CoordinatorCandidatesPage />);
     await selectStudy();
     const row = await screen.findByRole('row', { name: /Lucas Martins/ });
-    fireEvent.click(within(row).getByRole('button', { name: 'Abrir' }));
+    fireEvent.click(within(row).getByRole('button', { name: 'Detalhes' }));
     expect(load).not.toHaveBeenCalled();
   });
 
-  it('mostra carregamento e agrupa somente os critérios ativos do estudo com orientações distintas', async () => {
+  it('mostra carregamento e agrupa somente os critérios ativos do estudo sem frases explicativas', async () => {
     let resolve!: (criteria: EligibilityCriterion[]) => void;
     vi.spyOn(candidatesApi, 'listEligibilityCriteria').mockReturnValue(new Promise((done) => { resolve = done; }));
     const { dialog } = await openEligibility();
@@ -463,19 +484,19 @@ describe('Avaliação de elegibilidade do candidato', () => {
     expect(within(dialog).getByRole('form').getAttribute('aria-busy')).toBe('false');
     expect(within(dialog).getByRole('region', { name: 'Critérios de inclusão' })).toBeTruthy();
     expect(within(dialog).getByRole('region', { name: 'Critérios de exclusão' })).toBeTruthy();
-    expect(within(dialog).getByText('Atende é favorável à elegibilidade; Não atende é desfavorável.')).toBeTruthy();
-    expect(within(dialog).getByText('Atende indica um impedimento à participação; Não atende é favorável à elegibilidade.')).toBeTruthy();
+    expect(within(dialog).queryByText('Atende é favorável à elegibilidade; Não atende é desfavorável.')).toBeNull();
+    expect(within(dialog).queryByText('Atende indica um impedimento à participação; Não atende é favorável à elegibilidade.')).toBeNull();
     expect(within(dialog).getAllByRole('radio')).toHaveLength(6);
     expect(within(dialog).queryByText('Critério desativado')).toBeNull();
     expect(within(dialog).queryByText('Critério de outro estudo')).toBeNull();
   });
 
-  it('valida todos os resultados, aceita Pendente e permite conferir e limpar sem salvar nem mudar o status', async () => {
+  it('valida todos os resultados no registro e permite editar Pendente sem salvar nem mudar o status', async () => {
     vi.spyOn(candidatesApi, 'listEligibilityCriteria').mockResolvedValue(eligibilityCriteria);
     const save = vi.spyOn(candidatesApi, 'registerEligibilityAssessment');
     const { dialog } = await openEligibility();
     await within(dialog).findByRole('group', { name: 'Possuir idade mínima de 18 anos' });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Conferir preenchimento' }));
+    fireEvent.submit(within(dialog).getByRole('form'));
     expect(within(dialog).getAllByText('Selecione um resultado para este critério.')).toHaveLength(2);
     const inclusion = within(dialog).getByRole('group', { name: 'Possuir idade mínima de 18 anos' });
     const exclusion = within(dialog).getByRole('group', { name: 'Apresentar condição impeditiva' });
@@ -485,15 +506,15 @@ describe('Avaliação de elegibilidade do candidato', () => {
     const observation = within(exclusion).getByRole('textbox', { name: 'Observações (opcional)' }) as HTMLTextAreaElement;
     fireEvent.change(observation, { target: { value: 'Aguardar informação complementar.' } });
     expect(within(exclusion).getByText(`${observation.value.length}/2.000 caracteres`)).toBeTruthy();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Conferir preenchimento' }));
     expect(within(dialog).queryByRole('alert')).toBeNull();
-    expect(within(dialog).getByText('Preenchimento conferido. A avaliação ainda não foi salva.')).toBeTruthy();
-    expect(within(dialog).getByText('Consentimento pendente')).toBeTruthy();
-    expect((within(dialog).getByRole('button', { name: 'Registrar avaliação' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(within(dialog).queryByText(/Elegibilidade atual:/)).toBeNull();
+    expect(within(dialog).queryByRole('button', { name: 'Conferir preenchimento' })).toBeNull();
+    expect(within(dialog).queryByRole('button', { name: 'Limpar preenchimento' })).toBeNull();
+    expect((within(dialog).getByRole('button', { name: 'Registrar avaliação' }) as HTMLButtonElement).disabled).toBe(false);
     expect(save).not.toHaveBeenCalled();
     expect(mockRequest).toHaveBeenCalledOnce();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Limpar preenchimento' }));
-    expect(within(dialog).getAllByRole('radio').every((radio) => !(radio as HTMLInputElement).checked)).toBe(true);
+    fireEvent.change(observation, { target: { value: '' } });
+    expect((within(exclusion).getByRole('radio', { name: 'Pendente' }) as HTMLInputElement).checked).toBe(true);
     expect(observation.value).toBe('');
     expect(within(dialog).queryByText('Preenchimento conferido. A avaliação ainda não foi salva.')).toBeNull();
     expect(within(dialog).queryByRole('alert')).toBeNull();
@@ -529,7 +550,7 @@ describe('Avaliação de elegibilidade do candidato', () => {
       .mockRejectedValueOnce(new Error('Falha'))
       .mockResolvedValueOnce(eligibilityCriteria);
     const { dialog } = await openEligibility();
-    await within(dialog).findByText('Não foi possível carregar os critérios. Tente novamente.');
+    await within(dialog).findByText('Não foi possível carregar os critérios e a avaliação. Tente novamente.');
     expect(within(dialog).queryByText('Este estudo não possui critérios ativos para avaliação.')).toBeNull();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Tentar novamente' }));
     await within(dialog).findByRole('group', { name: 'Possuir idade mínima de 18 anos' });
@@ -550,7 +571,7 @@ describe('Avaliação de elegibilidade do candidato', () => {
     const { trigger, dialog } = await openEligibility();
     await within(dialog).findByRole('group', { name: 'Possuir idade mínima de 18 anos' });
     const close = within(dialog).getByRole('button', { name: 'Fechar' });
-    const last = within(dialog).getByRole('button', { name: 'Conferir preenchimento' });
+    const last = within(dialog).getByRole('button', { name: 'Registrar avaliação' });
     expect(document.activeElement).toBe(close);
     act(() => last.focus());
     fireEvent.keyDown(last, { key: 'Tab' });
@@ -578,7 +599,7 @@ describe('Avaliação de elegibilidade do candidato', () => {
     fireEvent.click(within(group).getByRole('radio', { name: 'Não atende' }));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Voltar aos detalhes' }));
     expect(screen.getByRole('dialog', { name: 'Detalhes do candidato' })).toBeTruthy();
-    expect(within(screen.getByRole('dialog', { name: 'Detalhes do candidato' })).getByText('Consentimento pendente')).toBeTruthy();
+    expect(within(screen.getByRole('dialog', { name: 'Detalhes do candidato' })).getByText('Elegível')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Avaliar elegibilidade' }));
     const newGroup = await screen.findByRole('group', { name: 'Possuir idade mínima de 18 anos' });
     expect((within(newGroup).getByRole('radio', { name: 'Não atende' }) as HTMLInputElement).checked).toBe(false);
@@ -594,7 +615,7 @@ describe('Avaliação de elegibilidade do candidato', () => {
     const signal = load.mock.calls[0][2]!;
     fireEvent.click(within(dialog).getByRole('button', { name: 'Fechar' }));
     expect(signal.aborted).toBe(true);
-    fireEvent.click(within(screen.getByRole('row', { name: /Mariana Alves/ })).getByRole('button', { name: 'Abrir' }));
+    fireEvent.click(within(screen.getByRole('row', { name: /Mariana Alves/ })).getByRole('button', { name: 'Detalhes' }));
     fireEvent.click(screen.getByRole('button', { name: 'Avaliar elegibilidade' }));
     await screen.findByText('Este estudo não possui critérios ativos para avaliação.');
     await act(async () => {
@@ -605,6 +626,40 @@ describe('Avaliação de elegibilidade do candidato', () => {
     expect(within(currentDialog).getByText('Mariana Alves')).toBeTruthy();
     expect(within(currentDialog).queryByRole('radio')).toBeNull();
     expect(within(currentDialog).queryByRole('alert')).toBeNull();
+  });
+});
+
+describe('Inclusão de participante no Coordenador', () => {
+  it('reutiliza o modal para o candidato correto, cancela sem enviar e preserva o status da listagem', async () => {
+    vi.spyOn(candidatesApi, 'listByStudy').mockResolvedValue(candidateRows);
+    const include = vi.spyOn(candidatesApi, 'include');
+    renderCoordinator(<CoordinatorCandidatesPage />);
+    await selectStudy();
+    for (const name of ['Lucas Martins', 'Mariana Alves']) {
+      const row = await screen.findByRole('row', { name: new RegExp(name) });
+      fireEvent.click(within(row).getByRole('button', { name: 'Detalhes' }));
+      const details = screen.getByRole('dialog', { name: 'Detalhes do candidato' });
+      expect(within(details).getByRole('button', { name: 'Avaliar elegibilidade' })).toBeTruthy();
+      expect(within(details).getByRole('button', { name: 'Registrar consentimento' })).toBeTruthy();
+      fireEvent.click(within(details).getByRole('button', { name: 'Incluir participante' }));
+      const dialog = screen.getByRole('dialog', { name: 'Incluir participante' });
+      expect(dialog).toBe(details);
+      expect(screen.getAllByRole('dialog')).toHaveLength(1);
+      const form = within(dialog).getByRole('form', { name: 'Inclusão de participante' });
+      expect(within(form).getByText(name)).toBeTruthy();
+      expect(within(form).getByText('Estudo em recrutamento')).toBeTruthy();
+      const confirm = within(form).getByRole('button', { name: 'Confirmar inclusão' }) as HTMLButtonElement;
+      expect(confirm.disabled).toBe(false);
+      expect(within(dialog).queryByText('Participante incluído com sucesso!')).toBeNull();
+      fireEvent.click(within(form).getByRole('button', { name: 'Cancelar' }));
+      expect(screen.getByRole('dialog', { name: 'Detalhes do candidato' })).toBe(details);
+      const original = candidateRows.find((candidate) => candidate.name === name)!;
+      expect(within(details).getByText(original.status)).toBeTruthy();
+      expect(within(row).getByText(original.status)).toBeTruthy();
+      fireEvent.click(within(details).getByRole('button', { name: 'Fechar' }));
+    }
+    expect(include).not.toHaveBeenCalled();
+    expect(mockRequest).toHaveBeenCalledOnce();
   });
 });
 

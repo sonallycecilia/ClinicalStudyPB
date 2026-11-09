@@ -85,6 +85,92 @@ describe('StudiesService com PostgreSQL', () => {
     expect(users.findById).not.toHaveBeenCalled();
   });
 
+  it('autoriza Coordenador ativo no RF08 em recrutamento, sem exigir propriedade', async () => {
+    users.findById.mockResolvedValue({ ...researcher, id: adminId, role: 'Coordenador' });
+    database.query.mockResolvedValue({ rows: [{ ...baseStudyRow, status: StudyStatus.Recrutamento }], rowCount: 1 });
+    for (const modifying of [false, true]) {
+      await expect(service.assertCandidateStudyAccess(studyId, adminId, modifying))
+        .resolves.toMatchObject({ id: studyId, researcherId, status: StudyStatus.Recrutamento });
+    }
+    // A exceção é específica do RF08, não libera a consulta geral nem a edição do estudo.
+    await expect(service.findById(studyId, adminId)).rejects.toThrow(ForbiddenException);
+    await expect(service.assertStudyCanBeModified(studyId, adminId)).rejects.toThrow(ForbiddenException);
+  });
+
+  it.each([StudyStatus.Planejamento, StudyStatus.Execucao, StudyStatus.Encerrado])('nega RF08 ao Coordenador na fase %s', async (status) => {
+    users.findById.mockResolvedValue({ ...researcher, role: 'Coordenador' });
+    database.query.mockResolvedValue({ rows: [{ ...baseStudyRow, status }], rowCount: 1 });
+    for (const modifying of [false, true]) {
+      await expect(service.assertCandidateStudyAccess(studyId, researcherId, modifying)).rejects.toThrow(ForbiddenException);
+    }
+  });
+
+  it.each([
+    { role: 'Coordenador', status: 'Inativo' },
+    { role: 'Pesquisador', status: 'Inativo' },
+    { role: 'Administrador', status: 'Ativo' },
+    { role: 'Participante', status: 'Ativo' },
+  ] as const)('rejeita RF08 para $role $status antes de consultar o estudo', async (account) => {
+    users.findById.mockResolvedValue({ ...researcher, ...account });
+    for (const modifying of [false, true]) {
+      await expect(service.assertCandidateStudyAccess(studyId, researcherId, modifying)).rejects.toThrow(ForbiddenException);
+    }
+    expect(database.query).not.toHaveBeenCalled();
+  });
+
+  it('preserva propriedade do Pesquisador e bloqueio de cadastro em estudo encerrado no RF08', async () => {
+    database.query.mockResolvedValue({ rows: [baseStudyRow], rowCount: 1 });
+    await expect(service.assertCandidateStudyAccess(studyId, researcherId)).resolves.toMatchObject({ id: studyId });
+    await expect(service.assertCandidateStudyAccess(studyId, researcherId, true)).resolves.toMatchObject({ id: studyId });
+    database.query.mockResolvedValue({ rows: [{ ...baseStudyRow, researcherId: adminId }], rowCount: 1 });
+    for (const modifying of [false, true]) {
+      await expect(service.assertCandidateStudyAccess(studyId, researcherId, modifying)).rejects.toThrow(ForbiddenException);
+    }
+    database.query.mockResolvedValue({ rows: [{ ...baseStudyRow, status: StudyStatus.Encerrado }], rowCount: 1 });
+    await expect(service.assertCandidateStudyAccess(studyId, researcherId)).resolves.toMatchObject({ id: studyId });
+    await expect(service.assertCandidateStudyAccess(studyId, researcherId, true)).rejects.toThrow(BadRequestException);
+  });
+
+  it('retorna 404 no RF08 para estudo inexistente, inclusive para Coordenador', async () => {
+    users.findById.mockResolvedValue({ ...researcher, role: 'Coordenador' });
+    database.query.mockResolvedValue({ rows: [], rowCount: 0 });
+    await expect(service.assertCandidateStudyAccess(studyId, researcherId)).rejects.toThrow(NotFoundException);
+  });
+
+  it('autoriza RF11 para Coordenador ativo somente em recrutamento', async () => {
+    users.findById.mockResolvedValue({ ...researcher, id: adminId, role: 'Coordenador' });
+    for (const status of Object.values(StudyStatus)) {
+      database.query.mockResolvedValue({ rows: [{ ...baseStudyRow, status }], rowCount: 1 });
+      const operation = service.assertInclusionStudyAccess(studyId, adminId);
+      if (status === StudyStatus.Recrutamento) await expect(operation).resolves.toMatchObject({ researcherId });
+      else await expect(operation).rejects.toThrow(ForbiddenException);
+    }
+    database.query.mockResolvedValue({ rows: [], rowCount: 0 });
+    await expect(service.assertInclusionStudyAccess(studyId, adminId)).rejects.toThrow(NotFoundException);
+  });
+
+  it.each([
+    { role: 'Coordenador', status: 'Inativo' },
+    { role: 'Pesquisador', status: 'Inativo' },
+    { role: 'Administrador', status: 'Ativo' },
+    { role: 'Participante', status: 'Ativo' },
+  ] as const)('nega RF11 a $role $status antes de consultar o estudo', async (account) => {
+    users.findById.mockResolvedValue({ ...researcher, ...account });
+    await expect(service.assertInclusionStudyAccess(studyId, researcherId)).rejects.toThrow(ForbiddenException);
+    expect(database.query).not.toHaveBeenCalled();
+  });
+
+  it('preserva propriedade e regras de fase do Pesquisador no RF11', async () => {
+    for (const status of Object.values(StudyStatus)) {
+      database.query.mockResolvedValue({ rows: [{ ...baseStudyRow, status }], rowCount: 1 });
+      const operation = service.assertInclusionStudyAccess(studyId, researcherId);
+      if (status === StudyStatus.Encerrado) await expect(operation).rejects.toThrow(BadRequestException);
+      else await expect(operation).resolves.toMatchObject({ researcherId });
+    }
+    database.query.mockResolvedValue({ rows: [{ ...baseStudyRow, researcherId: adminId }], rowCount: 1 });
+    await expect(service.assertInclusionStudyAccess(studyId, researcherId)).rejects.toThrow(ForbiddenException);
+  });
+
   it('atualiza campos autorizados e rejeita campo não permitido', async () => {
     database.query
       .mockResolvedValueOnce({ rows: [baseStudyRow], rowCount: 1 })

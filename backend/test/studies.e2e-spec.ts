@@ -3,6 +3,7 @@ import { databaseTestApp } from './database-test-app.js';
 import { UsersService } from '../src/users/users.service.js';
 import { DatabaseService } from '../src/database/database.service.js';
 import type { PublicUser } from '../src/users/user.types.js';
+import { StudyStatus } from '../src/studies/study.types.js';
 
 const sample = {
   title: 'Acompanhamento da qualidade do sono',
@@ -971,5 +972,73 @@ it('permite ao Coordenador consultar somente estudos na fase Recrutamento, com I
       .send({ title: 'Alteração indevida' }).expect(403);
     await request(api()).get(`/studies/${created.body.id}`).set('Authorization', bearer(researcherToken))
       .expect(200).expect(({ body }) => expect(body.title).toBe('Estudo protegido do Coordenador'));
+  });
+
+  it('RF08: Coordenador cadastra e lista em recrutamento sem vínculo individual, preservando isolamento do Pesquisador', async () => {
+    const registered: { studyId: string; candidateId: string }[] = [];
+    for (const [index, ownerToken] of [researcherToken, otherResearcherToken].entries()) {
+      const created = await request(api()).post('/studies').set('Authorization', bearer(ownerToken))
+        .send({ ...sample, title: `RF08 recrutamento ${index}` }).expect(201);
+      const studyPath = `/studies/${created.body.id}`;
+      await request(api()).patch(`${studyPath}/status`).set('Authorization', bearer(ownerToken))
+        .send({ status: StudyStatus.Recrutamento }).expect(200);
+      const candidate = await request(api()).post(`${studyPath}/candidates`)
+        .set('Authorization', bearer(coordinatorToken)).send({ name: `Candidato RF08 ${index}` }).expect(201);
+      registered.push({ studyId: created.body.id, candidateId: candidate.body.id });
+      for (const token of [coordinatorToken, ownerToken]) {
+        await request(api()).get(`${studyPath}/candidates`).set('Authorization', bearer(token))
+          .expect(200).expect(({ body }) => expect(body).toEqual([candidate.body]));
+      }
+      const unauthorizedResearcher = index === 0 ? otherResearcherToken : researcherToken;
+      for (const token of [unauthorizedResearcher, adminToken, participantToken]) {
+        await request(api()).get(`${studyPath}/candidates`).set('Authorization', bearer(token)).expect(403);
+        await request(api()).post(`${studyPath}/candidates`).set('Authorization', bearer(token))
+          .send({ name: 'Não autorizado' }).expect(403);
+      }
+      await request(api()).get(`${studyPath}/candidates`).expect(401);
+      await request(api()).post(`${studyPath}/candidates`).send({ name: 'Sem sessão' }).expect(401);
+    }
+    for (const item of registered) {
+      await request(api()).get(`/studies/${item.studyId}/candidates`).set('Authorization', bearer(coordinatorToken))
+        .expect(200).expect(({ body }) => {
+          expect(body).toHaveLength(1);
+          expect(body[0]).toMatchObject({ id: item.candidateId, studyId: item.studyId });
+        });
+    }
+  });
+
+  it('RF08: nega ao Coordenador fases fora de recrutamento e preserva tratamento de encerramento para o proprietário', async () => {
+    const created = await request(api()).post('/studies').set('Authorization', bearer(researcherToken))
+      .send({ ...sample, title: 'RF08 fases protegidas' }).expect(201);
+    const studyPath = `/studies/${created.body.id}`;
+    for (const status of Object.values(StudyStatus)) {
+      if (status !== StudyStatus.Planejamento) {
+        await request(api()).patch(`${studyPath}/status`).set('Authorization', bearer(researcherToken)).send({ status }).expect(200);
+      }
+      const expected = status === StudyStatus.Recrutamento;
+      await request(api()).get(`${studyPath}/candidates`).set('Authorization', bearer(coordinatorToken)).expect(expected ? 200 : 403);
+      await request(api()).post(`${studyPath}/candidates`).set('Authorization', bearer(coordinatorToken))
+        .send({ name: 'Candidato de recrutamento' }).expect(expected ? 201 : 403);
+    }
+    await request(api()).post(`${studyPath}/candidates`).set('Authorization', bearer(researcherToken))
+      .send({ name: 'Estudo encerrado' }).expect(400);
+    await request(api()).get(`${studyPath}/candidates`).set('Authorization', bearer(researcherToken))
+      .expect(200).expect(({ body }) => expect(body).toHaveLength(1));
+  });
+
+  it('RF10 permite consentimento e RF11 rejeita inclusão sem elegibilidade', async () => {
+    const created = await request(api()).post('/studies').set('Authorization', bearer(researcherToken))
+      .send({ ...sample, title: 'RF08 permissões preservadas' }).expect(201);
+    const studyPath = `/studies/${created.body.id}`;
+    await request(api()).patch(`${studyPath}/status`).set('Authorization', bearer(researcherToken))
+      .send({ status: StudyStatus.Recrutamento }).expect(200);
+    const candidate = await request(api()).post(`${studyPath}/candidates`).set('Authorization', bearer(coordinatorToken))
+      .send({ name: 'Candidato protegido' }).expect(201);
+    const candidatePath = `${studyPath}/candidates/${candidate.body.id}`;
+    for (const endpoint of ['consents']) {
+      await request(api()).get(`${candidatePath}/${endpoint}`).set('Authorization', bearer(coordinatorToken)).expect(200);
+      await request(api()).post(`${candidatePath}/${endpoint}`).set('Authorization', bearer(coordinatorToken)).send({}).expect(400);
+    }
+    await request(api()).post(`${candidatePath}/include`).set('Authorization', bearer(coordinatorToken)).expect(400);
   });
 });
