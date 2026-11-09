@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CandidateForm } from '../candidates/CandidateForm';
+import { CandidateEligibilityForm } from '../candidates/CandidateEligibilityForm';
+import { useCandidateEligibilityCriteria } from '../candidates/useCandidateEligibilityCriteria';
 import { useRecruitmentStudies } from '../candidates/useRecruitmentStudies';
 import type { Candidate, CandidateStatus } from '../candidates/candidatesApi';
 import { useStudyCandidates, type StudyCandidatesState } from '../candidates/useStudyCandidates';
@@ -13,6 +15,7 @@ import {
   FileText,
   MoreVertical,
   Plus,
+  RefreshCw,
   Search,
   X,
 } from 'lucide-react';
@@ -92,8 +95,8 @@ function SearchField({ value, onChange, placeholder = 'Buscar por nome...' }: { 
   return <label className="study-search coord-search"><Search size={12} /><input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} /></label>;
 }
 
-function FilterSelect({ value, onChange, options, label, disabled = false }: { value: string; onChange: (value: string) => void; options: (string | { value: string; label: string })[]; label: string; disabled?: boolean }) {
-  return <label className="study-filter coord-filter"><span className="sr-only">{label}</span><select value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}>{options.map((option) => typeof option === 'string'
+function FilterSelect({ value, onChange, options, label, disabled = false, describedBy }: { value: string; onChange: (value: string) => void; options: (string | { value: string; label: string })[]; label: string; disabled?: boolean; describedBy?: string }) {
+  return <label className={`study-filter coord-filter${disabled ? ' coord-filter-disabled' : ''}`}><span className="sr-only">{label}</span><select value={value} disabled={disabled} aria-describedby={describedBy} onChange={(event) => onChange(event.target.value)}>{options.map((option) => typeof option === 'string'
     ? <option key={option}>{option}</option>
     : <option key={option.value} value={option.value}>{option.label}</option>)}</select><ChevronDown size={11} /></label>;
 }
@@ -111,36 +114,21 @@ function EmptyRow({ columns, message }: { columns: number; message: ReactNode })
 }
 
 function Modal({ title, description, onClose, children, wide = false }: { title: string; description?: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
-  return <div className="modal-backdrop coord-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className={`user-modal coord-modal${wide ? ' coord-modal-wide' : ''}`} role="dialog" aria-modal="true" aria-labelledby="coord-modal-title">
-      <header className="coord-modal-header"><div><h2 id="coord-modal-title">{title}</h2>{description && <p>{description}</p>}</div><button type="button" className="icon-button coord-icon-button" onClick={onClose} aria-label="Fechar"><X size={17} /></button></header>
-      {children}
-    </section>
-  </div>;
-}
-
-function Field({ label, children, wide = false }: { label: string; children: ReactNode; wide?: boolean }) {
-  return <label className={`study-field coord-field${wide ? ' coord-field-wide' : ''}`}><span>{label}</span>{children}</label>;
-}
-
-function initialsFormName(value: string) {
-  return value.trim() ? initials(value) : '??';
-}
-
-function CandidateRegistrationModal({ onClose }: { onClose: () => void }) {
-  const studies = useRecruitmentStudies();
+  const dialogRef = useRef<HTMLElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  const titleId = useId();
 
   useEffect(() => {
     const previousFocus = document.activeElement as HTMLElement | null;
-    const name = document.getElementById('candidate-name');
-    const dialog = name?.closest<HTMLElement>('[role="dialog"]');
+    const dialog = dialogRef.current;
     dialog?.querySelector<HTMLButtonElement>('button[aria-label="Fechar"]')?.focus();
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
-        onClose();
+        closeRef.current();
       } else if (event.key === 'Tab' && dialog) {
         const controls = Array.from(dialog.querySelectorAll<HTMLElement>('button, input, select, textarea, a[href], [tabindex]'))
           .filter((element) => !element.matches(':disabled') && element.tabIndex >= 0);
@@ -159,12 +147,50 @@ function CandidateRegistrationModal({ onClose }: { onClose: () => void }) {
     dialog?.addEventListener('keydown', handleKeyDown);
     return () => {
       dialog?.removeEventListener('keydown', handleKeyDown);
-      previousFocus?.focus();
+      if (previousFocus?.isConnected) previousFocus.focus();
     };
-  }, [onClose]);
+  }, [title]);
+
+  return <div className="modal-backdrop coord-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section ref={dialogRef} className={`user-modal coord-modal${wide ? ' coord-modal-wide' : ''}`} role="dialog" aria-modal="true" aria-labelledby={titleId}>
+      <header className="coord-modal-header"><div><h2 id={titleId}>{title}</h2>{description && <p>{description}</p>}</div><button type="button" className="icon-button coord-icon-button" onClick={onClose} aria-label="Fechar"><X size={17} /></button></header>
+      {children}
+    </section>
+  </div>;
+}
+
+function Field({ label, children, wide = false }: { label: string; children: ReactNode; wide?: boolean }) {
+  return <label className={`study-field coord-field${wide ? ' coord-field-wide' : ''}`}><span>{label}</span>{children}</label>;
+}
+
+function initialsFormName(value: string) {
+  return value.trim() ? initials(value) : '??';
+}
+
+function CandidateRegistrationModal({ onClose }: { onClose: () => void }) {
+  const studies = useRecruitmentStudies();
 
   return <Modal title="Cadastrar candidato" description="Informe os dados do candidato e selecione o estudo de interesse." onClose={onClose}>
     <CandidateForm studies={studies} onCancel={onClose} />
+  </Modal>;
+}
+
+function CandidateEligibilitySection({ candidate, onBack }: { candidate: Candidate; onBack: () => void }) {
+  const criteria = useCandidateEligibilityCriteria(candidate.studyId);
+  return <CandidateEligibilityForm state={criteria.state} onRetry={criteria.reload} onCancel={onBack} />;
+}
+
+function CandidateDetailsModal({ candidate, onClose }: { candidate: Candidate; onClose: () => void }) {
+  const [evaluating, setEvaluating] = useState(false);
+  return <Modal title={evaluating ? 'Avaliar elegibilidade' : 'Detalhes do candidato'} description={candidate.name} onClose={onClose} wide={evaluating}>
+    <div className="coord-detail-list">
+      <div><span>Estudo de interesse</span><strong>{candidate.studyTitle}</strong></div>
+      {!evaluating && <div><span>Data de inscrição</span><strong>{candidateDate(candidate.enrollmentDate)}</strong></div>}
+      <div><span>Status atual</span><StatusBadge status={candidate.status} /></div>
+    </div>
+    {evaluating ? <CandidateEligibilitySection candidate={candidate} onBack={() => setEvaluating(false)} /> : <div className="modal-actions coord-modal-actions">
+      <button type="button" className="button button-primary" onClick={() => setEvaluating(true)}>Avaliar elegibilidade</button>
+    </div>}
   </Modal>;
 }
 
@@ -252,26 +278,30 @@ export function CoordinatorCandidatesPage() {
   const studies = useCandidateListStudies();
   const candidates = useStudyCandidates(studyId);
   const options = studies.state.status === 'ready' ? studies.state.options : [];
+  const studiesLoading = studies.state.status === 'loading';
   const studyPlaceholder = studies.state.status === 'loading' ? 'Carregando estudos…'
-    : studies.state.status === 'error' ? 'Falha ao carregar estudos' : 'Selecione um estudo';
+    : studies.state.status === 'error' ? 'Falha ao carregar estudos'
+      : options.length === 0 ? 'Nenhum estudo disponível' : 'Selecione um estudo';
 
   return <div className="coord-page coord-candidates-page">
     <PageHeader title="Candidatos e participantes" action="Novo candidato" onAction={() => setShowNew(true)} />
     {showNew && <CandidateRegistrationModal onClose={closeRegistration} />}
     <div className="page-content-offset">
     <section className="table-card coord-panel coord-list-panel">
-      <div className="study-list-heading coord-panel-heading"><h2>Lista de candidatos e participantes</h2><div className="study-list-tools coord-table-tools"><SearchField value={search} onChange={setSearch} placeholder="Buscar por nome..." /><FilterSelect value={studyId} onChange={(id) => { setStudyId(id); setActiveCandidate(null); }} label="Filtrar por estudo" disabled={options.length === 0} options={[
+      <div className="study-list-heading coord-panel-heading"><h2>Lista de candidatos e participantes</h2><div className="study-list-tools coord-table-tools"><SearchField value={search} onChange={setSearch} placeholder="Buscar por nome..." /><FilterSelect value={studyId} onChange={(id) => { setStudyId(id); setActiveCandidate(null); }} label="Filtrar por estudo" disabled={options.length === 0} describedBy={options.length === 0 ? 'candidate-list-study-help candidate-list-study-feedback' : 'candidate-list-study-help'} options={[
         { value: '', label: studyPlaceholder },
         ...options.map((study) => ({ value: study.id, label: options.some((other) => other.id !== study.id && other.title === study.title) ? `${study.title} (${study.id})` : study.title })),
-      ]} /><FilterSelect value={statusFilter} onChange={setStatusFilter} label="Filtrar por status" options={['Todos os status', 'Pendente de avaliação', 'Participante ativo', 'Consentimento pendente', 'Não elegível']} /></div></div>
-      <p className="coord-help-copy">A seleção exibe apenas estudos em recrutamento. A consulta dos estudos nas demais fases ainda não está disponível para o coordenador.</p>
-      {studies.state.status === 'loading' && <p role="status" className="coord-help-copy">Carregando estudos…</p>}
-      {studies.state.status === 'error' && <div role="alert"><p>Não foi possível carregar os estudos.</p><button type="button" className="button button-outline coord-secondary-button" onClick={studies.reload}>Recarregar estudos</button></div>}
-      {studies.state.status === 'ready' && options.length === 0 && <p role="status" className="coord-help-copy">Nenhum estudo em recrutamento disponível para seleção. Não foi possível consultar candidatos.</p>}
+      ]} /><FilterSelect value={statusFilter} onChange={setStatusFilter} label="Filtrar por status" options={['Todos os status', 'Pendente de avaliação', 'Participante ativo', 'Consentimento pendente', 'Não elegível']} />
+        <button type="button" className="icon-button coord-refresh-button" aria-label="Atualizar estudos" title="Atualizar estudos" aria-busy={studiesLoading} disabled={studiesLoading} onClick={studies.reload}><RefreshCw className="coord-refresh-icon" size={16} aria-hidden="true" /></button>
+      </div></div>
+      <p id="candidate-list-study-help" className="coord-help-copy">A seleção exibe apenas estudos em recrutamento. A consulta dos estudos nas demais fases ainda não está disponível para o coordenador.</p>
+      {studiesLoading && <p id="candidate-list-study-feedback" role="status" className="coord-help-copy">Carregando estudos…</p>}
+      {studies.state.status === 'error' && <p id="candidate-list-study-feedback" role="alert" className="coord-help-copy">Não foi possível carregar os estudos. Use o ícone de atualização para tentar novamente.</p>}
+      {studies.state.status === 'ready' && options.length === 0 && <p id="candidate-list-study-feedback" role="status" className="coord-help-copy">Nenhum estudo em recrutamento disponível para seleção. Não foi possível consultar candidatos.</p>}
       <CandidatesTable state={candidates.state} search={search} statusFilter={statusFilter} onOpen={setActiveCandidate} onRetry={candidates.reload} />
     </section>
     </div>
-    {activeCandidate && <Modal title="Detalhes do candidato" description={activeCandidate.name} onClose={() => setActiveCandidate(null)}><div className="coord-detail-list"><div><span>Estudo de interesse</span><strong>{activeCandidate.studyTitle}</strong></div><div><span>Data de inscrição</span><strong>{candidateDate(activeCandidate.enrollmentDate)}</strong></div><div><span>Status atual</span><StatusBadge status={activeCandidate.status} /></div></div></Modal>}
+    {activeCandidate && <CandidateDetailsModal key={activeCandidate.id} candidate={activeCandidate} onClose={() => setActiveCandidate(null)} />}
   </div>;
 }
 
