@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { StrictMode, type ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
-import { candidatesApi, type Candidate } from '../candidates/candidatesApi';
+import { candidatesApi, ELIGIBILITY_UNAVAILABLE_MESSAGE, type Candidate } from '../candidates/candidatesApi';
+import { CriteriaApiError, type EligibilityCriterion } from '../studies/criteriaApi';
 import {
   CoordinatorCandidatesPage,
   CoordinatorDashboardPage,
@@ -26,6 +27,25 @@ const candidateRows: Candidate[] = [
   { id: 'candidate-3', name: 'Lucas Santos', studyId: 'study-2', studyTitle: 'Estudo em recrutamento', enrollmentDate: '2026-10-19', status: 'Consentimento pendente' },
   { id: 'candidate-4', name: 'Lucas Lima', studyId: 'study-1', studyTitle: 'Estudo em recrutamento', enrollmentDate: '2026-10-18', status: 'Pendente de avaliação' },
 ];
+
+const eligibilityCriteria: EligibilityCriterion[] = [
+  { id: 'inclusion-1', studyId: 'study-1', type: 'Inclusão', description: 'Possuir idade mínima de 18 anos', active: true },
+  { id: 'exclusion-1', studyId: 'study-1', type: 'Exclusão', description: 'Apresentar condição impeditiva', active: true },
+  { id: 'inactive', studyId: 'study-1', type: 'Inclusão', description: 'Critério desativado', active: false },
+  { id: 'other-study', studyId: 'study-2', type: 'Inclusão', description: 'Critério de outro estudo', active: true },
+];
+
+async function openEligibility() {
+  vi.spyOn(candidatesApi, 'listByStudy').mockResolvedValue(candidateRows);
+  renderCoordinator(<CoordinatorCandidatesPage />);
+  await selectStudy();
+  const row = await screen.findByRole('row', { name: /Lucas Martins/ });
+  const trigger = within(row).getByRole('button', { name: 'Abrir' });
+  trigger.focus();
+  fireEvent.click(trigger);
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Avaliar elegibilidade' })); });
+  return { trigger, dialog: screen.getByRole('dialog', { name: 'Avaliar elegibilidade' }) };
+}
 
 async function selectStudy(id = 'study-1') {
   const select = screen.getByRole('combobox', { name: 'Filtrar por estudo' }) as HTMLSelectElement;
@@ -92,7 +112,7 @@ describe('CoordinatorCandidatesPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Abrir' }));
     const dialog = screen.getByRole('dialog', { name: 'Detalhes do candidato' });
     expect(within(dialog).getByText('16/10/2026')).toBeTruthy();
-    expect(within(dialog).getAllByRole('button')).toHaveLength(1);
+    expect(within(dialog).getByRole('button', { name: 'Avaliar elegibilidade' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Tornar ativo' })).toBeNull();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Fechar' }));
     const candidateRow = screen.getByRole('row', { name: /Lucas Martins/ });
@@ -200,9 +220,9 @@ describe('CoordinatorCandidatesPage', () => {
     const query = vi.spyOn(candidatesApi, 'listByStudy');
     mockRequest.mockRejectedValueOnce(new Error('Falha'));
     renderCoordinator(<CoordinatorCandidatesPage />);
-    await screen.findByText('Não foi possível carregar os estudos.');
+    await screen.findByText('Não foi possível carregar os estudos. Use o ícone de atualização para tentar novamente.');
     expect((screen.getByRole('combobox', { name: 'Filtrar por estudo' }) as HTMLSelectElement).disabled).toBe(true);
-    fireEvent.click(screen.getByRole('button', { name: 'Recarregar estudos' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Atualizar estudos' }));
     await screen.findByRole('option', { name: 'Estudo em recrutamento' });
     expect(query).not.toHaveBeenCalled();
   });
@@ -211,7 +231,74 @@ describe('CoordinatorCandidatesPage', () => {
     mockRequest.mockResolvedValue({ ok: true, json: async () => [] } as Response);
     renderCoordinator(<CoordinatorCandidatesPage />);
     await screen.findByText('Nenhum estudo em recrutamento disponível para seleção. Não foi possível consultar candidatos.');
+    expect((screen.getByRole('combobox', { name: 'Filtrar por estudo' }) as HTMLSelectElement).disabled).toBe(true);
+    expect(screen.getByRole('option', { name: 'Nenhum estudo disponível' })).toBeTruthy();
+    const refresh = screen.getByRole('button', { name: 'Atualizar estudos' });
+    expect(refresh.textContent).toBe('');
+    expect(refresh.getAttribute('title')).toBe('Atualizar estudos');
+    expect(refresh.closest('.coord-table-tools')).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: 'Filtrar por estudo' }).getAttribute('aria-describedby')).toContain('candidate-list-study-feedback');
     expect(screen.queryByText('O estudo selecionado não possui candidatos cadastrados.')).toBeNull();
+  });
+
+  it('atualiza os estudos após uma lista vazia e habilita a seleção quando há opções', async () => {
+    let resolveStudies!: (response: Response) => void;
+    mockRequest
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      .mockReturnValueOnce(new Promise<Response>((resolve) => { resolveStudies = resolve; }));
+    const query = vi.spyOn(candidatesApi, 'listByStudy');
+    renderCoordinator(<CoordinatorCandidatesPage />);
+    await screen.findByRole('option', { name: 'Nenhum estudo disponível' });
+    const refresh = screen.getByRole('button', { name: 'Atualizar estudos' }) as HTMLButtonElement;
+    fireEvent.click(refresh);
+
+    const studySelect = screen.getByRole('combobox', { name: 'Filtrar por estudo' }) as HTMLSelectElement;
+    expect(studySelect.disabled).toBe(true);
+    expect(screen.getByRole('option', { name: 'Carregando estudos…' })).toBeTruthy();
+    expect(refresh.disabled).toBe(true);
+    expect(refresh.getAttribute('aria-busy')).toBe('true');
+    fireEvent.click(refresh);
+    fireEvent.click(refresh);
+    expect(mockRequest).toHaveBeenCalledTimes(2);
+    expect(mockRequest).toHaveBeenLastCalledWith('/studies/disponiveis-recrutamento', { signal: expect.any(AbortSignal) });
+
+    await act(async () => resolveStudies({ ok: true, json: async () => studyOptions } as Response));
+    expect(studySelect.disabled).toBe(false);
+    expect(screen.getByRole('option', { name: 'Selecione um estudo' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'Estudo em recrutamento' })).toBeTruthy();
+    expect(refresh.disabled).toBe(false);
+    expect(refresh.getAttribute('aria-busy')).toBe('false');
+    expect(screen.queryByText('Nenhum estudo em recrutamento disponível para seleção. Não foi possível consultar candidatos.')).toBeNull();
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it.each(['vazio', 'erro'])('encerra o carregamento da atualização com resultado %s e permite tentar novamente', async (outcome) => {
+    let resolve!: (response: Response) => void;
+    let reject!: (error: Error) => void;
+    mockRequest
+      .mockResolvedValueOnce({ ok: true, json: async () => [] } as Response)
+      .mockReturnValueOnce(new Promise<Response>((done, fail) => { resolve = done; reject = fail; }));
+    renderCoordinator(<CoordinatorCandidatesPage />);
+    await screen.findByRole('option', { name: 'Nenhum estudo disponível' });
+    const refresh = screen.getByRole('button', { name: 'Atualizar estudos' }) as HTMLButtonElement;
+    fireEvent.click(refresh);
+    expect(refresh.disabled).toBe(true);
+    expect(refresh.getAttribute('aria-busy')).toBe('true');
+
+    await act(async () => {
+      if (outcome === 'vazio') resolve({ ok: true, json: async () => [] } as Response);
+      else reject(new Error('Falha de conexão'));
+    });
+    expect(refresh.disabled).toBe(false);
+    expect(refresh.getAttribute('aria-busy')).toBe('false');
+    expect((screen.getByRole('combobox', { name: 'Filtrar por estudo' }) as HTMLSelectElement).disabled).toBe(true);
+    if (outcome === 'vazio') expect(screen.getByRole('option', { name: 'Nenhum estudo disponível' })).toBeTruthy();
+    else expect(screen.getByRole('alert').textContent).toContain('Não foi possível carregar os estudos.');
+
+    fireEvent.click(refresh);
+    await screen.findByRole('option', { name: 'Estudo em recrutamento' });
+    expect((screen.getByRole('combobox', { name: 'Filtrar por estudo' }) as HTMLSelectElement).disabled).toBe(false);
+    expect(mockRequest).toHaveBeenCalledTimes(3);
   });
 
   it('abre o formulário compartilhado e consulta os estudos do cadastro somente ao abrir o modal', async () => {
@@ -330,6 +417,194 @@ describe('CoordinatorCandidatesPage', () => {
       : 'Não foi possível carregar os estudos. Tente novamente mais tarde.');
     expect((screen.getByLabelText(/^Estudo/) as HTMLSelectElement).disabled).toBe(true);
     expect((screen.getByRole('button', { name: 'Cadastrar candidato' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+});
+
+describe('Avaliação de elegibilidade do candidato', () => {
+  it('consulta critérios somente pela ação nos detalhes e mantém o registro indisponível sem chamar endpoints restritos', async () => {
+    const load = vi.spyOn(candidatesApi, 'listEligibilityCriteria');
+    const save = vi.spyOn(candidatesApi, 'registerEligibilityAssessment');
+    const { dialog } = await openEligibility();
+    await within(dialog).findByText('Consulta de critérios indisponível para o Coordenador.');
+    expect(within(dialog).getByText('Lucas Martins')).toBeTruthy();
+    expect(within(dialog).getByText('Estudo em recrutamento')).toBeTruthy();
+    expect(within(dialog).getByText(ELIGIBILITY_UNAVAILABLE_MESSAGE)).toBeTruthy();
+    expect(load).toHaveBeenCalledOnce();
+    expect(load).toHaveBeenCalledWith(mockRequest, 'study-1', expect.any(AbortSignal));
+    const register = within(dialog).getByRole('button', { name: 'Registrar avaliação' }) as HTMLButtonElement;
+    expect(register.disabled).toBe(true);
+    expect(register.getAttribute('aria-describedby')).toBe('eligibility-unavailable');
+    fireEvent.click(register);
+    fireEvent.submit(within(dialog).getByRole('form'));
+    expect(save).not.toHaveBeenCalled();
+    expect(mockRequest).toHaveBeenCalledOnce();
+    expect(within(dialog).queryByRole('radio')).toBeNull();
+    expect(within(dialog).queryByText('Este estudo não possui critérios ativos para avaliação.')).toBeNull();
+  });
+
+  it('não consulta critérios ao abrir apenas os detalhes', async () => {
+    const load = vi.spyOn(candidatesApi, 'listEligibilityCriteria');
+    vi.spyOn(candidatesApi, 'listByStudy').mockResolvedValue(candidateRows);
+    renderCoordinator(<CoordinatorCandidatesPage />);
+    await selectStudy();
+    const row = await screen.findByRole('row', { name: /Lucas Martins/ });
+    fireEvent.click(within(row).getByRole('button', { name: 'Abrir' }));
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  it('mostra carregamento e agrupa somente os critérios ativos do estudo com orientações distintas', async () => {
+    let resolve!: (criteria: EligibilityCriterion[]) => void;
+    vi.spyOn(candidatesApi, 'listEligibilityCriteria').mockReturnValue(new Promise((done) => { resolve = done; }));
+    const { dialog } = await openEligibility();
+    expect(within(dialog).getByText('Carregando critérios…')).toBeTruthy();
+    expect(within(dialog).getByRole('form').getAttribute('aria-busy')).toBe('true');
+    expect(within(dialog).queryByRole('radio')).toBeNull();
+    await act(async () => resolve(eligibilityCriteria));
+    expect(within(dialog).getByRole('form').getAttribute('aria-busy')).toBe('false');
+    expect(within(dialog).getByRole('region', { name: 'Critérios de inclusão' })).toBeTruthy();
+    expect(within(dialog).getByRole('region', { name: 'Critérios de exclusão' })).toBeTruthy();
+    expect(within(dialog).getByText('Atende é favorável à elegibilidade; Não atende é desfavorável.')).toBeTruthy();
+    expect(within(dialog).getByText('Atende indica um impedimento à participação; Não atende é favorável à elegibilidade.')).toBeTruthy();
+    expect(within(dialog).getAllByRole('radio')).toHaveLength(6);
+    expect(within(dialog).queryByText('Critério desativado')).toBeNull();
+    expect(within(dialog).queryByText('Critério de outro estudo')).toBeNull();
+  });
+
+  it('valida todos os resultados, aceita Pendente e permite conferir e limpar sem salvar nem mudar o status', async () => {
+    vi.spyOn(candidatesApi, 'listEligibilityCriteria').mockResolvedValue(eligibilityCriteria);
+    const save = vi.spyOn(candidatesApi, 'registerEligibilityAssessment');
+    const { dialog } = await openEligibility();
+    await within(dialog).findByRole('group', { name: 'Possuir idade mínima de 18 anos' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Conferir preenchimento' }));
+    expect(within(dialog).getAllByText('Selecione um resultado para este critério.')).toHaveLength(2);
+    const inclusion = within(dialog).getByRole('group', { name: 'Possuir idade mínima de 18 anos' });
+    const exclusion = within(dialog).getByRole('group', { name: 'Apresentar condição impeditiva' });
+    expect(document.activeElement).toBe(within(inclusion).getByRole('radio', { name: 'Atende' }));
+    fireEvent.click(within(inclusion).getByRole('radio', { name: 'Atende' }));
+    fireEvent.click(within(exclusion).getByRole('radio', { name: 'Pendente' }));
+    const observation = within(exclusion).getByRole('textbox', { name: 'Observações (opcional)' }) as HTMLTextAreaElement;
+    fireEvent.change(observation, { target: { value: 'Aguardar informação complementar.' } });
+    expect(within(exclusion).getByText(`${observation.value.length}/2.000 caracteres`)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Conferir preenchimento' }));
+    expect(within(dialog).queryByRole('alert')).toBeNull();
+    expect(within(dialog).getByText('Preenchimento conferido. A avaliação ainda não foi salva.')).toBeTruthy();
+    expect(within(dialog).getByText('Consentimento pendente')).toBeTruthy();
+    expect((within(dialog).getByRole('button', { name: 'Registrar avaliação' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(save).not.toHaveBeenCalled();
+    expect(mockRequest).toHaveBeenCalledOnce();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Limpar preenchimento' }));
+    expect(within(dialog).getAllByRole('radio').every((radio) => !(radio as HTMLInputElement).checked)).toBe(true);
+    expect(observation.value).toBe('');
+    expect(within(dialog).queryByText('Preenchimento conferido. A avaliação ainda não foi salva.')).toBeNull();
+    expect(within(dialog).queryByRole('alert')).toBeNull();
+  });
+
+  it('limita observações a 2.000 caracteres e também valida valores excessivos recebidos pelo formulário', async () => {
+    vi.spyOn(candidatesApi, 'listEligibilityCriteria').mockResolvedValue(eligibilityCriteria);
+    const { dialog } = await openEligibility();
+    const group = await within(dialog).findByRole('group', { name: 'Possuir idade mínima de 18 anos' });
+    const observation = within(group).getByRole('textbox', { name: 'Observações (opcional)' }) as HTMLTextAreaElement;
+    expect(observation.maxLength).toBe(2000);
+    fireEvent.change(observation, { target: { value: 'a'.repeat(2001) } });
+    fireEvent.blur(observation);
+    expect(within(group).getByRole('alert').textContent).toBe('A observação deve ter no máximo 2.000 caracteres.');
+    expect(observation.getAttribute('aria-invalid')).toBe('true');
+    fireEvent.change(observation, { target: { value: 'a'.repeat(2000) } });
+    fireEvent.blur(observation);
+    expect(within(group).queryByText('A observação deve ter no máximo 2.000 caracteres.')).toBeNull();
+    expect(observation.getAttribute('aria-invalid')).toBe('false');
+  });
+
+  it.each([{ criteria: [] }, { criteria: eligibilityCriteria.filter((criterion) => !criterion.active) }])('exibe ausência de critérios somente após consulta bem-sucedida', async ({ criteria }) => {
+    vi.spyOn(candidatesApi, 'listEligibilityCriteria').mockResolvedValue(criteria);
+    const { dialog } = await openEligibility();
+    await within(dialog).findByText('Este estudo não possui critérios ativos para avaliação.');
+    expect(within(dialog).queryByRole('radio')).toBeNull();
+    expect(within(dialog).queryByRole('button', { name: 'Conferir preenchimento' })).toBeNull();
+    expect((within(dialog).getByRole('button', { name: 'Registrar avaliação' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('permite repetir a consulta após falha sem confundir erro com ausência de critérios', async () => {
+    const load = vi.spyOn(candidatesApi, 'listEligibilityCriteria')
+      .mockRejectedValueOnce(new Error('Falha'))
+      .mockResolvedValueOnce(eligibilityCriteria);
+    const { dialog } = await openEligibility();
+    await within(dialog).findByText('Não foi possível carregar os critérios. Tente novamente.');
+    expect(within(dialog).queryByText('Este estudo não possui critérios ativos para avaliação.')).toBeNull();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Tentar novamente' }));
+    await within(dialog).findByRole('group', { name: 'Possuir idade mínima de 18 anos' });
+    expect(within(dialog).getAllByRole('radio')).toHaveLength(6);
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(within(dialog).queryByRole('alert')).toBeNull();
+  });
+
+  it('apresenta a restrição de acesso sem repetir uma consulta não autorizada', async () => {
+    vi.spyOn(candidatesApi, 'listEligibilityCriteria').mockRejectedValue(new CriteriaApiError('Você não tem permissão para acessar os critérios deste estudo.', false));
+    const { dialog } = await openEligibility();
+    expect((await within(dialog).findByRole('alert')).textContent).toBe('Você não tem permissão para acessar os critérios deste estudo.');
+    expect(within(dialog).queryByRole('button', { name: 'Tentar novamente' })).toBeNull();
+  });
+
+  it('mantém o foco no modal, fecha com Escape e devolve o foco ao candidato', async () => {
+    vi.spyOn(candidatesApi, 'listEligibilityCriteria').mockResolvedValue(eligibilityCriteria);
+    const { trigger, dialog } = await openEligibility();
+    await within(dialog).findByRole('group', { name: 'Possuir idade mínima de 18 anos' });
+    const close = within(dialog).getByRole('button', { name: 'Fechar' });
+    const last = within(dialog).getByRole('button', { name: 'Conferir preenchimento' });
+    expect(document.activeElement).toBe(close);
+    act(() => last.focus());
+    fireEvent.keyDown(last, { key: 'Tab' });
+    expect(document.activeElement).toBe(close);
+    fireEvent.keyDown(close, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(last);
+    fireEvent.keyDown(last, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it.each(['botão', 'fundo'])('fecha a avaliação pelo %s sem registrar', async (method) => {
+    const save = vi.spyOn(candidatesApi, 'registerEligibilityAssessment');
+    const { dialog } = await openEligibility();
+    if (method === 'botão') fireEvent.click(within(dialog).getByRole('button', { name: 'Fechar' }));
+    else fireEvent.mouseDown(dialog.parentElement!);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('volta aos detalhes e descarta o preenchimento ao reabrir a avaliação', async () => {
+    vi.spyOn(candidatesApi, 'listEligibilityCriteria').mockResolvedValue(eligibilityCriteria);
+    const { dialog } = await openEligibility();
+    const group = await within(dialog).findByRole('group', { name: 'Possuir idade mínima de 18 anos' });
+    fireEvent.click(within(group).getByRole('radio', { name: 'Não atende' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Voltar aos detalhes' }));
+    expect(screen.getByRole('dialog', { name: 'Detalhes do candidato' })).toBeTruthy();
+    expect(within(screen.getByRole('dialog', { name: 'Detalhes do candidato' })).getByText('Consentimento pendente')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Avaliar elegibilidade' }));
+    const newGroup = await screen.findByRole('group', { name: 'Possuir idade mínima de 18 anos' });
+    expect((within(newGroup).getByRole('radio', { name: 'Não atende' }) as HTMLInputElement).checked).toBe(false);
+  });
+
+  it.each(['sucesso', 'erro'])('cancela a consulta ao fechar e ignora %s tardio ao abrir outro candidato', async (outcome) => {
+    let resolve!: (criteria: EligibilityCriterion[]) => void;
+    let reject!: (reason: Error) => void;
+    const load = vi.spyOn(candidatesApi, 'listEligibilityCriteria')
+      .mockReturnValueOnce(new Promise((done, fail) => { resolve = done; reject = fail; }))
+      .mockResolvedValueOnce([]);
+    const { dialog } = await openEligibility();
+    const signal = load.mock.calls[0][2]!;
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Fechar' }));
+    expect(signal.aborted).toBe(true);
+    fireEvent.click(within(screen.getByRole('row', { name: /Mariana Alves/ })).getByRole('button', { name: 'Abrir' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Avaliar elegibilidade' }));
+    await screen.findByText('Este estudo não possui critérios ativos para avaliação.');
+    await act(async () => {
+      if (outcome === 'sucesso') resolve(eligibilityCriteria);
+      else reject(new Error('Resposta antiga'));
+    });
+    const currentDialog = screen.getByRole('dialog', { name: 'Avaliar elegibilidade' });
+    expect(within(currentDialog).getByText('Mariana Alves')).toBeTruthy();
+    expect(within(currentDialog).queryByRole('radio')).toBeNull();
+    expect(within(currentDialog).queryByRole('alert')).toBeNull();
   });
 });
 

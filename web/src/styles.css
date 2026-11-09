@@ -700,6 +700,24 @@ body:has(.modal-backdrop), body:has(.study-dialog-backdrop) { overflow: hidden; 
 .coord-filter select { width: 100%; height: 100%; padding: 0 18px 0 0; border: 0; outline: 0; appearance: none; color: #24444f; background: transparent; font-size: 10px; cursor: pointer; }
 .coord-filter svg { position: absolute; right: 9px; width: 14px; height: 14px; color: #688793; pointer-events: none; }
 
+.coord-candidates-page .coord-filter select { padding: 0 32px 0 12px; min-width: 0; text-overflow: ellipsis; }
+.coord-candidates-page .coord-filter svg { top: 50%; transform: translateY(-50%); }
+.coord-candidates-page .coord-filter-disabled { background: #edf1f3; border-color: #dce3e7; }
+.coord-candidates-page .coord-filter select:disabled { color: #6b8189; opacity: 1; cursor: not-allowed; }
+.coord-candidates-page .coord-filter-disabled svg { color: #96a7ae; }
+.coord-refresh-button { flex: 0 0 35px; width: 35px; height: 35px; margin-left: auto; padding: 0; border: 1px solid #dce8eb; border-radius: 8px; background: #f3f7f8; }
+.coord-refresh-button:focus-visible { outline: 2px solid #83c7c4; outline-offset: 2px; }
+.coord-refresh-button:disabled { color: #688792; background: #f3f7f8; opacity: .65; cursor: progress; }
+.coord-refresh-icon { transform-origin: center; }
+.coord-refresh-button[aria-busy="true"] > .coord-refresh-icon { animation: coord-refresh-spin 2s linear infinite; }
+@keyframes coord-refresh-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .coord-refresh-button[aria-busy="true"] > .coord-refresh-icon { animation: none; }
+}
+
 /* Tabelas: seguem a escala já usada em UsersPage. */
 .coord-table { width: 100%; border-collapse: collapse; text-align: left; white-space: nowrap; }
 .coord-table thead { border-top: 1px solid #edf2f3; border-bottom: 1px solid #edf2f3; }
@@ -794,6 +812,32 @@ body:has(.modal-backdrop), body:has(.study-dialog-backdrop) { overflow: hidden; 
 .coord-detail-list > div > span:first-child { color: #78939d; font-size: 11px; }
 .coord-detail-list > div > strong { color: #25454f; font-size: 11px; text-align: right; }
 .coord-help-copy { margin: 14px 0 4px; color: #78939d; font-size: 11px; line-height: 1.5; }
+
+.candidate-eligibility-form { padding-top: 18px; color: #24444f; font-size: 13px; line-height: 1.6; }
+.eligibility-group { margin-top: 22px; }
+.eligibility-group h3 { margin: 0; color: #183843; font-size: 16px; }
+.eligibility-help { margin: 8px 0 16px; color: #506975; }
+.eligibility-criterion { min-width: 0; margin: 16px 0; padding: 16px; border: 1px solid #dce8eb; border-radius: 10px; }
+.eligibility-criterion legend { max-width: 100%; padding: 0 6px; color: #183843; font-weight: 600; white-space: pre-wrap; overflow-wrap: anywhere; }
+.eligibility-options { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
+.eligibility-options label { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 6px 12px; border: 1px solid #dce8eb; border-radius: 8px; cursor: pointer; }
+.eligibility-options label:has(input:checked) { border-color: var(--teal-dark); background: #e2f4f3; }
+.eligibility-options input { width: 16px; height: 16px; accent-color: var(--teal-dark); }
+.eligibility-criterion textarea { display: block; width: 100%; min-height: 80px; margin-top: 8px; padding: 10px; border: 1px solid #dce8eb; border-radius: 8px; color: inherit; background: #fff; font: inherit; resize: vertical; }
+.eligibility-criterion small { display: block; text-align: right; color: #506975; }
+.eligibility-criterion textarea[aria-invalid='true'], .eligibility-options label:has(input[aria-invalid='true']) { border-color: #c8393d; }
+.candidate-eligibility-form .study-field-error { color: #b82c35; }
+.candidate-eligibility-form .modal-actions .button { min-height: 44px; font-size: 12px; }
+.candidate-eligibility-form button:disabled { color: #506975; background: #e3ecee; border-color: #cbdade; cursor: not-allowed; opacity: 1; transform: none; }
+.coord-modal :is(button, input, textarea):focus-visible { outline: 2px solid var(--teal-dark); outline-offset: 3px; }
+
+@media (max-width: 600px) {
+  .eligibility-options { flex-direction: column; gap: 8px; }
+  .eligibility-criterion { padding: 12px; }
+  .eligibility-criterion textarea { font-size: 16px; }
+  .candidate-eligibility-form .modal-actions { align-items: stretch; flex-direction: column; }
+  .candidate-eligibility-form .modal-actions .button { width: 100%; flex: auto; }
+}
 
 @media (max-width: 980px) {
   .coord-page-heading { padding: 16px 18px; }
