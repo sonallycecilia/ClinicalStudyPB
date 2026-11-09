@@ -365,6 +365,7 @@ describe('Estudos clínicos com PostgreSQL (E2E)', () => {
       .set('Authorization', bearer(researcherToken))
       .send({ ...sample, title: 'Estudo de inclusão', participantLimit: 1 })
       .expect(201);
+    const database = fixture.app.get(DatabaseService);
 
     const inclusion = await request(api()).post(`/studies/${study.body.id}/criteria`)
       .set('Authorization', bearer(researcherToken))
@@ -423,13 +424,51 @@ describe('Estudos clínicos com PostgreSQL (E2E)', () => {
       .expect(200)
       .expect(({ body }) => expect(body.status).toBeNull());
 
-    await assessCandidate(eligibleWithoutConsent.id, 'Atende');
+    const assessment = await assessCandidate(eligibleWithoutConsent.id, 'Atende');
+    expect(assessment.body.status).toBe('Elegível');
     await request(api())
       .post(inclusionPath)
       .set('Authorization', bearer(researcherToken))
       .expect(400);
 
     await registerConsent(eligibleWithoutConsent.id, 'Recusado');
+    const refusedInclusion = await request(api())
+      .post(inclusionPath)
+      .set('Authorization', bearer(researcherToken))
+      .expect(400);
+    expect(refusedInclusion.body.message).toBe(
+      'Consentimento ausente ou não concedido: registre o consentimento antes da inclusão.',
+    );
+
+    const persistedState = await database.query<{
+      candidateStatus: string;
+      participantsLinked: number;
+      activeParticipations: number;
+      latestConsent: string;
+    }>(
+      `SELECT
+         c.status_recrutamento AS "candidateStatus",
+         e.participantes_vinculados AS "participantsLinked",
+         (SELECT count(*)::int
+          FROM participacoes_estudo p
+          WHERE p.id_candidato = c.id_candidato AND p.status = 'Ativo') AS "activeParticipations",
+         (SELECT consent.status
+          FROM consentimentos consent
+          WHERE consent.id_candidato = c.id_candidato
+          ORDER BY consent.registrado_em DESC, consent.id_consentimento DESC
+          LIMIT 1) AS "latestConsent"
+       FROM candidatos c
+       JOIN estudos e ON e.id_estudo = c.id_estudo
+       WHERE c.id_estudo = $1 AND c.id_candidato = $2`,
+      [study.body.id, eligibleWithoutConsent.id],
+    );
+    expect(persistedState.rows).toEqual([{
+      candidateStatus: 'Elegível',
+      participantsLinked: 0,
+      activeParticipations: 0,
+      latestConsent: 'Recusado',
+    }]);
+
     await request(api())
       .get(`/studies/${study.body.id}/candidates/${eligibleWithoutConsent.id}/consents`)
       .set('Authorization', bearer(researcherToken))
@@ -497,6 +536,357 @@ describe('Estudos clínicos com PostgreSQL (E2E)', () => {
       .set('Authorization', bearer(researcherToken))
       .expect(200)
       .expect(({ body }) => expect(body.participantsLinked).toBe(1));
+  }, 20_000);
+
+  it('inclui somente um candidato quando duas requisições disputam a última vaga', async () => {
+    const study = await request(api()).post('/studies')
+      .set('Authorization', bearer(researcherToken))
+      .send({ ...sample, title: 'Estudo com inclusão concorrente', participantLimit: 1 })
+      .expect(201);
+    const database = fixture.app.get(DatabaseService);
+
+    const inclusion = await request(api()).post(`/studies/${study.body.id}/criteria`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ type: 'Inclusão', description: 'Ter 18 anos ou mais.' })
+      .expect(201);
+    const exclusion = await request(api()).post(`/studies/${study.body.id}/criteria`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ type: 'Exclusão', description: 'Possuir contraindicação.' })
+      .expect(201);
+
+    const candidates = await Promise.all(['Candidato concorrente A', 'Candidato concorrente B'].map(
+      async (name) => {
+        const candidate = await request(api()).post(`/studies/${study.body.id}/candidates`)
+          .set('Authorization', bearer(researcherToken))
+          .send({ name })
+          .expect(201);
+
+        await request(api())
+          .post(`/studies/${study.body.id}/candidates/${candidate.body.id}/eligibility-assessments`)
+          .set('Authorization', bearer(researcherToken))
+          .send({
+            evaluations: [
+              { criterionId: inclusion.body.id, result: 'Atende' },
+              { criterionId: exclusion.body.id, result: 'Não atende' },
+            ],
+          })
+          .expect(201)
+          .expect(({ body }) => expect(body.status).toBe('Elegível'));
+
+        await request(api())
+          .post(`/studies/${study.body.id}/candidates/${candidate.body.id}/consents`)
+          .set('Authorization', bearer(researcherToken))
+          .send({ status: 'Registrado', termVersion: 'simulado-v1' })
+          .expect(201);
+
+        return candidate.body.id as string;
+      },
+    ));
+
+    const responses = await Promise.all(candidates.map((candidateId) =>
+      request(api())
+        .post(`/studies/${study.body.id}/candidates/${candidateId}/include`)
+        .set('Authorization', bearer(researcherToken)),
+    ));
+
+    const successfulResponses = responses.filter(({ status }) => status === 201);
+    const rejectedResponses = responses.filter(({ status }) => status === 400);
+    expect(successfulResponses).toHaveLength(1);
+    expect(rejectedResponses).toHaveLength(1);
+    expect(rejectedResponses[0]?.body.message).toBe(
+      'Limite de vagas atingido: não há vagas disponíveis neste estudo.',
+    );
+
+    const winnerId = successfulResponses[0]?.body.candidateId as string;
+    const loserId = candidates.find((candidateId) => candidateId !== winnerId);
+    expect(loserId).toBeDefined();
+
+    const studyState = await database.query<{
+      participantsLinked: number;
+      participantLimit: number;
+      participationCount: number;
+      activeParticipationCount: number;
+    }>(
+      `SELECT
+         e.participantes_vinculados AS "participantsLinked",
+         e.limite_participantes AS "participantLimit",
+         count(p.id_participacao)::int AS "participationCount",
+         count(p.id_participacao) FILTER (WHERE p.status = 'Ativo')::int AS "activeParticipationCount"
+       FROM estudos e
+       LEFT JOIN candidatos c ON c.id_estudo = e.id_estudo
+       LEFT JOIN participacoes_estudo p ON p.id_candidato = c.id_candidato
+       WHERE e.id_estudo = $1
+       GROUP BY e.id_estudo`,
+      [study.body.id],
+    );
+    expect(studyState.rows).toEqual([{
+      participantsLinked: 1,
+      participantLimit: 1,
+      participationCount: 1,
+      activeParticipationCount: 1,
+    }]);
+
+    const candidateStates = await database.query<{
+      candidateId: string;
+      status: string;
+      activeParticipations: number;
+    }>(
+      `SELECT
+         c.id_candidato::text AS "candidateId",
+         c.status_recrutamento AS status,
+         count(p.id_participacao) FILTER (WHERE p.status = 'Ativo')::int AS "activeParticipations"
+       FROM candidatos c
+       LEFT JOIN participacoes_estudo p ON p.id_candidato = c.id_candidato
+       WHERE c.id_estudo = $1 AND c.id_candidato = ANY($2::uuid[])
+       GROUP BY c.id_candidato`,
+      [study.body.id, candidates],
+    );
+    expect(candidateStates.rows).toEqual(expect.arrayContaining([
+      { candidateId: winnerId, status: 'Incluído', activeParticipations: 1 },
+      { candidateId: loserId, status: 'Elegível', activeParticipations: 0 },
+    ]));
+  }, 20_000);
+
+  it('reverte participação, candidato e contador quando a atualização final falha', async () => {
+    const study = await request(api()).post('/studies')
+      .set('Authorization', bearer(researcherToken))
+      .send({ ...sample, title: 'Estudo com rollback de inclusão', participantLimit: 1 })
+      .expect(201);
+    const database = fixture.app.get(DatabaseService);
+
+    const inclusion = await request(api()).post(`/studies/${study.body.id}/criteria`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ type: 'Inclusão', description: 'Ter 18 anos ou mais.' })
+      .expect(201);
+    const candidate = await request(api()).post(`/studies/${study.body.id}/candidates`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ name: 'Candidato para rollback' })
+      .expect(201);
+    await request(api())
+      .post(`/studies/${study.body.id}/candidates/${candidate.body.id}/eligibility-assessments`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ evaluations: [{ criterionId: inclusion.body.id, result: 'Atende' }] })
+      .expect(201)
+      .expect(({ body }) => expect(body.status).toBe('Elegível'));
+    await request(api())
+      .post(`/studies/${study.body.id}/candidates/${candidate.body.id}/consents`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ status: 'Registrado', termVersion: 'simulado-v1' })
+      .expect(201);
+
+    const constraintName = `e2e_inclusion_failure_${study.body.id.replaceAll('-', '')}`;
+    await database.query(
+      `ALTER TABLE estudos
+       ADD CONSTRAINT "${constraintName}"
+       CHECK (id_estudo <> '${study.body.id}'::uuid OR participantes_vinculados = 0)`,
+    );
+
+    const failedInclusion = await (async () => {
+      try {
+        return await request(api())
+          .post(`/studies/${study.body.id}/candidates/${candidate.body.id}/include`)
+          .set('Authorization', bearer(researcherToken));
+      } finally {
+        await database.query(`ALTER TABLE estudos DROP CONSTRAINT "${constraintName}"`);
+      }
+    })();
+
+    expect(failedInclusion.status).toBe(500);
+    const persistedState = await database.query<{
+      candidateStatus: string;
+      participantsLinked: number;
+      participationCount: number;
+      activeParticipationCount: number;
+      consentCount: number;
+      latestConsent: string;
+    }>(
+      `SELECT
+         c.status_recrutamento AS "candidateStatus",
+         e.participantes_vinculados AS "participantsLinked",
+         (SELECT count(*)::int
+          FROM participacoes_estudo p
+          WHERE p.id_candidato = c.id_candidato) AS "participationCount",
+         (SELECT count(*)::int
+          FROM participacoes_estudo p
+          WHERE p.id_candidato = c.id_candidato AND p.status = 'Ativo') AS "activeParticipationCount",
+         (SELECT count(*)::int
+          FROM consentimentos consent
+          WHERE consent.id_candidato = c.id_candidato) AS "consentCount",
+         (SELECT consent.status
+          FROM consentimentos consent
+          WHERE consent.id_candidato = c.id_candidato
+          ORDER BY consent.registrado_em DESC, consent.id_consentimento DESC
+          LIMIT 1) AS "latestConsent"
+       FROM candidatos c
+       JOIN estudos e ON e.id_estudo = c.id_estudo
+       WHERE c.id_estudo = $1 AND c.id_candidato = $2`,
+      [study.body.id, candidate.body.id],
+    );
+    expect(persistedState.rows).toEqual([{
+      candidateStatus: 'Elegível',
+      participantsLinked: 0,
+      participationCount: 0,
+      activeParticipationCount: 0,
+      consentCount: 1,
+      latestConsent: 'Registrado',
+    }]);
+  });
+
+  it('rejeita a inclusão de candidato com avaliação pendente', async () => {
+    const study = await request(api()).post('/studies')
+      .set('Authorization', bearer(researcherToken))
+      .send({ ...sample, title: 'Estudo com elegibilidade pendente', participantLimit: 1 })
+      .expect(201);
+    const database = fixture.app.get(DatabaseService);
+
+    const inclusion = await request(api()).post(`/studies/${study.body.id}/criteria`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ type: 'Inclusão', description: 'Ter 18 anos ou mais.' })
+      .expect(201);
+    const exclusion = await request(api()).post(`/studies/${study.body.id}/criteria`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ type: 'Exclusão', description: 'Possuir contraindicação.' })
+      .expect(201);
+    const candidate = await request(api()).post(`/studies/${study.body.id}/candidates`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ name: 'Candidato com avaliação pendente' })
+      .expect(201);
+
+    await request(api())
+      .post(`/studies/${study.body.id}/candidates/${candidate.body.id}/eligibility-assessments`)
+      .set('Authorization', bearer(researcherToken))
+      .send({
+        evaluations: [
+          { criterionId: inclusion.body.id, result: 'Atende' },
+          { criterionId: exclusion.body.id, result: 'Pendente' },
+        ],
+      })
+      .expect(201)
+      .expect(({ body }) => expect(body.status).toBe('Em avaliação'));
+    await request(api())
+      .post(`/studies/${study.body.id}/candidates/${candidate.body.id}/consents`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ status: 'Registrado', termVersion: 'simulado-v1' })
+      .expect(201);
+
+    const refusedInclusion = await request(api())
+      .post(`/studies/${study.body.id}/candidates/${candidate.body.id}/include`)
+      .set('Authorization', bearer(researcherToken))
+      .expect(400);
+    expect(refusedInclusion.body.message).toBe(
+      'Candidato inelegível: avalie e aprove todos os critérios antes da inclusão.',
+    );
+
+    const persistedState = await database.query<{
+      candidateStatus: string;
+      participantsLinked: number;
+      activeParticipations: number;
+    }>(
+      `SELECT
+         c.status_recrutamento AS "candidateStatus",
+         e.participantes_vinculados AS "participantsLinked",
+         (SELECT count(*)::int
+          FROM participacoes_estudo p
+          WHERE p.id_candidato = c.id_candidato AND p.status = 'Ativo') AS "activeParticipations"
+       FROM candidatos c
+       JOIN estudos e ON e.id_estudo = c.id_estudo
+       WHERE c.id_estudo = $1 AND c.id_candidato = $2`,
+      [study.body.id, candidate.body.id],
+    );
+    expect(persistedState.rows).toEqual([{
+      candidateStatus: 'Em avaliação',
+      participantsLinked: 0,
+      activeParticipations: 0,
+    }]);
+  });
+
+  it('rejeita a inclusão quando o consentimento mais recente foi revogado', async () => {
+    const study = await request(api()).post('/studies')
+      .set('Authorization', bearer(researcherToken))
+      .send({ ...sample, title: 'Estudo com consentimento revogado', participantLimit: 1 })
+      .expect(201);
+    const database = fixture.app.get(DatabaseService);
+
+    const inclusion = await request(api()).post(`/studies/${study.body.id}/criteria`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ type: 'Inclusão', description: 'Ter 18 anos ou mais.' })
+      .expect(201);
+    const candidate = await request(api()).post(`/studies/${study.body.id}/candidates`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ name: 'Candidato com consentimento revogado' })
+      .expect(201);
+    await request(api())
+      .post(`/studies/${study.body.id}/candidates/${candidate.body.id}/eligibility-assessments`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ evaluations: [{ criterionId: inclusion.body.id, result: 'Atende' }] })
+      .expect(201)
+      .expect(({ body }) => expect(body.status).toBe('Elegível'));
+
+    const consentPath = `/studies/${study.body.id}/candidates/${candidate.body.id}/consents`;
+    await request(api())
+      .post(consentPath)
+      .set('Authorization', bearer(researcherToken))
+      .send({ status: 'Registrado', termVersion: 'simulado-v1' })
+      .expect(201);
+    await database.query(
+      `UPDATE consentimentos
+       SET registrado_em = now() - interval '1 minute'
+       WHERE id_candidato = $1 AND status = 'Registrado'`,
+      [candidate.body.id],
+    );
+    await request(api())
+      .post(consentPath)
+      .set('Authorization', bearer(researcherToken))
+      .send({ status: 'Revogado', termVersion: 'simulado-v1' })
+      .expect(201);
+
+    await request(api())
+      .get(consentPath)
+      .set('Authorization', bearer(researcherToken))
+      .expect(200)
+      .expect(({ body }) => expect(body.status).toBe('Revogado'));
+
+    const refusedInclusion = await request(api())
+      .post(`/studies/${study.body.id}/candidates/${candidate.body.id}/include`)
+      .set('Authorization', bearer(researcherToken))
+      .expect(400);
+    expect(refusedInclusion.body.message).toBe(
+      'Consentimento ausente ou não concedido: registre o consentimento antes da inclusão.',
+    );
+
+    const persistedState = await database.query<{
+      candidateStatus: string;
+      participantsLinked: number;
+      activeParticipations: number;
+      consentCount: number;
+      latestConsent: string;
+    }>(
+      `SELECT
+         c.status_recrutamento AS "candidateStatus",
+         e.participantes_vinculados AS "participantsLinked",
+         (SELECT count(*)::int
+          FROM participacoes_estudo p
+          WHERE p.id_candidato = c.id_candidato AND p.status = 'Ativo') AS "activeParticipations",
+         (SELECT count(*)::int
+          FROM consentimentos consent
+          WHERE consent.id_candidato = c.id_candidato) AS "consentCount",
+         (SELECT consent.status
+          FROM consentimentos consent
+          WHERE consent.id_candidato = c.id_candidato
+          ORDER BY consent.registrado_em DESC, consent.id_consentimento DESC
+          LIMIT 1) AS "latestConsent"
+       FROM candidatos c
+       JOIN estudos e ON e.id_estudo = c.id_estudo
+       WHERE c.id_estudo = $1 AND c.id_candidato = $2`,
+      [study.body.id, candidate.body.id],
+    );
+    expect(persistedState.rows).toEqual([{
+      candidateStatus: 'Elegível',
+      participantsLinked: 0,
+      activeParticipations: 0,
+      consentCount: 2,
+      latestConsent: 'Revogado',
+    }]);
   });
 
   it('persiste os estudos após reiniciar a aplicação', async () => {
