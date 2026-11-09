@@ -70,6 +70,7 @@ backend/
 │   ├── database/
 │   ├── studies/
 │   │   ├── criteria.controller.ts
+│   │   ├── candidates.controller.ts
 │   │   └── visits.controller.ts
 │   └── users/
 ├── test/
@@ -108,3 +109,11 @@ Os estudos iniciam em `planejamento` e persistem um dos estados `planejamento`, 
 ### Avaliação de elegibilidade (RF09)
 
 `POST /studies/:studyId/candidates/:candidateId/eligibility-assessments` recebe `evaluations`, uma resposta para cada critério ativo do estudo (`criterionId`, `result` e `observation` opcional). O backend rejeita critérios duplicados, ausentes ou pertencentes a outro estudo e persiste a avaliação em uma transação. Todos os critérios de inclusão atendidos e os de exclusão não atendidos tornam o candidato `Elegível`; uma falha de inclusão ou critério de exclusão atendido torna-o `Inelegível`; respostas pendentes sem reprovação mantêm `Em avaliação`. Reenvios atualizam (upsert) a resposta anterior. `GET` no mesmo caminho consulta a avaliação persistida.
+
+### Consentimento simulado e inclusão
+
+- `POST /studies/:studyId/candidates/:candidateId/consents` registra um estado do termo com `status` (`Registrado`, `Recusado` ou `Revogado`), `termVersion` obrigatório e `observation` opcional. Cada chamada cria um novo registro, associado ao pesquisador autenticado; o consentimento mais recente é o que vale para a inclusão.
+- `GET /studies/:studyId/candidates/:candidateId/consents` consulta o estado mais recente. Se ainda não houver registro, os campos do consentimento na resposta são `null`.
+- `POST /studies/:studyId/candidates/:candidateId/include` inclui o candidato como participante ativo. Exige candidato `Elegível`, critérios de inclusão atendidos e critérios de exclusão não atendidos, consentimento mais recente `Registrado` e vaga disponível. O estudo não pode estar encerrado. A inclusão persiste a participação, atualiza o status do candidato e o contador de participantes.
+
+Essas rotas exigem pesquisador autenticado e estudo pertencente a ele. Os parâmetros de estudo e candidato devem ser UUIDs válidos; candidato inexistente ou não associado ao estudo resulta em `404`, e pré-condições não atendidas resultam em `400`.
