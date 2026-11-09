@@ -616,7 +616,25 @@ Use essas credenciais somente em desenvolvimento. Mais detalhes sobre migrations
 
 ## 6. Testes e cobertura
 
-<!-- Complementação posterior pela QA. -->
+A estratégia de QA contempla os requisitos RF05 a RF11, com o objetivo de verificar o comportamento esperado das funcionalidades, suas regras de negócio, validações, permissões e integridade das operações.
+
+A validação está organizada em dois documentos complementares:
+
+- **[Checklist de testes funcionais — RF05 a RF11](./docs/releases/release1/sprint02/checklist-rf05-rf11.md):** reúne os cenários funcionais, contemplando fluxos positivos, validações, situações de erro e comportamentos esperados. Seu objetivo é acompanhar a verificação dos requisitos e garantir que as principais situações de uso sejam consideradas.
+- **[Relatório de cobertura dos testes automatizados](./docs/releases/release1/sprint02/relatorio-cobertura-testes-automatizados.md):** apresenta as tecnologias utilizadas, os tipos de testes, os resultados das execuções, os percentuais de cobertura de código e os pontos que ainda precisam de maior validação.
+
+**Resultados preliminares — 09/11/2026**
+
+| Indicador | Backend (Jest) | Frontend (Vitest) |
+|---|---:|---:|
+| Testes aprovados | 205 | 532 |
+| Suítes executadas | 23 | — |
+| Cobertura de instruções | 92,63% | 96,29% |
+| Cobertura de ramificações | 82,80% | 93,51% |
+| Cobertura de funções | 99,32% | 87,65% |
+| Cobertura de linhas | 94,73% | 96,29% |
+
+Os resultados demonstram uma cobertura expressiva do código automatizado. Os percentuais representam a cobertura do código executado pelos testes, não a porcentagem de requisitos funcionais concluídos.
 
 ## 7. Documentação da API
 
