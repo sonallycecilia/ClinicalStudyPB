@@ -6,7 +6,7 @@
 | Release / Sprint | Release 1 / Sprint 2 |
 | Responsável | QA — Marcella |
 | Período da sprint | 27/10/2026 a 09/11/2026 |
-| Situação da execução deste checklist | Não executado |
+| Situação da execução deste checklist | Execução automatizada concluída em 09/11/2026 |
 
 ## 1. Objetivo
 
@@ -83,26 +83,26 @@ O documento externo de regras de negócio referenciado na documentação do proj
 | CT-RF08-02 | RF08 | Consultar candidatos de estudo com registros e de estudo sem candidatos. A listagem deve retornar apenas os registros daquele estudo e lista vazia quando não houver candidatos. | Planejado | API GET por estudo implementada e isolada pelo identificador do estudo. | AUT-07, AUT-08 |
 | CT-RF08-03 | RF08 | Enviar nome ausente/vazio, e-mail inválido ou campos não permitidos. A API deve rejeitar dados inválidos; e-mail ausente deve continuar aceito conforme DTO atual. | Planejado | DTO e validação de cadastro implementados. | AUT-07, AUT-08 |
 | CT-RF08-04 | RF08 | Cadastrar ou consultar candidatos em estudo inexistente. Deve retornar ausência do estudo e não persistir candidato. | Planejado | Serviço verifica se o estudo existe e pode ser alterado. | AUT-07, AUT-08 |
-| CT-RF08-05 | RF08 | Tentar cadastrar ou listar candidatos sem autorização ou em estudo de outro pesquisador. Deve negar o acesso e não revelar registros alheios. | Planejado | Guards e propriedade do estudo verificados pela API. A consulta de candidatos na Web está explicitamente indisponível no adaptador atual. | AUT-08, AUT-14 |
+| CT-RF08-05 | RF08 | Tentar cadastrar ou listar candidatos sem autorização ou em estudo de outro pesquisador. Deve negar o acesso e não revelar registros alheios. | Planejado | Guards e propriedade do estudo verificados pela API; listagem Web por estudo implementada e exercitada com transporte simulado. | AUT-08, AUT-14 |
 | CT-RF08-06 | RF08 | **A confirmar:** cadastrar novamente candidato com e-mail igual no mesmo estudo. Confirmar se isso representa duplicidade proibida; e-mail repetido não deve ser tratado como falha de requisito sem regra aprovada. | A confirmar | Não foi localizada regra funcional de deduplicação no cadastro. | — |
 
 ### RF09 — Registrar a avaliação dos critérios de elegibilidade
 
 | ID | RF | Cenário e resultado esperado | Regra | Implementação observada | Automação |
 |---|---|---|---|---|---|
-| CT-RF09-01 | RF09 | Avaliar todos os critérios ativos do candidato, com inclusão atendida e exclusão não atendida. A resposta e a consulta posterior devem mostrar as avaliações e estado Elegível associados ao candidato/estudo. | Planejado | POST e GET de avaliações implementados; persistência no backend. Não foi encontrado fluxo de avaliação integrado na Web. | AUT-09, AUT-10, AUT-11 |
+| CT-RF09-01 | RF09 | Avaliar todos os critérios ativos do candidato, com inclusão atendida e exclusão não atendida. A resposta e a consulta posterior devem mostrar as avaliações e estado Elegível associados ao candidato/estudo. | Planejado | POST/GET e persistência no backend; modal Web integrado e fluxo consecutivo até inclusão exercitado com transporte simulado. | AUT-09, AUT-10, AUT-11, AUT-15 |
 | CT-RF09-02 | RF09 | Avaliar candidato que não atende a critério de inclusão ou que atende a critério de exclusão. O estado resultante deve ser Inelegível. | Planejado | Regras de resultado implementadas no serviço. | AUT-09, AUT-11 |
 | CT-RF09-03 | RF09 | Registrar resposta Pendente sem outro critério reprovador. O candidato deve permanecer Em avaliação, não ser marcado Elegível. | Planejado | Estado pendente implementado. | AUT-09 |
 | CT-RF09-04 | RF09 | Consultar avaliação de candidato existente sem avaliações. Deve retornar estado atual e coleção vazia; para candidato inexistente ou fora do estudo, deve retornar ausência. | Planejado | GET de avaliação implementado, com verificação de candidato e estudo. | AUT-09, AUT-11 |
 | CT-RF09-05 | RF09 | Enviar avaliação incompleta, duplicada, com resultado/UUID inválido, critério inativo ou de outro estudo, ou tentar avaliar sem critérios ativos. Deve rejeitar sem gravar avaliação parcial. | Planejado | Validação do DTO e transação exigem uma resposta válida por critério ativo. | AUT-09, AUT-10, AUT-11 |
-| CT-RF09-06 | RF09 | Tentar avaliar ou consultar candidato inexistente, de outro estudo ou sem autorização. Deve retornar erro apropriado e preservar isolamento dos dados. | Planejado | Verificação de escopo e acesso implementada. A interface Web de avaliação não foi localizada. | AUT-09, AUT-11 |
+| CT-RF09-06 | RF09 | Tentar avaliar ou consultar candidato inexistente, de outro estudo ou sem autorização. Deve retornar erro apropriado e preservar isolamento dos dados. | Planejado | Verificação de escopo e acesso implementada; interface Web de avaliação exercita respostas de erro HTTP. | AUT-09, AUT-11 |
 | CT-RF09-07 | RF09 | **A confirmar:** reavaliar candidato ainda não incluído após mudança de respostas/critérios. Confirmar se a operação deve substituir as avaliações anteriores ou preservar histórico; a regra e a expectativa de histórico não estão definidas no planejamento local. | A confirmar | API permite atualização das avaliações existentes; não foi localizada exigência local de histórico nem teste específico de reavaliação bem-sucedida. | — |
 
 ### RF10 — Registrar o consentimento simulado do candidato
 
 | ID | RF | Cenário e resultado esperado | Regra | Implementação observada | Automação |
 |---|---|---|---|---|---|
-| CT-RF10-01 | RF10 | Registrar consentimento simulado com estado Registrado e versão do termo válidos. A resposta deve identificar candidato/estudo e registrar o pesquisador autenticado. | Planejado | POST e persistência implementados no backend. Não foi encontrado fluxo de consentimento integrado na Web. | AUT-12, AUT-13 |
+| CT-RF10-01 | RF10 | Registrar consentimento simulado com estado Registrado e versão do termo válidos. A resposta deve identificar candidato/estudo e registrar o pesquisador autenticado. | Planejado | POST e persistência no backend; modal Web integrado e fluxo consecutivo até inclusão exercitado com transporte simulado. | AUT-12, AUT-13, AUT-15 |
 | CT-RF10-02 | RF10 | Consultar consentimento de candidato existente com e sem registro. Deve retornar o registro mais recente ou status nulo quando nenhum existir. | Planejado | GET retorna estado mais recente ou valores nulos; consulta implementada. | AUT-12, AUT-13 |
 | CT-RF10-03 | RF10 | Enviar estado/versão obrigatórios ausentes ou inválidos, observação inválida ou campo desconhecido. Deve rejeitar sem registrar consentimento. | Planejado | DTO e validação do serviço implementados. | AUT-12, AUT-13 |
 | CT-RF10-04 | RF10 | Registrar/consultar consentimento de candidato inexistente, fora do estudo ou sem autorização. Deve retornar erro apropriado e preservar o isolamento. | Planejado | Verificação de candidato, estudo e pesquisador implementada. | AUT-12, AUT-13 |
@@ -112,7 +112,7 @@ O documento externo de regras de negócio referenciado na documentação do proj
 
 | ID | RF | Cenário e resultado esperado | Regra | Implementação observada | Automação |
 |---|---|---|---|---|---|
-| CT-RF11-01 | RF11 | Incluir candidato Elegível, com critérios ativos aprovados, consentimento Registrado e vaga disponível. Deve criar participação Ativa, atualizar estado do candidato para Incluído e incrementar o contador sem exceder o limite; consultar a lista de candidatos e o estudo deve refletir o estado e contador persistidos. | Planejado | Inclusão transacional implementada no backend; resposta inclui participação e contador. Não foi encontrado fluxo de inclusão na Web. | AUT-12, AUT-13 |
+| CT-RF11-01 | RF11 | Incluir candidato Elegível, com critérios ativos aprovados, consentimento Registrado e vaga disponível. Deve criar participação Ativa, atualizar estado do candidato para Incluído e incrementar o contador sem exceder o limite; consultar a lista de candidatos e o estudo deve refletir o estado e contador persistidos. | Planejado | Inclusão transacional implementada no backend; UI apresenta resultado e atualiza listagem após resposta HTTP de sucesso. | AUT-12, AUT-13, AUT-15 |
 | CT-RF11-02 | RF11 | Tentar incluir candidato Inelegível ou com critério ativo pendente/não aprovado. A operação deve ser bloqueada sem criar participação ou alterar contador. | Planejado | Verificações de elegibilidade e de todos os critérios ativos implementadas. | AUT-12, AUT-13 |
 | CT-RF11-03 | RF11 | Tentar incluir candidato elegível sem qualquer registro de consentimento. A inclusão deve ser bloqueada e nenhum dado de participação/contador deve ser alterado. | Planejado | Consentimento ausente bloqueia inclusão. | AUT-12, AUT-13 |
 | CT-RF11-04 | RF11 | **A confirmar:** tentar incluir após consentimento Recusado ou Revogado. Se esses estados e a política de revogação forem confirmados, a inclusão deve ser bloqueada e os dados preservados. | A confirmar | A API bloqueia quando o registro mais recente não é Registrado; a regra de negócio ainda precisa de confirmação. | AUT-12, AUT-13 |
@@ -136,75 +136,75 @@ Os códigos AUT identificam arquivos/suítes encontrados no repositório; os nom
 | AUT-06 | [studies.e2e-spec.ts](../../../../../backend/test/studies.e2e-spec.ts) — “persiste estados do estudo e permite somente transições sequenciais”. |
 | AUT-07 | [candidates.service.spec.ts](../../../../../backend/src/studies/candidates.service.spec.ts) — `describe('CandidatesService')`; [candidates.dto.spec.ts](../../../../../backend/src/studies/candidates.dto.spec.ts) — `describe('CreateCandidateRequestDto')`. |
 | AUT-08 | [studies.e2e-spec.ts](../../../../../backend/test/studies.e2e-spec.ts) — “cadastra e consulta candidatos vinculados a um estudo próprio”. |
-| AUT-09 | [candidates.assessment.service.spec.ts](../../../../../backend/src/studies/candidates.assessment.service.spec.ts) — `describe('CandidatesService avaliação de elegibilidade')`. |
+| AUT-09 | [candidates.assessment.service.spec.ts](../../../../../backend/src/studies/candidates.assessment.service.spec.ts) — `describe('CandidatesService avaliação de elegibilidade')`; [candidatesEligibility.test.tsx](../../../../../web/src/pages/candidatesEligibility.test.tsx) — modal, resultados, persistência HTTP e erros. |
 | AUT-10 | [candidates.assessment.dto.spec.ts](../../../../../backend/src/studies/candidates.assessment.dto.spec.ts) — `describe('EvaluateCandidateRequestDto')`. |
-| AUT-11 | [studies.e2e-spec.ts](../../../../../backend/test/studies.e2e-spec.ts) — “avalia os critérios do candidato e persiste elegibilidade ou inelegibilidade”. |
+| AUT-11 | [studies.e2e-spec.ts](../../../../../backend/test/studies.e2e-spec.ts) — “avalia os critérios do candidato e persiste elegibilidade ou inelegibilidade”; [eligibility.e2e-spec.ts](../../../../../backend/test/eligibility.e2e-spec.ts) — persistência PostgreSQL, consulta, autorização e validação. |
 | AUT-12 | [candidates.service.spec.ts](../../../../../backend/src/studies/candidates.service.spec.ts) — `describe('CandidatesService')`; [candidates.dto.spec.ts](../../../../../backend/src/studies/candidates.dto.spec.ts) — `describe('RegisterCandidateConsentRequestDto')`. |
-| AUT-13 | [studies.e2e-spec.ts](../../../../../backend/test/studies.e2e-spec.ts) — “registra consentimento e inclui apenas candidatos aptos, respeitando o limite de vagas”, “inclui somente um candidato quando duas requisições disputam a última vaga”, “reverte participação, candidato e contador quando a atualização final falha”, “rejeita a inclusão de candidato com avaliação pendente” e “rejeita a inclusão quando o consentimento mais recente foi revogado”. |
-| AUT-14 | [CandidateFormPage.test.tsx](../../../../../web/src/pages/CandidateFormPage.test.tsx) — `describe('página e rotas de cadastro de candidato no App')`; o teste “carrega estudos reais pela consulta autorizada, preserva o layout e mantém o cadastro sem persistência bloqueado” documenta a lacuna de integração Web, não um cadastro aprovado. |
+| AUT-13 | [studies.e2e-spec.ts](../../../../../backend/test/studies.e2e-spec.ts), [consent.e2e-spec.ts](../../../../../backend/test/consent.e2e-spec.ts) e [inclusion.e2e-spec.ts](../../../../../backend/test/inclusion.e2e-spec.ts) — persistência, autorização, estados, capacidade, concorrência, bloqueios e rollback em PostgreSQL. |
+| AUT-14 | [CandidateFormPage.test.tsx](../../../../../web/src/pages/CandidateFormPage.test.tsx), [candidatesRegistration.test.tsx](../../../../../web/src/pages/candidatesRegistration.test.tsx) e [candidatesList.test.tsx](../../../../../web/src/pages/candidatesList.test.tsx) — cadastro, retorno à listagem, consulta por estudo, filtros e estados de erro/carregamento. |
+| AUT-15 | [recruitmentFlows.integration.test.tsx](../../../../../web/src/integration/recruitmentFlows.integration.test.tsx) — novo fluxo Web RF09 → RF10 → RF11; usa adaptadores HTTP reais e transporte simulado, não substitui a integração PostgreSQL do backend. |
 
 ## 4. Critérios de aprovação
 
 - Cada cenário **Planejado** será aprovado somente após execução com resultado observado compatível com o esperado e evidência identificável.
 - Cenários **A confirmar** não são bloqueadores nem critérios de reprovação até que a equipe confirme e registre a regra aplicável.
 - Em casos negativos, além do erro esperado, verificar que não houve persistência ou alteração parcial indevida.
-- Uma implementação ou teste automatizado existente, bem como um percentual agregado de cobertura, não basta para marcar cenário como aprovado.
+- A situação abaixo registra aprovação automatizada apenas quando a suíte correspondente foi executada e passou; testes Web com transporte simulado não substituem evidência de persistência no PostgreSQL.
 - Cenários bloqueados ou não aplicáveis devem ter justificativa registrada; a ausência de interface ou endpoint necessário deve ser descrita como lacuna, não como aprovação.
 
 ## 5. Registro de execução
 
-Nenhum cenário deste checklist foi executado nesta atualização. O relatório automatizado existente [relatorio-cobertura-testes-automatizados.md](./relatorio-cobertura-testes-automatizados.md) registra uma execução agregada da suíte em 08/11/2026, mas não associa resultado/evidência a cada CT. Por isso, todos os cenários permanecem **Não executado**.
+Execução realizada em 09/11/2026. As suítes do backend e da Web passaram. Dos 45 cenários do checklist, 42 têm automação correspondente executada e aprovada; três cenários condicionais continuam não aplicáveis até confirmação da regra. Não houve execução manual separada. A aprovação é da evidência automatizada indicada, não uma declaração de aceite manual.
 
-| ID do cenário | Tipo planejado | Status | Evidência / referência da execução | Observações |
+| ID do cenário | Tipo executado | Status | Arquivo(s) de teste executado(s) | Observações |
 |---|---|---|---|---|
-| CT-RF05-01 | Integração/API | Não executado | — | — |
-| CT-RF05-02 | Integração/API | Não executado | — | — |
-| CT-RF05-03 | Integração/API | Não executado | — | — |
-| CT-RF05-04 | Integração/API | Não executado | — | — |
-| CT-RF05-05 | Integração/API | Não executado | — | — |
-| CT-RF05-06 | Integração/API | Não executado | — | A confirmar |
-| CT-RF05-07 | Integração/API | Não executado | — | A confirmar |
-| CT-RF06-01 | Integração/API | Não executado | — | — |
-| CT-RF06-02 | Integração/API | Não executado | — | — |
-| CT-RF06-03 | Integração/API | Não executado | — | — |
-| CT-RF06-04 | Integração/API | Não executado | — | — |
-| CT-RF06-05 | Integração/API | Não executado | — | — |
-| CT-RF06-06 | Integração/API | Não executado | — | A confirmar |
-| CT-RF07-01 | Integração/E2E | Não executado | — | — |
-| CT-RF07-02 | Integração/E2E | Não executado | — | — |
-| CT-RF07-03 | Integração/E2E | Não executado | — | — |
-| CT-RF07-04 | Integração/E2E | Não executado | — | — |
-| CT-RF07-05 | Integração/E2E | Não executado | — | — |
-| CT-RF08-01 | Integração/API | Não executado | — | — |
-| CT-RF08-02 | Integração/API | Não executado | — | — |
-| CT-RF08-03 | Integração/API | Não executado | — | — |
-| CT-RF08-04 | Integração/API | Não executado | — | — |
-| CT-RF08-05 | Integração/API | Não executado | — | — |
-| CT-RF08-06 | Integração/API | Não executado | — | A confirmar |
-| CT-RF09-01 | Integração/E2E | Não executado | — | — |
-| CT-RF09-02 | Integração/E2E | Não executado | — | — |
-| CT-RF09-03 | Integração/E2E | Não executado | — | — |
-| CT-RF09-04 | Integração/API | Não executado | — | — |
-| CT-RF09-05 | Integração/API | Não executado | — | — |
-| CT-RF09-06 | Integração/API | Não executado | — | — |
-| CT-RF09-07 | Integração/API | Não executado | — | A confirmar |
-| CT-RF10-01 | Integração/API | Não executado | — | — |
-| CT-RF10-02 | Integração/API | Não executado | — | — |
-| CT-RF10-03 | Integração/API | Não executado | — | — |
-| CT-RF10-04 | Integração/API | Não executado | — | — |
-| CT-RF10-05 | Integração/API | Não executado | — | A confirmar |
-| CT-RF11-01 | Integração/E2E | Não executado | — | — |
-| CT-RF11-02 | Integração/E2E | Não executado | — | — |
-| CT-RF11-03 | Integração/E2E | Não executado | — | — |
-| CT-RF11-04 | Integração/E2E | Não executado | — | A confirmar |
-| CT-RF11-05 | Integração/E2E | Não executado | — | — |
-| CT-RF11-06 | Integração/API | Não executado | — | — |
-| CT-RF11-07 | Integração/E2E | Não executado | — | — |
-| CT-RF11-08 | Integração/E2E | Não executado | — | A confirmar |
-| CT-RF11-09 | Integração/API | Não executado | — | A confirmar |
+| CT-RF05-01 | Unitário, E2E, frontend | Aprovado | [criteria.service.spec.ts](../../../../../backend/src/studies/criteria.service.spec.ts), [studies.e2e-spec.ts](../../../../../backend/test/studies.e2e-spec.ts), [StudyCriteriaSection.test.tsx](../../../../../web/src/components/StudyCriteriaSection.test.tsx) | Cadastrar tipos inclusão/exclusão |
+| CT-RF05-02 | Unitário, E2E, frontend | Aprovado | [criteria.service.spec.ts](../../../../../backend/src/studies/criteria.service.spec.ts), [studies.e2e-spec.ts](../../../../../backend/test/studies.e2e-spec.ts), [StudyCriteriaSection.test.tsx](../../../../../web/src/components/StudyCriteriaSection.test.tsx) | Consultar por estudo |
+| CT-RF05-03 | Unitário, E2E, frontend | Aprovado | [criteria.dto.spec.ts](../../../../../backend/src/studies/criteria.dto.spec.ts), [studies.e2e-spec.ts](../../../../../backend/test/studies.e2e-spec.ts), [StudyCriteriaSection.test.tsx](../../../../../web/src/components/StudyCriteriaSection.test.tsx) | Campos inválidos/ausentes |
+| CT-RF05-04 | Unitário, E2E | Aprovado | [criteria.service.spec.ts](../../../../../backend/src/studies/criteria.service.spec.ts), [studies.e2e-spec.ts](../../../../../backend/test/studies.e2e-spec.ts) | Estudo/critério inexistente ou fora do escopo |
+| CT-RF05-05 | E2E | Aprovado | [studies.e2e-spec.ts](../../../../../backend/test/studies.e2e-spec.ts) | Autorização e isolamento |
+| CT-RF05-06 | E2E, frontend | Aprovado | [studies.e2e-spec.ts](../../../../../backend/test/studies.e2e-spec.ts), [StudyCriteriaSection.test.tsx](../../../../../web/src/components/StudyCriteriaSection.test.tsx) | Teste passou; atualização continua A confirmar como regra |
+| CT-RF05-07 | — | Não aplicável | — | Deduplicação não foi confirmada nem tratada como critério obrigatório |
+| CT-RF06-01 | Unitário, E2E, frontend | Aprovado | [visits.service.spec.ts](../../../../../backend/src/studies/visits.service.spec.ts), [studies.e2e-spec.ts](../../../../../backend/test/studies.e2e-spec.ts), [StudyVisitsSection.test.tsx](../../../../../web/src/components/StudyVisitsSection.test.tsx) | Cadastro e vínculo visita/atividade |
+| CT-RF06-02 | Unitário, E2E, frontend | Aprovado | [visits.service.spec.ts](../../../../../backend/src/studies/visits.service.spec.ts), [studies.e2e-spec.ts](../../../../../backend/test/studies.e2e-spec.ts), [StudyVisitsSection.test.tsx](../../../../../web/src/components/StudyVisitsSection.test.tsx) | Consulta e relacionamento |
+| CT-RF06-03 | Unitário, E2E, frontend | Aprovado | [visits.dto.spec.ts](../../../../../backend/src/studies/visits.dto.spec.ts), [studies.e2e-spec.ts](../../../../../backend/test/studies.e2e-spec.ts), [StudyVisitsSection.test.tsx](../../../../../web/src/components/StudyVisitsSection.test.tsx) | Validações |
+| CT-RF06-04 | Unitário, E2E | Aprovado | [visits.service.spec.ts](../../../../../backend/src/studies/visits.service.spec.ts), [studies.e2e-spec.ts](../../../../../backend/test/studies.e2e-spec.ts) | Estudo/visita inválidos |
+| CT-RF06-05 | E2E | Aprovado | [studies.e2e-spec.ts](../../../../../backend/test/studies.e2e-spec.ts) | Autorização e isolamento |
+| CT-RF06-06 | Unitário | Aprovado | [visits.service.spec.ts](../../../../../backend/src/studies/visits.service.spec.ts) | Conflito de ordem testado; obrigatoriedade de unicidade A confirmar |
+| CT-RF07-01 | Unitário, E2E, frontend | Aprovado | [studies.service.spec.ts](../../../../../backend/src/studies/studies.service.spec.ts), [studies.e2e-spec.ts](../../../../../backend/test/studies.e2e-spec.ts), [studyStatus.test.ts](../../../../../web/src/studies/studyStatus.test.ts) | Estado inicial Planejamento |
+| CT-RF07-02 | Unitário, E2E, frontend | Aprovado | [studies.service.spec.ts](../../../../../backend/src/studies/studies.service.spec.ts), [studies.e2e-spec.ts](../../../../../backend/test/studies.e2e-spec.ts), [studyStatus.test.ts](../../../../../web/src/studies/studyStatus.test.ts) | Transições válidas e persistência |
+| CT-RF07-03 | Unitário, E2E, frontend | Aprovado | [studies.service.spec.ts](../../../../../backend/src/studies/studies.service.spec.ts), [studies.e2e-spec.ts](../../../../../backend/test/studies.e2e-spec.ts), [studyStatus.test.ts](../../../../../web/src/studies/studyStatus.test.ts) | Transições inválidas |
+| CT-RF07-04 | E2E | Aprovado | [studies.e2e-spec.ts](../../../../../backend/test/studies.e2e-spec.ts) | Reconsulta do estado persistido |
+| CT-RF07-05 | E2E | Aprovado | [studies.e2e-spec.ts](../../../../../backend/test/studies.e2e-spec.ts) | Estudo inexistente, propriedade e acesso |
+| CT-RF08-01 | Unitário, E2E, frontend | Aprovado | [candidates.service.spec.ts](../../../../../backend/src/studies/candidates.service.spec.ts), [studies.e2e-spec.ts](../../../../../backend/test/studies.e2e-spec.ts), [candidatesRegistration.test.tsx](../../../../../web/src/pages/candidatesRegistration.test.tsx) | Cadastro, estudo e status inicial |
+| CT-RF08-02 | Unitário, E2E, frontend | Aprovado | [candidates.service.spec.ts](../../../../../backend/src/studies/candidates.service.spec.ts), [studies.e2e-spec.ts](../../../../../backend/test/studies.e2e-spec.ts), [candidatesList.test.tsx](../../../../../web/src/pages/candidatesList.test.tsx) | Listagem isolada por estudo e filtros |
+| CT-RF08-03 | Unitário, E2E, frontend | Aprovado | [candidates.dto.spec.ts](../../../../../backend/src/studies/candidates.dto.spec.ts), [studies.e2e-spec.ts](../../../../../backend/test/studies.e2e-spec.ts), [candidatesRegistration.test.tsx](../../../../../web/src/pages/candidatesRegistration.test.tsx) | Dados obrigatórios e e-mail opcional |
+| CT-RF08-04 | Unitário, E2E | Aprovado | [candidates.service.spec.ts](../../../../../backend/src/studies/candidates.service.spec.ts), [studies.e2e-spec.ts](../../../../../backend/test/studies.e2e-spec.ts) | Estudo inexistente |
+| CT-RF08-05 | E2E, frontend | Aprovado | [studies.e2e-spec.ts](../../../../../backend/test/studies.e2e-spec.ts), [CandidateFormPage.test.tsx](../../../../../web/src/pages/CandidateFormPage.test.tsx), [candidatesList.test.tsx](../../../../../web/src/pages/candidatesList.test.tsx) | Autorização e consulta Web por estudo |
+| CT-RF08-06 | — | Não aplicável | — | Deduplicação de candidatos não foi confirmada |
+| CT-RF09-01 | Unitário, E2E, frontend | Aprovado | [candidates.assessment.service.spec.ts](../../../../../backend/src/studies/candidates.assessment.service.spec.ts), [eligibility.e2e-spec.ts](../../../../../backend/test/eligibility.e2e-spec.ts), [candidatesEligibility.test.tsx](../../../../../web/src/pages/candidatesEligibility.test.tsx), [recruitmentFlows.integration.test.tsx](../../../../../web/src/integration/recruitmentFlows.integration.test.tsx) | Critérios ativos, persistência e fluxo Web |
+| CT-RF09-02 | Unitário, E2E, frontend | Aprovado | [candidates.assessment.service.spec.ts](../../../../../backend/src/studies/candidates.assessment.service.spec.ts), [eligibility.e2e-spec.ts](../../../../../backend/test/eligibility.e2e-spec.ts), [candidatesEligibility.test.tsx](../../../../../web/src/pages/candidatesEligibility.test.tsx) | Inelegibilidade |
+| CT-RF09-03 | Unitário, E2E, frontend | Aprovado | [candidates.assessment.service.spec.ts](../../../../../backend/src/studies/candidates.assessment.service.spec.ts), [eligibility.e2e-spec.ts](../../../../../backend/test/eligibility.e2e-spec.ts), [candidatesEligibility.test.tsx](../../../../../web/src/pages/candidatesEligibility.test.tsx) | Avaliação pendente |
+| CT-RF09-04 | E2E, frontend | Aprovado | [eligibility.e2e-spec.ts](../../../../../backend/test/eligibility.e2e-spec.ts), [candidatesEligibility.test.tsx](../../../../../web/src/pages/candidatesEligibility.test.tsx) | Consulta sem avaliação e inexistentes |
+| CT-RF09-05 | Unitário, E2E, frontend | Aprovado | [candidates.assessment.dto.spec.ts](../../../../../backend/src/studies/candidates.assessment.dto.spec.ts), [eligibility.e2e-spec.ts](../../../../../backend/test/eligibility.e2e-spec.ts), [candidatesEligibility.test.tsx](../../../../../web/src/pages/candidatesEligibility.test.tsx) | Respostas inválidas/incompletas sem gravação parcial |
+| CT-RF09-06 | Unitário, E2E, frontend | Aprovado | [candidates.assessment.service.spec.ts](../../../../../backend/src/studies/candidates.assessment.service.spec.ts), [eligibility.e2e-spec.ts](../../../../../backend/test/eligibility.e2e-spec.ts), [candidatesEligibility.test.tsx](../../../../../web/src/pages/candidatesEligibility.test.tsx) | Acesso, escopo e candidato inexistente |
+| CT-RF09-07 | — | Não aplicável | — | Reavaliação/histórico não foi definido como requisito |
+| CT-RF10-01 | Unitário, E2E, frontend | Aprovado | [candidates.service.spec.ts](../../../../../backend/src/studies/candidates.service.spec.ts), [consent.e2e-spec.ts](../../../../../backend/test/consent.e2e-spec.ts), [candidatesConsent.test.tsx](../../../../../web/src/pages/candidatesConsent.test.tsx), [recruitmentFlows.integration.test.tsx](../../../../../web/src/integration/recruitmentFlows.integration.test.tsx) | Registro e identidade autenticada |
+| CT-RF10-02 | Unitário, E2E, frontend | Aprovado | [candidates.service.spec.ts](../../../../../backend/src/studies/candidates.service.spec.ts), [consent.e2e-spec.ts](../../../../../backend/test/consent.e2e-spec.ts), [candidatesConsent.test.tsx](../../../../../web/src/pages/candidatesConsent.test.tsx) | Estado nulo e consulta do último registro |
+| CT-RF10-03 | Unitário, E2E, frontend | Aprovado | [candidates.dto.spec.ts](../../../../../backend/src/studies/candidates.dto.spec.ts), [consent.e2e-spec.ts](../../../../../backend/test/consent.e2e-spec.ts), [candidatesConsent.test.tsx](../../../../../web/src/pages/candidatesConsent.test.tsx) | Estados e campos inválidos |
+| CT-RF10-04 | Unitário, E2E, frontend | Aprovado | [candidates.service.spec.ts](../../../../../backend/src/studies/candidates.service.spec.ts), [consent.e2e-spec.ts](../../../../../backend/test/consent.e2e-spec.ts), [candidatesConsent.test.tsx](../../../../../web/src/pages/candidatesConsent.test.tsx) | Candidato/estudo fora do escopo e autorização |
+| CT-RF10-05 | E2E, frontend | Aprovado | [consent.e2e-spec.ts](../../../../../backend/test/consent.e2e-spec.ts), [candidatesConsent.test.tsx](../../../../../web/src/pages/candidatesConsent.test.tsx) | Estados exercitados; política obrigatória ainda A confirmar |
+| CT-RF11-01 | E2E, frontend | Aprovado | [inclusion.e2e-spec.ts](../../../../../backend/test/inclusion.e2e-spec.ts), [candidatesInclusion.test.tsx](../../../../../web/src/pages/candidatesInclusion.test.tsx), [recruitmentFlows.integration.test.tsx](../../../../../web/src/integration/recruitmentFlows.integration.test.tsx) | Elegível + consentimento + vaga |
+| CT-RF11-02 | E2E, frontend | Aprovado | [inclusion.e2e-spec.ts](../../../../../backend/test/inclusion.e2e-spec.ts), [candidatesInclusion.test.tsx](../../../../../web/src/pages/candidatesInclusion.test.tsx) | Inelegível e avaliação pendente |
+| CT-RF11-03 | E2E, frontend | Aprovado | [inclusion.e2e-spec.ts](../../../../../backend/test/inclusion.e2e-spec.ts), [candidatesInclusion.test.tsx](../../../../../web/src/pages/candidatesInclusion.test.tsx) | Consentimento ausente |
+| CT-RF11-04 | E2E, frontend | Aprovado | [inclusion.e2e-spec.ts](../../../../../backend/test/inclusion.e2e-spec.ts), [candidatesInclusion.test.tsx](../../../../../web/src/pages/candidatesInclusion.test.tsx) | Recusado/revogado testados; obrigatoriedade ainda A confirmar |
+| CT-RF11-05 | E2E, frontend | Aprovado | [inclusion.e2e-spec.ts](../../../../../backend/test/inclusion.e2e-spec.ts), [candidatesInclusion.test.tsx](../../../../../web/src/pages/candidatesInclusion.test.tsx) | Limite, concorrência e erro de capacidade |
+| CT-RF11-06 | E2E | Aprovado | [inclusion.e2e-spec.ts](../../../../../backend/test/inclusion.e2e-spec.ts) | Existência e isolamento |
+| CT-RF11-07 | E2E | Aprovado | [inclusion.e2e-spec.ts](../../../../../backend/test/inclusion.e2e-spec.ts) | Rollback transacional |
+| CT-RF11-08 | E2E, frontend | Aprovado | [inclusion.e2e-spec.ts](../../../../../backend/test/inclusion.e2e-spec.ts), [candidatesInclusion.test.tsx](../../../../../web/src/pages/candidatesInclusion.test.tsx) | Repetição rejeitada; obrigatoriedade ainda A confirmar |
+| CT-RF11-09 | E2E | Aprovado | [inclusion.e2e-spec.ts](../../../../../backend/test/inclusion.e2e-spec.ts) | A API permite proprietário em Planejamento/Execução e bloqueia Encerrado; confirmar política de RF |
 
-**Status permitidos:** Não executado; Aprovado; Reprovado; Bloqueado; Não aplicável.
-**Tipos de teste previstos:** Manual; Unitário; Integração; E2E. O tipo planejado não representa execução realizada.
+**Status:** Aprovado = automação correspondente executada sem falha; Reprovado = resultado contrário ao esperado; Bloqueado = impedimento de ambiente/configuração; Não executado = sem evidência; Não aplicável = regra condicional não confirmada/não exigida.
 
 ## 6. Ambiente de testes
 
@@ -218,14 +218,12 @@ Nenhum cenário deste checklist foi executado nesta atualização. O relatório 
 | Testes da Web | Ferramentas configuradas no projeto (Vitest/Testing Library, conforme suítes existentes) |
 | Contratos da API | Swagger |
 
-Versões, configurações, dados de teste, comandos, data e identificação da execução devem ser registrados junto às evidências reais. Nenhuma execução foi iniciada para atualizar este checklist.
+Execução local em 09/11/2026. Backend: Jest/Supertest com PostgreSQL, schemas temporários isolados por suíte. Web: Vitest/Testing Library em jsdom, com transporte HTTP simulado; cobertura V8: statements 96,29%, branches 93,51%, functions 87,65% e lines 96,29%. Comandos, resultados e pontos de atenção por arquivo constam no [relatório de cobertura](./relatorio-cobertura-testes-automatizados.md).
 
 ## 7. Considerações finais
 
-- A implementação atual contém APIs e testes automatizados de backend para critérios, visitas, estados, candidatos, avaliação, consentimento e inclusão. Isso representa cobertura de implementação/testes encontrada, não aprovação funcional deste checklist.
-- RF05 e RF06 têm componentes e testes de Web identificados; RF07 tem representação/validação de estados na Web. A execução deve confirmar o fluxo integrado.
-- Em RF08, a API backend permite cadastro e consulta, mas o adaptador de consulta de candidatos da Web declara a funcionalidade indisponível; a integração Web de candidatos permanece uma lacuna a validar.
-- Em RF09, RF10 e RF11, as operações estão presentes na API backend, mas não foram localizados fluxos Web integrados para avaliação, consentimento e inclusão. Esses fluxos são lacunas de integração da interface e não devem ser considerados entregues na Web sem evidência adicional.
-- Permanecem pendentes de confirmação: atualização e deduplicação de critérios; unicidade de ordem das visitas como regra de negócio; deduplicação de candidatos; política de reavaliação/histórico; alteração ou revogação de consentimento; recusa/revogação como bloqueio de inclusão; duplicidade de inclusão como critério obrigatório; e estados do estudo que permitem inclusão.
-- A cobertura planejada inclui cadastro, consulta, validação, relacionamentos, autorização/isolamento, persistência, avaliação positiva/negativa/pendente, consentimento, vagas, concorrência e integridade transacional. Não inclui regras adicionais sem confirmação nem confunde cobertura funcional com cobertura de código.
-- Os identificadores deste documento são únicos e cada um permanece **Não executado** até haver evidência individual, datada e rastreável.
+- As suítes executadas cobrem APIs, regras, PostgreSQL, autorização, relacionamentos, formulários e listagens para RF05–RF11; 42 cenários têm automação correspondente aprovada nesta execução.
+- A Web possui cadastro/listagem RF08 e formulários de elegibilidade, consentimento e inclusão. O novo teste AUT-15 valida a sequência e as atualizações de estado com transporte HTTP simulado; persistência/efeitos transacionais são verificados separadamente pelos E2E backend com PostgreSQL.
+- Três cenários permanecem **Não aplicável** até decisão da equipe: duplicidade de critérios (CT-RF05-07), duplicidade de candidatos por e-mail (CT-RF08-06) e política/histórico da reavaliação bem-sucedida (CT-RF09-07). Não foram promovidos a regras obrigatórias nem implementados como novos testes.
+- Atualização de critérios, unicidade de ordem, estados de consentimento, recusa/revogação, repetição da inclusão e estados do estudo foram exercitados onde há testes; a obrigatoriedade de algumas políticas continua A confirmar conforme indicado no cenário.
+- Os testes aprovados representam evidência automatizada, não execução manual. Métricas de statements/branches/functions/lines são cobertura de código e não percentual de requisitos cobertos.

@@ -1,105 +1,123 @@
-# Relatório de Cobertura e Qualidade dos Testes Automatizados — Backend
+# Relatório de cobertura e qualidade dos testes automatizados — RF05 a RF11
 
-## 1. Objetivo
+**Projeto:** ClinicalStudyPB
+**Branch:** `test/sprint-2-qa-integration`
+**Data da execução:** 09/11/2026
 
-Este relatório apresenta os resultados da suíte de testes automatizados do backend do ClinicalStudyPB, estabelecendo uma referência para acompanhar a qualidade do código e orientar melhorias na cobertura dos testes.
+## 1. Resumo da execução
 
-Além de registrar os resultados da execução, são definidos indicadores e metas para ampliar a abrangência dos testes, reduzir caminhos não validados e fortalecer a confiabilidade da aplicação.
+| Suíte | Suítes/arquivos | Testes executados | Aprovados | Reprovados |
+|---|---:|---:|---:|---:|
+| Backend unitário | 16 | 135 | 135 | 0 |
+| Backend integração/E2E | 6 | 62 | 62 | 0 |
+| Backend com cobertura (unitário + E2E) | 22 | 197 | 197 | 0 |
+| Frontend Vitest/Testing Library | 27 | 532 | 532 | 0 |
 
-## 2. Indicadores atuais
+O comando combinado de cobertura backend executou os 197 testes novamente; esses resultados não devem ser somados aos resultados unitário e E2E como testes adicionais. No frontend, um teste de integração Web foi adicionado para verificar o fluxo sequencial RF09 → RF10 → RF11.
 
-**Execução realizada em 08/11/2026**
+## 2. Cobertura de código
 
-| Indicador | Resultado |
+### Backend
+
+Relatório gerado por `npm run test:coverage:all`:
+
+| Métrica de cobertura de código | Resultado |
 |---|---:|
-| Suítes aprovadas | 18 |
-| Testes aprovados | 104 |
-| Testes com falha | 0 |
-| Statements | 91,08% |
-| Branches | 79,09% |
-| Functions | 99,29% |
-| Lines | 93,78% |
+| Statements | 91,74% |
+| Branches | 81,74% |
+| Functions | 99,32% |
+| Lines | 94,32% |
 
-A execução contemplou testes unitários e E2E, todos concluídos sem falhas.
+São percentuais de código-fonte instrumentado pelo Jest; não indicam percentual de requisitos atendidos nem de cenários funcionais aprovados. A cobertura inclui `src/` conforme `jest-coverage.config.cjs`.
 
-### Distribuição dos testes
+### Frontend
 
-| Categoria | Suítes | Testes aprovados |
-|---|---:|---:|
-| Unitários | 15 | 77 |
-| Integração/E2E | 3 | 27 |
-| **Total** | **18** | **104** |
+Relatório gerado pelo Vitest com o provedor V8:
 
-## 3. Metas de qualidade
+| Métrica de cobertura de código | Resultado |
+|---|---:|
+| Statements | 96,29% |
+| Branches | 93,51% |
+| Functions | 87,65% |
+| Lines | 96,29% |
 
-Para orientar a evolução da suíte automatizada, são propostas as seguintes metas:
+A cobertura agregada é alta, mas não uniforme por arquivo. `src/main.tsx` e `src/auth/localUsers.ts` ficaram com 0% de statements; `src/types.ts` também aparece com 0%, sem statements executáveis. `src/auth/AuthContext.tsx` ficou em 75,83% de statements e `src/App.tsx` em 87,80%. `src/components/AppLayout.tsx` teve 61,11% de branches; `src/components/StatusDialog.tsx`, 69,56% de branches e 71,42% de functions. São pontos para avaliar em ciclos futuros, não falhas dos testes nem evidência de defeito.
 
-| Indicador | Atual | Meta inicial | Diferença |
-|---|---:|---:|---:|
-| Statements | 91,08% | 95% | +3,92 p.p. |
-| Branches | 79,09% | 85% | +5,91 p.p. |
-| Functions | 99,29% | 100% | +0,71 p.p. |
-| Lines | 93,78% | 95% | +1,22 p.p. |
+## 3. Cobertura funcional por requisito
 
-As metas são referências internas para evolução da qualidade e poderão ser revisadas conforme a maturidade do projeto.
+O checklist relaciona os 45 CTs aos arquivos executados. No escopo confirmado, 42 CTs têm automação correspondente aprovada; três CTs condicionais estão marcados como **Não aplicável** enquanto as regras não forem confirmadas. Esta contagem é de cenários rastreados, não de linhas de código.
 
-## 4. Oportunidades de melhoria
-
-A análise da cobertura por módulo permite identificar onde os esforços de melhoria devem ser priorizados.
-
-| Módulo | Lines | Branches | Prioridade |
+| Requisito | Cenários aprovados | Não aplicáveis | Situação do escopo confirmado |
 |---|---:|---:|---|
-| Database | 81,48% | 44,44% | Alta |
-| Swagger | 100% | 57,14% | Avaliar necessidade |
-| Users | 86,04% | 87,61% | Média |
-| Auth | 96,29% | 78,65% | Média |
-| Studies | 93,54% | 80,05% | Média |
+| RF05 — Critérios de elegibilidade | 6 | 1 | Adequada; deduplicação não confirmada |
+| RF06 — Visitas e atividades | 6 | 0 | Adequada |
+| RF07 — Estados dos estudos | 5 | 0 | Adequada |
+| RF08 — Cadastro/listagem de candidatos | 5 | 1 | Adequada; duplicidade de e-mail não confirmada |
+| RF09 — Avaliação de elegibilidade | 6 | 1 | Adequada; política de reavaliação/histórico não definida |
+| RF10 — Consentimento simulado | 5 | 0 | Adequada; política dos estados exercitada, aprovação de negócio pendente |
+| RF11 — Inclusão de participantes | 9 | 0 | Adequada; algumas políticas condicionais aguardam confirmação |
+| **Total** | **42** | **3** | |
 
-### Prioridades de melhoria
+Os três cenários Não aplicáveis são CT-RF05-07 (deduplicação de critérios), CT-RF08-06 (duplicidade de candidato por e-mail) e CT-RF09-07 (reavaliação bem-sucedida e política de histórico). Outros cenários condicionais têm testes para o comportamento atualmente implementado; o resultado desses testes não converte a política em requisito aprovado.
 
-**1. Banco de dados**
+## 4. Principais comportamentos cobertos
 
-Apresenta a menor cobertura, principalmente em ramificações. Priorizar a análise dos caminhos condicionais e dos comportamentos de sucesso e falha dos serviços de acesso a dados.
+- Cadastro, consulta, atualização, validação, relacionamentos e autorização de critérios, visitas, atividades e estados do estudo.
+- Cadastro e listagem de candidatos, filtros por estudo/nome/status, validação, erros e estados de carregamento.
+- Avaliação elegível, inelegível e pendente; critérios ativos, avaliação persistida/consultada, acesso e dados inválidos.
+- Registro e consulta de consentimentos sem registro e nos estados Registrado, Recusado e Revogado.
+- Inclusão com elegibilidade, consentimento e capacidade; bloqueios por pré-requisitos, duplicidade observada, concorrência na última vaga e rollback transacional.
+- Interação Web sequencial de avaliação → consentimento → inclusão e atualização do status exibido na lista. O transporte deste teste Web é simulado; os E2E backend verificam a persistência PostgreSQL.
 
-**2. Autenticação e autorização**
+## 5. Falhas, limitações e observações
 
-Ampliar os cenários de condições alternativas, incluindo situações de acesso permitido, negado e dados de autenticação inválidos.
+- Nenhum teste unitário, E2E ou frontend falhou.
+- O teste E2E de rollback provoca intencionalmente uma violação de constraint PostgreSQL para comprovar a reversão da transação. O NestJS registra essa exceção no log, mas o teste espera a resposta de erro e passa.
+- A suíte `StudyCriteriaSection.test.tsx` ainda emite um aviso React de atualização fora de `act(...)`; não causa falha e não foi alterada por ser alheio aos cenários novos.
+- A cobertura frontend é agregada e deixa arquivos sem statements cobertos e lacunas de branches/functions; os principais pontos estão detalhados na seção 2 e não alteram o resultado aprovado dos testes.
+- Os testes frontend usam transporte HTTP simulado e não comprovam, isoladamente, integração Web com um backend real.
+- Três regras de negócio ainda precisam de confirmação (identificadas no checklist); não foram inventadas nem transformadas em critérios de reprovação.
+- Não foi identificado defeito da aplicação durante as suítes executadas.
 
-**3. Regras de negócio dos estudos**
+## 6. Comandos executados
 
-Complementar os testes de condições alternativas relacionadas ao gerenciamento de estudos, critérios, visitas e candidatos.
+```powershell
+Set-Location backend
+npm test -- --runInBand
+npm run test:e2e -- --runInBand
+npm run test:coverage:all
 
-**4. Swagger**
+Set-Location web
+npm test -- --reporter=dot
+npm test -- src/integration/recruitmentFlows.integration.test.tsx --reporter=dot
+npm test -- --coverage --reporter=dot
+npm run build
+```
 
-Avaliar os caminhos não cobertos e verificar se correspondem a comportamentos relevantes que justifiquem novos testes.
+O comando de cobertura Web executa os testes e gera o relatório de cobertura V8; os resultados estão separados dos indicadores de cobertura do backend.
 
-## 5. Plano de evolução
+## 7. Testes aproveitados, criados e modificados
 
-| Ação | Resultado esperado |
-|---|---|
-| Revisar trechos não cobertos do módulo Database | Ampliar cobertura de instruções e ramificações |
-| Complementar testes de autenticação e autorização | Validar mais condições de acesso |
-| Ampliar cenários alternativos das regras de negócio | Reduzir caminhos funcionais não exercitados |
-| Executar novamente a suíte após as melhorias | Medir a evolução dos indicadores |
-| Validar a execução na CI | Garantir repetibilidade dos testes no ambiente automatizado |
+### Testes preexistentes aproveitados
 
-## 6. Acompanhamento das metas
+- Backend unitário: `criteria.service.spec.ts`, `criteria.dto.spec.ts`, `visits.service.spec.ts`, `visits.dto.spec.ts`, `studies.service.spec.ts`, `candidates.service.spec.ts`, `candidates.dto.spec.ts`, `candidates.assessment.service.spec.ts` e `candidates.assessment.dto.spec.ts`.
+- Backend PostgreSQL/E2E: `studies.e2e-spec.ts`, `eligibility.e2e-spec.ts`, `consent.e2e-spec.ts` e `inclusion.e2e-spec.ts`.
+- Frontend: testes de `StudyCriteriaSection`, `StudyVisitsSection`, estudos/status, formulário, cadastro/listagem de candidatos e interfaces de elegibilidade, consentimento e inclusão.
 
-Os indicadores desta execução constituem a linha de base para as próximas avaliações.
+### Teste novo
 
-| Indicador | Linha de base | Meta | Próxima medição |
-|---|---:|---:|---|
-| Statements | 91,08% | 95% | Pendente |
-| Branches | 79,09% | 85% | Pendente |
-| Functions | 99,29% | 100% | Pendente |
-| Lines | 93,78% | 95% | Pendente |
+- [recruitmentFlows.integration.test.tsx](../../../../../web/src/integration/recruitmentFlows.integration.test.tsx): fluxo RF09–RF11, com API simulada, validação da ordem das operações e atualização do status do candidato após inclusão.
 
-A próxima medição deverá ser realizada após a implementação das melhorias, permitindo comparar os resultados e verificar o cumprimento das metas.
+### Arquivos de testes modificados
 
-## 7. Considerações finais
+Nenhum teste existente foi modificado ou removido.
 
-A suíte atual apresenta 104 testes aprovados, sem falhas, e cobertura de 93,78% das linhas de código.
+### Documentação modificada
 
-Apesar do resultado positivo, a análise evidencia oportunidades de melhoria, especialmente no módulo de banco de dados e na cobertura de ramificações.
+- [checklist-rf05-rf11.md](./checklist-rf05-rf11.md): referências por CT, tipo, situação real da execução e regras condicionais.
+- Este relatório: resultados medidos, cobertura de código, cobertura funcional rastreada, limitações e comandos.
 
-O foco das próximas evoluções será ampliar a cobertura dos caminhos relevantes da aplicação, mantendo a estabilidade dos testes existentes e utilizando os indicadores como instrumento de acompanhamento contínuo da qualidade do backend.
+## 8. Pendências
+
+1. QA/equipe de produto: confirmar as três regras marcadas como Não aplicável e demais políticas condicionais identificadas no checklist.
+2. QA: manter teste manual de ponta a ponta contra ambiente integrado como evidência complementar; os testes de frontend usam transporte simulado.
