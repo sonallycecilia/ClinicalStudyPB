@@ -357,7 +357,7 @@ Os requisitos RF01–RF11 compõem o escopo funcional planejado para esta releas
 **Perfis:** usuários autenticados dos quatro perfis, conforme as permissões do cliente. O login e o logout são atendidos pela API. A web restaura a sessão e protege páginas privadas. O aplicativo mobile disponível no repositório atualmente chama a API para login e logout, mas mantém o estado de sessão somente em memória: não consulta `/auth/me` para restaurá-la e requer novo login após recarregar ou fechar o aplicativo. A prévia mobile ainda não possui interface interativa.
 
 **Figura**: Credenciais inválidas ou erro de autenticação.
-![credenciais inválidas ou erro de autenticação.](.\evidencias\login_invalido.png)
+![credenciais inválidas ou erro de autenticação.](./evidencias/login_invalido.png)
 
 **Figura**: Login bem-sucedido e sessão do adiministrador ativa.
 ![login bem-sucedido e sessão ativa.](./evidencias/login_adimin.png)
