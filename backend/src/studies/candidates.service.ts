@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import type { QueryResultRow } from 'pg';
 import { DatabaseService } from '../database/database.service.js';
 import { StudyStatus } from './study.types.js';
@@ -9,6 +9,7 @@ import type {
   CandidateConsentStatus,
   CandidateEligibilityAssessment,
   CandidateInclusion,
+  CandidateInclusionErrorCode,
   CreateCandidateInput,
   EligibilityCriterionResult,
   EvaluateCandidateInput,
@@ -71,6 +72,10 @@ const CANDIDATE_COLUMNS = `
   status_recrutamento AS status,
   cadastrado_em::text AS "registeredAt"`;
 
+function inclusionRejection(code: CandidateInclusionErrorCode, message: string) {
+  return new BadRequestException({ statusCode: 400, message, error: 'Bad Request', code });
+}
+
 @Injectable()
 export class CandidatesService {
   constructor(
@@ -78,8 +83,8 @@ export class CandidatesService {
     private readonly studiesService: StudiesService,
   ) {}
 
-  async list(studyId: string, researcherId: string): Promise<Candidate[]> {
-    await this.studiesService.findById(studyId, researcherId);
+  async list(studyId: string, userId: string): Promise<Candidate[]> {
+    await this.studiesService.assertCandidateStudyAccess(studyId, userId);
     const { rows } = await this.database.query<CandidateRow>(
       `SELECT ${CANDIDATE_COLUMNS}
        FROM candidatos
@@ -93,9 +98,9 @@ export class CandidatesService {
   async create(
     studyId: string,
     input: CreateCandidateInput,
-    researcherId: string,
+    userId: string,
   ): Promise<Candidate> {
-    await this.studiesService.assertStudyCanBeModified(studyId, researcherId);
+    await this.studiesService.assertCandidateStudyAccess(studyId, userId, true);
     const { rows } = await this.database.query<CandidateRow>(
       `INSERT INTO candidatos (id_estudo, nome, email)
        VALUES ($1, $2, $3)
@@ -110,37 +115,50 @@ export class CandidatesService {
     studyId: string,
     candidateId: string,
     input: RegisterCandidateConsentInput,
-    researcherId: string,
+    registrarId: string,
   ): Promise<CandidateConsent> {
-    await this.studiesService.assertStudyCanBeModified(studyId, researcherId);
+    const study = await this.studiesService.assertConsentStudyAccess(studyId, registrarId, true);
     this.validateConsent(input);
 
-    const { rows } = await this.database.query<CandidateConsentRow>(
-      `INSERT INTO consentimentos
-        (id_candidato, status, versao_termo, id_registrado_por, observacao)
-       SELECT c.id_candidato, $3, $4, $5, $6
-       FROM candidatos c
-       WHERE c.id_estudo = $1 AND c.id_candidato = $2
-       RETURNING
-         id_candidato::text AS "candidateId",
-         $1::text AS "studyId",
-         status,
-         versao_termo AS "termVersion",
-         registrado_em::text AS "registeredAt",
-         id_registrado_por::text AS "registrarId",
-         observacao AS observation`,
-      [studyId, candidateId, input.status, input.termVersion, researcherId, input.observation ?? null],
-    );
-    if (!rows[0]) throw new NotFoundException('Candidato não encontrado neste estudo.');
-    return rows[0];
+    return this.database.transaction(async (client) => {
+      const locked = await client.query<{ status: StudyStatus }>(
+        'SELECT status FROM estudos WHERE id_estudo = $1 AND id_pesquisador = $2 FOR SHARE',
+        [studyId, study.researcherId],
+      );
+      if (!locked.rows[0]) throw new NotFoundException('Estudo não encontrado.');
+      if (locked.rows[0].status === StudyStatus.Encerrado) {
+        throw new BadRequestException('Não é possível registrar consentimento em um estudo encerrado.');
+      }
+      if (registrarId !== study.researcherId && locked.rows[0].status !== StudyStatus.Recrutamento) {
+        throw new ForbiddenException('O Coordenador só pode registrar consentimentos de estudos em recrutamento.');
+      }
+      const { rows } = await client.query<CandidateConsentRow>(
+        `INSERT INTO consentimentos
+          (id_candidato, status, versao_termo, id_registrado_por, observacao)
+         SELECT c.id_candidato, $3, $4, $5, $6
+         FROM candidatos c
+         WHERE c.id_estudo = $1 AND c.id_candidato = $2
+         RETURNING
+           id_candidato::text AS "candidateId",
+           $1::text AS "studyId",
+           status,
+           versao_termo AS "termVersion",
+           registrado_em::text AS "registeredAt",
+           id_registrado_por::text AS "registrarId",
+           observacao AS observation`,
+        [studyId, candidateId, input.status, input.termVersion, registrarId, input.observation ?? null],
+      );
+      if (!rows[0]) throw new NotFoundException('Candidato não encontrado neste estudo.');
+      return rows[0];
+    });
   }
 
   async getConsent(
     studyId: string,
     candidateId: string,
-    researcherId: string,
+    userId: string,
   ): Promise<CandidateConsent> {
-    await this.studiesService.findById(studyId, researcherId);
+    await this.studiesService.assertConsentStudyAccess(studyId, userId);
     const { rows } = await this.database.query<CandidateConsentRow>(
       `SELECT
          c.id_candidato::text AS "candidateId",
@@ -168,9 +186,9 @@ export class CandidatesService {
   async include(
     studyId: string,
     candidateId: string,
-    researcherId: string,
+    userId: string,
   ): Promise<CandidateInclusion> {
-    await this.studiesService.findById(studyId, researcherId);
+    const authorizedStudy = await this.studiesService.assertInclusionStudyAccess(studyId, userId);
 
     return this.database.transaction(async (client) => {
       const studyResult = await client.query<StudyInclusionRow>(
@@ -181,12 +199,15 @@ export class CandidatesService {
          FROM estudos
          WHERE id_estudo = $1 AND id_pesquisador = $2
          FOR UPDATE`,
-        [studyId, researcherId],
+        [studyId, authorizedStudy.researcherId],
       );
       const study = studyResult.rows[0];
       if (!study) throw new NotFoundException('Estudo não encontrado.');
       if (study.status === StudyStatus.Encerrado) {
         throw new BadRequestException('Não é possível incluir participantes em um estudo encerrado.');
+      }
+      if (userId !== authorizedStudy.researcherId && study.status !== StudyStatus.Recrutamento) {
+        throw new ForbiddenException('O Coordenador só pode incluir participantes de estudos em recrutamento.');
       }
 
       const candidateResult = await client.query<{ status: Candidate['status'] }>(
@@ -199,7 +220,11 @@ export class CandidatesService {
       const candidateRecord = candidateResult.rows[0];
       if (!candidateRecord) throw new NotFoundException('Candidato não encontrado neste estudo.');
       if (candidateRecord.status !== 'Elegível') {
-        throw new BadRequestException(
+        const code: CandidateInclusionErrorCode = candidateRecord.status === 'Incluído' ? 'CANDIDATE_ALREADY_INCLUDED'
+          : candidateRecord.status === 'Inelegível' ? 'CANDIDATE_INELIGIBLE'
+            : candidateRecord.status === 'Novo' || candidateRecord.status === 'Em avaliação' ? 'ELIGIBILITY_PENDING'
+              : 'INCLUSION_REQUIREMENTS_NOT_MET';
+        throw inclusionRejection(code,
           candidateRecord.status === 'Incluído'
             ? 'O candidato já foi incluído neste estudo.'
             : 'Candidato inelegível: avalie e aprove todos os critérios antes da inclusão.',
@@ -223,7 +248,11 @@ export class CandidatesService {
           type === 'Inclusão' ? result === 'Atende' : result === 'Não atende',
         );
       if (!meetsAllCriteria) {
-        throw new BadRequestException(
+        const failed = criteriaResult.rows.some(({ type, result }) =>
+          type === 'Inclusão' ? result === 'Não atende' : result === 'Atende');
+        const code = failed ? 'CANDIDATE_INELIGIBLE'
+          : criteriaResult.rows.length > 0 ? 'ELIGIBILITY_PENDING' : 'INCLUSION_REQUIREMENTS_NOT_MET';
+        throw inclusionRejection(code,
           'Candidato inelegível: todos os critérios ativos devem estar avaliados e atendidos.',
         );
       }
@@ -237,7 +266,7 @@ export class CandidatesService {
         [candidateId],
       );
       if (consentResult.rows[0]?.status !== 'Registrado') {
-        throw new BadRequestException(
+        throw inclusionRejection(consentResult.rows[0] ? 'CONSENT_NOT_GRANTED' : 'CONSENT_MISSING',
           'Consentimento ausente ou não concedido: registre o consentimento antes da inclusão.',
         );
       }
@@ -255,7 +284,7 @@ export class CandidatesService {
         Number(participationCountResult.rows[0]?.count ?? 0),
       );
       if (participantsLinked >= Number(study.participantLimit)) {
-        throw new BadRequestException('Limite de vagas atingido: não há vagas disponíveis neste estudo.');
+        throw inclusionRejection('STUDY_FULL', 'Limite de vagas atingido: não há vagas disponíveis neste estudo.');
       }
 
       const participationResult = await client.query<CandidateInclusionRow>(
@@ -281,7 +310,7 @@ export class CandidatesService {
          SET participantes_vinculados = $3
          WHERE id_estudo = $1 AND id_pesquisador = $2
          RETURNING limite_participantes AS "participantLimit"`,
-        [studyId, researcherId, participantsLinked + 1],
+        [studyId, authorizedStudy.researcherId, participantsLinked + 1],
       );
       if (!updatedStudy.rows[0]) throw new NotFoundException('Estudo não encontrado.');
 
@@ -299,9 +328,9 @@ export class CandidatesService {
     studyId: string,
     candidateId: string,
     input: EvaluateCandidateInput,
-    researcherId: string,
+    evaluatorId: string,
   ): Promise<CandidateEligibilityAssessment> {
-    await this.studiesService.assertStudyCanBeModified(studyId, researcherId);
+    const study = await this.studiesService.assertEligibilityStudyAccess(studyId, evaluatorId, true);
     this.validateEvaluations(input);
 
     return this.database.transaction(async (client) => {
@@ -310,11 +339,15 @@ export class CandidatesService {
          FROM estudos
          WHERE id_estudo = $1 AND id_pesquisador = $2
          FOR UPDATE`,
-        [studyId, researcherId],
+        [studyId, study.researcherId],
       );
       if (!studyResult.rows[0]) throw new NotFoundException('Estudo não encontrado.');
       if (studyResult.rows[0].status === StudyStatus.Encerrado) {
         throw new BadRequestException('Não é possível avaliar candidatos em um estudo encerrado.');
+      }
+      // Revalida a fase sob o mesmo bloqueio usado pela transição de estado do estudo.
+      if (evaluatorId !== study.researcherId && studyResult.rows[0].status !== StudyStatus.Recrutamento) {
+        throw new ForbiddenException('O Coordenador só pode avaliar candidatos de estudos em recrutamento.');
       }
 
       const candidateResult = await client.query<{ status: Candidate['status'] }>(
@@ -370,7 +403,7 @@ export class CandidatesService {
           [
             candidateId,
             evaluation.criterionId,
-            researcherId,
+            evaluatorId,
             evaluation.result,
             evaluation.observation ?? null,
           ],
@@ -426,9 +459,9 @@ export class CandidatesService {
   async getEligibilityAssessment(
     studyId: string,
     candidateId: string,
-    researcherId: string,
+    userId: string,
   ): Promise<CandidateEligibilityAssessment> {
-    await this.studiesService.findById(studyId, researcherId);
+    await this.studiesService.assertEligibilityStudyAccess(studyId, userId);
     const candidateResult = await this.database.query<{ status: Candidate['status'] }>(
       `SELECT status_recrutamento AS status
        FROM candidatos

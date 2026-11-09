@@ -47,12 +47,13 @@ export class CriteriaController {
   constructor(private readonly criteriaService: CriteriaService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Listar critérios de um estudo próprio' })
+  @Roles('Pesquisador', 'Coordenador')
+  @ApiOperation({ summary: 'Listar critérios de estudo próprio ou em recrutamento para o Coordenador (RF09)' })
   @ApiParam({ name: 'studyId', description: 'UUID do estudo.', format: 'uuid' })
   @ApiOkResponse({ description: 'Critérios vinculados ao estudo.', type: EligibilityCriterionResponseDto, isArray: true })
   @ApiBadRequestResponse({ description: 'O parâmetro studyId não é um UUID válido.', type: ApiErrorResponseDto })
   @ApiUnauthorizedResponse({ description: 'Token ausente, inválido ou expirado.', type: ApiErrorResponseDto })
-  @ApiForbiddenResponse({ description: 'Somente o pesquisador proprietário pode consultar os critérios.', type: ApiErrorResponseDto })
+  @ApiForbiddenResponse({ description: 'Exige pesquisador proprietário ou Coordenador ativo em estudo na fase de recrutamento.', type: ApiErrorResponseDto })
   @ApiNotFoundResponse({ description: 'Estudo não encontrado.', type: ApiErrorResponseDto })
   list(@Param('studyId', new ParseUUIDPipe()) studyId: string, @Req() request: AuthenticatedRequest) {
     return this.criteriaService.list(studyId, request.user!.sub);

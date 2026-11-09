@@ -15,6 +15,7 @@ import {
 import { USER_ROLES } from '../users/user.types.js';
 import type { AccountStatus, UserRole } from '../users/user.types.js';
 import { StudyStatus } from '../studies/study.types.js';
+import { CANDIDATE_INCLUSION_ERROR_CODES } from '../studies/candidates.types.js';
 import type { StudyKind, StudySymbol } from '../studies/study.types.js';
 import type { CriterionType } from '../studies/criteria.types.js';
 import type { CreatePlannedVisitInput, CreateVisitActivityInput } from '../studies/visits.types.js';
@@ -51,6 +52,11 @@ export class ApiErrorResponseDto {
 
   @ApiProperty({ example: 'Bad Request', description: 'Descrição do código HTTP.' })
   error!: string;
+}
+
+export class CandidateInclusionErrorResponseDto extends ApiErrorResponseDto {
+  @ApiPropertyOptional({ enum: CANDIDATE_INCLUSION_ERROR_CODES, description: 'Motivo estruturado da recusa no RF11. Ausente em erros sem motivo de domínio identificado.' })
+  code?: typeof CANDIDATE_INCLUSION_ERROR_CODES[number];
 }
 
 export class LoginRequestDto {

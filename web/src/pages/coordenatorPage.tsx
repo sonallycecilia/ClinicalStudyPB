@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { CandidateForm } from '../candidates/CandidateForm';
 import { CandidateEligibilityForm } from '../candidates/CandidateEligibilityForm';
 import { CandidateConsentForm } from '../candidates/CandidateConsentForm';
+import { CandidateSummary } from '../candidates/CandidateSummary';
+import { CandidateInclusionForm } from '../candidates/CandidateInclusionForm';
 import { useCandidateConsent } from '../candidates/useCandidateConsent';
 import { useCandidateEligibilityCriteria } from '../candidates/useCandidateEligibilityCriteria';
 import { useRecruitmentStudies } from '../candidates/useRecruitmentStudies';
-import type { Candidate, CandidateStatus } from '../candidates/candidatesApi';
+import { candidatesApi, CANDIDATE_STATUSES, type Candidate, type CandidateConsent, type CandidateEligibilityAssessment, type CandidateInclusion, type CandidateStatus } from '../candidates/candidatesApi';
+import { useAuth } from '../auth/AuthContext';
 import { useStudyCandidates, type StudyCandidatesState } from '../candidates/useStudyCandidates';
 import { useCandidateListStudies } from '../candidates/useCandidateListStudies';
 import {
@@ -66,13 +69,13 @@ function initials(name: string) {
 }
 
 function StatusBadge({ status }: { status: VisitStatus | CandidateStatus | RequestStatus }) {
-  const tone = status === 'Confirmada' || status === 'Participante ativo' || status === 'Aprovada'
+  const tone = status === 'Confirmada' || status === 'Incluído' || status === 'Elegível' || status === 'Aprovada'
     ? 'success'
-    : status === 'Aguardando' || status === 'Pendente de avaliação' || status === 'Pendente'
+    : status === 'Aguardando' || status === 'Novo' || status === 'Em avaliação' || status === 'Pendente'
       ? 'warning'
-      : status === 'Reagendamento' || status === 'Consentimento pendente'
+      : status === 'Reagendamento'
         ? 'purple'
-        : status === 'Recusada'
+        : status === 'Recusada' || status === 'Inelegível'
           ? 'danger'
           : 'muted';
   return <span className={`status-pill coord-status coord-status-${tone}`}><span />{status}</span>;
@@ -169,36 +172,69 @@ function initialsFormName(value: string) {
   return value.trim() ? initials(value) : '??';
 }
 
-function CandidateRegistrationModal({ onClose }: { onClose: () => void }) {
+function CandidateRegistrationModal({ onClose, onCreated }: { onClose: () => void; onCreated: (studyId: string) => void }) {
   const studies = useRecruitmentStudies();
+  const { request } = useAuth();
+  const submitting = useRef(false);
+  const close = () => { if (!submitting.current) onClose(); };
 
-  return <Modal title="Cadastrar candidato" description="Informe os dados do candidato e selecione o estudo de interesse." onClose={onClose}>
-    <CandidateForm studies={studies} onCancel={onClose} />
+  return <Modal title="Cadastrar candidato" description="Informe os dados do candidato e selecione o estudo de interesse." onClose={close}>
+    <CandidateForm studies={studies} onCancel={close} onSubmit={async (input) => {
+      // Impede fechar e reabrir outro formulário enquanto o cadastro está em andamento.
+      submitting.current = true;
+      try {
+        await candidatesApi.create(request, input);
+        onCreated(input.id_estudo);
+      } finally {
+        submitting.current = false;
+      }
+    }} />
   </Modal>;
 }
 
-function CandidateEligibilitySection({ candidate, onBack }: { candidate: Candidate; onBack: () => void }) {
-  const criteria = useCandidateEligibilityCriteria(candidate.studyId);
-  return <CandidateEligibilityForm state={criteria.state} onRetry={criteria.reload} onCancel={onBack} />;
+function CandidateEligibilitySection({ candidate, onBack, onRegistered, onSaved, onBusyChange }: { candidate: Candidate; onBack: () => void; onRegistered: (assessment: CandidateEligibilityAssessment) => void; onSaved: (assessment: CandidateEligibilityAssessment) => void; onBusyChange: (busy: boolean) => void }) {
+  const criteria = useCandidateEligibilityCriteria(candidate.studyId, candidate.id);
+  return <CandidateEligibilityForm key={`${candidate.studyId}:${candidate.id}`} candidate={candidate} state={criteria.state} onRetry={criteria.reload} onCancel={onBack} onRegistered={onRegistered} onSaved={onSaved} onBusyChange={onBusyChange} />;
 }
 
-function CandidateConsentSection({ candidate, onBack }: { candidate: Candidate; onBack: () => void }) {
+function CandidateConsentSection({ candidate, onBack, onBusyChange, onRegistered }: { candidate: Candidate; onBack: () => void; onBusyChange: (busy: boolean) => void; onRegistered: (consent: CandidateConsent) => void }) {
+  const { request, user } = useAuth();
   const consent = useCandidateConsent(candidate.studyId, candidate.id);
-  return <CandidateConsentForm candidate={candidate} state={consent.state} onRetry={consent.reload} onCancel={onBack} />;
+  return <CandidateConsentForm key={`${candidate.studyId}:${candidate.id}`} candidate={candidate} state={consent.state} onRetry={consent.reload} onCancel={onBack} currentUser={user} onBusyChange={onBusyChange} onRegistered={onRegistered} onRegister={(input, signal) => candidatesApi.registerConsent(request, candidate.studyId, candidate.id, input, signal)} />;
 }
 
-function CandidateDetailsModal({ candidate, onClose }: { candidate: Candidate; onClose: () => void }) {
-  const [view, setView] = useState<'details' | 'eligibility' | 'consent'>('details');
+function CandidateDetailsModal({ candidate, onClose, onRegistered, onIncluded }: { candidate: Candidate; onClose: () => void; onRegistered: (assessment: CandidateEligibilityAssessment) => void; onIncluded: (inclusion: CandidateInclusion) => void }) {
+  const { request } = useAuth();
+  const [view, setView] = useState<'details' | 'eligibility' | 'consent' | 'inclusion'>('details');
+  const [consentSuccess, setConsentSuccess] = useState<CandidateConsent | null>(null);
+  const [eligibilitySuccess, setEligibilitySuccess] = useState<CandidateEligibilityAssessment | null>(null);
+  const [inclusionSuccess, setInclusionSuccess] = useState<CandidateInclusion | null>(null);
+  const submitting = useRef(false);
   const evaluating = view === 'eligibility';
-  return <Modal title={evaluating ? 'Avaliar elegibilidade' : view === 'consent' ? 'Registrar consentimento' : 'Detalhes do candidato'} description={candidate.name} onClose={onClose} wide={view !== 'details'}>
-    {view !== 'consent' && <div className="coord-detail-list">
-      <div><span>Estudo de interesse</span><strong>{candidate.studyTitle}</strong></div>
-      {!evaluating && <div><span>Data de inscrição</span><strong>{candidateDate(candidate.enrollmentDate)}</strong></div>}
-      <div><span>Status atual</span><StatusBadge status={candidate.status} /></div>
-    </div>}
-    {evaluating ? <CandidateEligibilitySection candidate={candidate} onBack={() => setView('details')} /> : view === 'consent' ? <CandidateConsentSection candidate={candidate} onBack={() => setView('details')} /> : <div className="modal-actions coord-modal-actions">
+  useEffect(() => {
+    if (!consentSuccess) return;
+    const timer = window.setTimeout(() => setConsentSuccess(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [consentSuccess]);
+  useEffect(() => {
+    if (!eligibilitySuccess) return;
+    const timer = window.setTimeout(() => setEligibilitySuccess(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [eligibilitySuccess]);
+  useEffect(() => {
+    if (!inclusionSuccess) return;
+    const timer = window.setTimeout(() => setInclusionSuccess(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [inclusionSuccess]);
+  return <Modal title={evaluating ? 'Avaliar elegibilidade' : view === 'consent' ? 'Registrar consentimento' : view === 'inclusion' ? 'Incluir participante' : 'Detalhes do candidato'} onClose={() => { if (!submitting.current) onClose(); }} wide={view !== 'details'}>
+    {view === 'details' && consentSuccess && <div className="notice" role="status"><span>Consentimento simulado registrado com sucesso!</span><button type="button" className="icon-button" aria-label="Fechar confirmação de consentimento" onClick={() => setConsentSuccess(null)}><X size={16} aria-hidden="true" /></button></div>}
+    {view === 'details' && eligibilitySuccess && <div className="notice" role="status"><span>Avaliação registrada com sucesso!</span><button type="button" className="icon-button" aria-label="Fechar confirmação de avaliação" onClick={() => setEligibilitySuccess(null)}><X size={16} aria-hidden="true" /></button></div>}
+    {view === 'details' && inclusionSuccess && <div className="notice" role="status"><span>Participante incluído com sucesso!</span><button type="button" className="icon-button" aria-label="Fechar confirmação de inclusão" onClick={() => setInclusionSuccess(null)}><X size={16} aria-hidden="true" /></button></div>}
+    {(view === 'details' || evaluating) && <CandidateSummary candidate={candidate} status={<StatusBadge status={candidate.status} />} enrollmentDate={view === 'details' ? candidate.enrollmentDate : undefined} />}
+    {evaluating ? <CandidateEligibilitySection candidate={candidate} onBack={() => setView('details')} onRegistered={onRegistered} onSaved={(assessment) => { setEligibilitySuccess(assessment); setView('details'); }} onBusyChange={(busy) => { submitting.current = busy; }} /> : view === 'consent' ? <CandidateConsentSection candidate={candidate} onBack={() => setView('details')} onBusyChange={(busy) => { submitting.current = busy; }} onRegistered={(consent) => { setConsentSuccess(consent); setView('details'); }} /> : view === 'inclusion' ? <CandidateInclusionForm candidate={candidate} onCancel={() => setView('details')} onBusyChange={(busy) => { submitting.current = busy; }} onInclude={(studyId, candidateId, signal) => candidatesApi.include(request, studyId, candidateId, signal)} onIncluded={(inclusion) => { onIncluded(inclusion); setInclusionSuccess(inclusion); setView('details'); }} /> : <div className="modal-actions coord-modal-actions">
       <button type="button" className="button button-primary" onClick={() => setView('eligibility')}>Avaliar elegibilidade</button>
       <button type="button" className="button button-outline" onClick={() => setView('consent')}>Registrar consentimento</button>
+      <button type="button" className="button button-outline coord-inclusion-action" disabled={candidate.status === 'Incluído'} onClick={() => setView('inclusion')}>Incluir participante</button>
     </div>}
   </Modal>;
 }
@@ -250,15 +286,17 @@ export function CoordinatorDashboardPage() {
 }
 
 function candidateDate(value: string) {
-  return value.split('-').reverse().join('/');
+  // Preserva a data de calendário enviada pelo servidor, inclusive em timestamps do PostgreSQL.
+  return value.slice(0, 10).split('-').reverse().join('/');
 }
 
-function CandidatesTable({ state, search, statusFilter, onOpen, onRetry }: {
+function CandidatesTable({ state, search, statusFilter, onOpen, onRetry, allStudies }: {
   state: StudyCandidatesState;
   search: string;
   statusFilter: string;
   onOpen: (candidate: Candidate) => void;
   onRetry: () => void;
+  allStudies: boolean;
 }) {
   const visible = state.status === 'ready' ? state.candidates.filter((candidate) =>
     candidate.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())
@@ -266,51 +304,92 @@ function CandidatesTable({ state, search, statusFilter, onOpen, onRetry }: {
   let feedback: ReactNode;
   if (state.status === 'loading') feedback = <span role="status">Consultando candidatos…</span>;
   else if (state.status === 'error') feedback = <div role="alert"><p>{state.message}</p><button type="button" className="button button-outline coord-secondary-button" onClick={onRetry}>Tentar novamente</button></div>;
-  else if (state.status === 'unavailable') feedback = <span role="status">{state.message}</span>;
-  else if (state.status === 'idle') feedback = <span role="status">Selecione um estudo para consultar os candidatos.</span>;
-  else feedback = <span role="status">{state.candidates.length === 0
-    ? 'O estudo selecionado não possui candidatos cadastrados.'
+  else if (state.status === 'idle') feedback = <span role="status">Aguardando a consulta dos estudos autorizados.</span>;
+  else feedback = <span role="status">{state.failures?.length ? 'Nenhum candidato encontrado nos estudos consultados com sucesso. A lista está incompleta.' : state.candidates.length === 0
+    ? allStudies ? 'Nenhum candidato cadastrado nos estudos autorizados.' : 'O estudo selecionado não possui candidatos cadastrados.'
     : 'Nenhum candidato encontrado para os filtros selecionados.'}</span>;
 
-  return <div className="table-scroll coord-table-scroll"><table className="users-table coord-table coord-candidates-table" aria-label="Candidatos do estudo" aria-busy={state.status === 'loading'}><thead><tr><th>Pessoa</th><th>Estudo de interesse</th><th>Data de inscrição</th><th>Status</th><th className="coord-th-actions">Ações</th></tr></thead><tbody>
-    {visible.length ? visible.map((candidate) => <tr key={candidate.id}><td><PersonCell name={candidate.name} initials={initials(candidate.name)} /></td><td>{candidate.studyTitle}</td><td>{candidateDate(candidate.enrollmentDate)}</td><td><StatusBadge status={candidate.status} /></td><td><div className="coord-row-actions"><button type="button" className="coord-text-action" onClick={() => onOpen(candidate)}>Abrir</button></div></td></tr>) : <EmptyRow columns={5} message={feedback} />}
+  return <div className="table-scroll coord-table-scroll"><table className="users-table coord-table coord-candidates-table" aria-label="Candidatos do estudo" aria-busy={state.status === 'loading'}><thead><tr><th>Pessoa</th><th>Estudo de interesse</th><th>Data de inscrição</th><th>Status</th><th className="coord-candidate-actions">Ações</th></tr></thead><tbody>
+    {visible.length ? visible.map((candidate) => <tr key={`${candidate.studyId}:${candidate.id}`}><td><PersonCell name={candidate.name} initials={initials(candidate.name)} /></td><td>{candidate.studyTitle}</td><td>{candidateDate(candidate.enrollmentDate)}</td><td><StatusBadge status={candidate.status} /></td><td className="coord-candidate-actions"><div className="coord-row-actions"><button type="button" className="coord-text-action" onClick={() => onOpen(candidate)}>Detalhes</button></div></td></tr>) : <EmptyRow columns={5} message={feedback} />}
   </tbody></table></div>;
 }
 
 export function CoordinatorCandidatesPage() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
   const [showNew, setShowNew] = useState(false);
   const closeRegistration = useCallback(() => setShowNew(false), []);
   const [search, setSearch] = useState('');
-  const [studyId, setStudyId] = useState('');
+  const selectedStudyId = params.get('studyId') ?? '';
+  const [notice, setNotice] = useState(Boolean(location.state?.candidateCreated));
   const [statusFilter, setStatusFilter] = useState('Todos os status');
   const [activeCandidate, setActiveCandidate] = useState<Candidate | null>(null);
   const studies = useCandidateListStudies();
-  const candidates = useStudyCandidates(studyId);
   const options = studies.state.status === 'ready' ? studies.state.options : [];
+  const studyId = options.some((study) => study.id === selectedStudyId) ? selectedStudyId : '';
+  const candidates = useStudyCandidates(studies.state.status === 'ready' ? studyId ? [studyId] : options.map((study) => study.id) : null);
+  const setStudyId = (id: string) => setParams((current) => {
+    const next = new URLSearchParams(current);
+    if (id) next.set('studyId', id);
+    else next.delete('studyId');
+    return next;
+  });
+  useEffect(() => {
+    if (studies.state.status === 'ready' && selectedStudyId && !options.some((study) => study.id === selectedStudyId)) {
+      setParams((current) => { const next = new URLSearchParams(current); next.delete('studyId'); return next; }, { replace: true });
+    }
+  }, [studies.state, options, selectedStudyId, setParams]);
+  useEffect(() => {
+    setActiveCandidate(null);
+  }, [selectedStudyId]);
+  useEffect(() => {
+    if (location.state?.candidateCreated) navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [location, navigate]);
+  const tableState: StudyCandidatesState = candidates.state.status === 'ready'
+    ? { ...candidates.state, candidates: candidates.state.candidates.map((candidate) => ({
+      ...candidate, studyTitle: options.find((study) => study.id === candidate.studyId)?.title ?? '',
+    })) } : studies.state.status === 'loading' ? { status: 'loading' } : candidates.state;
   const studiesLoading = studies.state.status === 'loading';
   const studyPlaceholder = studies.state.status === 'loading' ? 'Carregando estudos…'
     : studies.state.status === 'error' ? 'Falha ao carregar estudos'
-      : options.length === 0 ? 'Nenhum estudo disponível' : 'Selecione um estudo';
+      : options.length === 0 ? 'Nenhum estudo disponível' : 'Todos os estudos';
 
   return <div className="coord-page coord-candidates-page">
     <PageHeader title="Candidatos e participantes" action="Novo candidato" onAction={() => setShowNew(true)} />
-    {showNew && <CandidateRegistrationModal onClose={closeRegistration} />}
+    {notice && <div role="status" className="notice">Candidato cadastrado com sucesso!<button type="button" aria-label="Fechar notificação" onClick={() => setNotice(false)}><X size={15} /></button></div>}
+    {showNew && <CandidateRegistrationModal onClose={closeRegistration} onCreated={() => {
+      setShowNew(false);
+      setNotice(true);
+      candidates.reload();
+    }} />}
     <div className="page-content-offset">
     <section className="table-card coord-panel coord-list-panel">
       <div className="study-list-heading coord-panel-heading"><h2>Lista de candidatos e participantes</h2><div className="study-list-tools coord-table-tools"><SearchField value={search} onChange={setSearch} placeholder="Buscar por nome..." /><FilterSelect value={studyId} onChange={(id) => { setStudyId(id); setActiveCandidate(null); }} label="Filtrar por estudo" disabled={options.length === 0} describedBy={options.length === 0 ? 'candidate-list-study-help candidate-list-study-feedback' : 'candidate-list-study-help'} options={[
         { value: '', label: studyPlaceholder },
         ...options.map((study) => ({ value: study.id, label: options.some((other) => other.id !== study.id && other.title === study.title) ? `${study.title} (${study.id})` : study.title })),
-      ]} /><FilterSelect value={statusFilter} onChange={setStatusFilter} label="Filtrar por status" options={['Todos os status', 'Pendente de avaliação', 'Participante ativo', 'Consentimento pendente', 'Não elegível']} />
+      ]} /><FilterSelect value={statusFilter} onChange={setStatusFilter} label="Filtrar por status" options={['Todos os status', ...CANDIDATE_STATUSES]} />
         <button type="button" className="icon-button coord-refresh-button" aria-label="Atualizar estudos" title="Atualizar estudos" aria-busy={studiesLoading} disabled={studiesLoading} onClick={studies.reload}><RefreshCw className="coord-refresh-icon" size={16} aria-hidden="true" /></button>
       </div></div>
       <p id="candidate-list-study-help" className="coord-help-copy">A seleção exibe apenas estudos em recrutamento. A consulta dos estudos nas demais fases ainda não está disponível para o coordenador.</p>
       {studiesLoading && <p id="candidate-list-study-feedback" role="status" className="coord-help-copy">Carregando estudos…</p>}
       {studies.state.status === 'error' && <p id="candidate-list-study-feedback" role="alert" className="coord-help-copy">Não foi possível carregar os estudos. Use o ícone de atualização para tentar novamente.</p>}
       {studies.state.status === 'ready' && options.length === 0 && <p id="candidate-list-study-feedback" role="status" className="coord-help-copy">Nenhum estudo em recrutamento disponível para seleção. Não foi possível consultar candidatos.</p>}
-      <CandidatesTable state={candidates.state} search={search} statusFilter={statusFilter} onOpen={setActiveCandidate} onRetry={candidates.reload} />
+      {tableState.status === 'ready' && Boolean(tableState.failures?.length) && <div role="alert" className="form-error">
+        <p>A lista está incompleta. Não foi possível consultar os candidatos de: {tableState.failures!.map((failure) => options.find((study) => study.id === failure.studyId)?.title ?? failure.studyId).join(', ')}.</p>
+        {[...new Set(tableState.failures!.map(({ message }) => message))].map((message) => <p key={message}>{message}</p>)}
+        <button type="button" className="button button-outline" onClick={candidates.reload}>Tentar novamente</button>
+      </div>}
+      <CandidatesTable state={tableState} search={search} statusFilter={statusFilter} onOpen={setActiveCandidate} onRetry={candidates.reload} allStudies={!studyId} />
     </section>
     </div>
-    {activeCandidate && <CandidateDetailsModal key={activeCandidate.id} candidate={activeCandidate} onClose={() => setActiveCandidate(null)} />}
+    {activeCandidate && <CandidateDetailsModal key={`${activeCandidate.studyId}:${activeCandidate.id}`} candidate={activeCandidate} onClose={() => setActiveCandidate(null)} onRegistered={(assessment) => {
+      setActiveCandidate((current) => current?.id === assessment.candidateId && current.studyId === assessment.studyId ? { ...current, status: assessment.status } : current);
+      candidates.reload();
+    }} onIncluded={(inclusion) => {
+      setActiveCandidate((current) => current?.id === inclusion.candidateId && current.studyId === inclusion.studyId ? { ...current, status: 'Incluído' } : current);
+      candidates.reload();
+    }} />}
   </div>;
 }
 

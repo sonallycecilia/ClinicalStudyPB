@@ -712,6 +712,7 @@ describe('cadastro de estudo com critérios', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Continuar sem estes critérios' }));
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(screen.getByRole('heading', { name: created.title })).toBeTruthy();
+    expect(await screen.findByText('Nenhum critério cadastrado')).toBeTruthy();
   });
 
   it('começa um novo cadastro sem os critérios do anterior', async () => {

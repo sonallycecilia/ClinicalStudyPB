@@ -5,7 +5,7 @@ import {
   type CandidateInput, type CandidateStudyOption,
 } from './candidateValidation';
 
-/** Estado fornecido pela futura consulta autorizada, sem acoplar o formulário à API. */
+/** Estado da consulta autorizada, sem acoplar o formulário à API. */
 export type CandidateStudiesState =
   | { status: 'loading' }
   | { status: 'ready'; options: readonly CandidateStudyOption[] }
@@ -15,7 +15,7 @@ export type CandidateStudiesState =
 export interface CandidateFormProps {
   studies: CandidateStudiesState;
   accounts?: CandidateAccountSelection;
-  /** Resolver somente após confirmação da persistência. Ausente enquanto a API não existir. */
+  /** Resolver somente após resposta HTTP de sucesso. */
   onSubmit?: (input: CandidateInput) => Promise<void>;
   onCancel: () => void;
 }

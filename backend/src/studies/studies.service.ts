@@ -112,7 +112,7 @@ export class StudiesService {
       `SELECT id_estudo::text AS id, titulo AS title
        FROM estudos WHERE status = $1
        ORDER BY titulo, id_estudo`,
-      ['Recrutamento'],
+      ['recrutamento'],
     );
     return rows;
   }
@@ -124,6 +124,64 @@ export class StudiesService {
       throw new ForbiddenException('Você não tem permissão para acessar este estudo.');
     }
     return study;
+  }
+
+  /** Exclusivo do RF08: Coordenadores ativos acessam todos os estudos em recrutamento.
+   * Não existe vínculo individual Coordenador–estudo no modelo atual.
+   * As demais operações continuam usando as verificações de propriedade existentes.
+   */
+  async assertCandidateStudyAccess(id: string, userId: string, modifying = false): Promise<Study> {
+    const user = await this.usersService.findById(userId);
+    if (user.role === 'Coordenador' && user.status === 'Ativo') {
+      const study = await this.findByIdForOwnerCheck(id);
+      if (study.status !== StudyStatus.Recrutamento) {
+        throw new ForbiddenException('O Coordenador só pode cadastrar e consultar candidatos de estudos em recrutamento.');
+      }
+      return study;
+    }
+    // Reutiliza a regra de pesquisador ativo/proprietário e o bloqueio de alteração após encerramento.
+    return modifying ? this.assertStudyCanBeModified(id, userId) : this.findById(id, userId);
+  }
+
+  /** RF09 aprovado: somente leitura de critérios e consulta/registro de avaliações.
+   * Não utilizar para edição de critérios, consentimento ou inclusão.
+   */
+  async assertEligibilityStudyAccess(id: string, userId: string, modifying = false): Promise<Study> {
+    const user = await this.usersService.findById(userId);
+    if (user.role === 'Coordenador' && user.status === 'Ativo') {
+      const study = await this.findByIdForOwnerCheck(id);
+      if (study.status !== StudyStatus.Recrutamento) {
+        throw new ForbiddenException('O Coordenador só pode consultar critérios e avaliar candidatos de estudos em recrutamento.');
+      }
+      return study;
+    }
+    return modifying ? this.assertStudyCanBeModified(id, userId) : this.findById(id, userId);
+  }
+
+  /** Exclusivo do RF10 aprovado: consulta e registro do consentimento simulado. */
+  async assertConsentStudyAccess(id: string, userId: string, modifying = false): Promise<Study> {
+    const user = await this.usersService.findById(userId);
+    if (user.role === 'Coordenador' && user.status === 'Ativo') {
+      const study = await this.findByIdForOwnerCheck(id);
+      if (study.status !== StudyStatus.Recrutamento) {
+        throw new ForbiddenException('O Coordenador só pode consultar e registrar consentimentos de estudos em recrutamento.');
+      }
+      return study;
+    }
+    return modifying ? this.assertStudyCanBeModified(id, userId) : this.findById(id, userId);
+  }
+
+  /** Exclusivo do RF11 aprovado: inclusão de participantes em recrutamento. */
+  async assertInclusionStudyAccess(id: string, userId: string): Promise<Study> {
+    const user = await this.usersService.findById(userId);
+    if (user.role === 'Coordenador' && user.status === 'Ativo') {
+      const study = await this.findByIdForOwnerCheck(id);
+      if (study.status !== StudyStatus.Recrutamento) {
+        throw new ForbiddenException('O Coordenador só pode incluir participantes de estudos em recrutamento.');
+      }
+      return study;
+    }
+    return this.assertStudyCanBeModified(id, userId);
   }
 
   async create(input: StudyInput, researcherId: string): Promise<Study> {

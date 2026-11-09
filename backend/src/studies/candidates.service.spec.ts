@@ -1,9 +1,10 @@
 import { jest } from '@jest/globals';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service.js';
 import { StudiesService } from './studies.service.js';
 import { CandidatesService } from './candidates.service.js';
 import type { Candidate } from './candidates.types.js';
+import { StudyStatus } from './study.types.js';
 
 const studyId = '00000000-0000-4000-8000-000000000003';
 const researcherId = '00000000-0000-4000-8000-000000000002';
@@ -29,6 +30,9 @@ describe('CandidatesService', () => {
   };
   let transactionClient: TransactionClient;
   let studies: {
+    assertInclusionStudyAccess: jest.Mock<(id: string, userId: string) => Promise<unknown>>;
+    assertConsentStudyAccess: jest.Mock<(id: string, userId: string, modifying?: boolean) => Promise<unknown>>;
+    assertCandidateStudyAccess: jest.Mock<(id: string, userId: string, modifying?: boolean) => Promise<unknown>>;
     findById: jest.Mock<(id: string, ownerId: string) => Promise<unknown>>;
     assertStudyCanBeModified: jest.Mock<(id: string, ownerId: string) => Promise<unknown>>;
   };
@@ -48,6 +52,9 @@ describe('CandidatesService', () => {
         .mockImplementation((operation) => operation(transactionClient)),
     };
     studies = {
+      assertInclusionStudyAccess: jest.fn<(id: string, userId: string) => Promise<unknown>>().mockResolvedValue({ researcherId }),
+      assertConsentStudyAccess: jest.fn<(id: string, userId: string, modifying?: boolean) => Promise<unknown>>().mockResolvedValue({ researcherId }),
+      assertCandidateStudyAccess: jest.fn<(id: string, userId: string, modifying?: boolean) => Promise<unknown>>(),
       findById: jest.fn<(id: string, ownerId: string) => Promise<unknown>>(),
       assertStudyCanBeModified: jest.fn<(id: string, ownerId: string) => Promise<unknown>>(),
     };
@@ -63,7 +70,7 @@ describe('CandidatesService', () => {
       name: candidate.name,
       email: candidate.email,
     }, researcherId)).resolves.toEqual(candidate);
-    expect(studies.assertStudyCanBeModified).toHaveBeenCalledWith(studyId, researcherId);
+    expect(studies.assertCandidateStudyAccess).toHaveBeenCalledWith(studyId, researcherId, true);
     expect(database.query.mock.calls[0]?.[1]).toEqual([studyId, candidate.name, candidate.email]);
   });
 
@@ -75,13 +82,13 @@ describe('CandidatesService', () => {
     expect(database.query.mock.calls[0]?.[1]).toEqual([studyId, candidate.name, null]);
 
     await expect(service.list(studyId, researcherId)).resolves.toEqual([candidate]);
-    expect(studies.findById).toHaveBeenCalledWith(studyId, researcherId);
+    expect(studies.assertCandidateStudyAccess).toHaveBeenCalledWith(studyId, researcherId);
     expect(database.query.mock.calls[1]?.[1]).toEqual([studyId]);
     expect(database.query.mock.calls[1]?.[0]).toContain('WHERE id_estudo = $1');
   });
 
   it('não cadastra candidato se o estudo não existe', async () => {
-    studies.assertStudyCanBeModified.mockRejectedValue(new NotFoundException('Estudo não encontrado.'));
+    studies.assertCandidateStudyAccess.mockRejectedValue(new NotFoundException('Estudo não encontrado.'));
     await expect(service.create(studyId, { name: candidate.name }, researcherId))
       .rejects.toThrow(NotFoundException);
     expect(database.query).not.toHaveBeenCalled();
@@ -97,14 +104,15 @@ describe('CandidatesService', () => {
       registrarId: researcherId,
       observation: null,
     };
-    database.query.mockResolvedValue({ rows: [consent], rowCount: 1 });
+    transactionClient.query.mockResolvedValueOnce({ rows: [{ status: StudyStatus.Recrutamento }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [consent], rowCount: 1 });
     await expect(service.registerConsent(studyId, candidate.id, {
       status: 'Registrado',
       termVersion: 'simulado-v1',
     }, researcherId)).resolves.toEqual(consent);
-    expect(studies.assertStudyCanBeModified).toHaveBeenCalledWith(studyId, researcherId);
-    expect(database.query.mock.calls[0]?.[0]).toContain('FROM candidatos c');
-    expect(database.query.mock.calls[0]?.[1]).toEqual([
+    expect(studies.assertConsentStudyAccess).toHaveBeenCalledWith(studyId, researcherId, true);
+    expect(transactionClient.query.mock.calls[1]?.[0]).toContain('FROM candidatos c');
+    expect(transactionClient.query.mock.calls[1]?.[1]).toEqual([
       studyId, candidate.id, 'Registrado', 'simulado-v1', researcherId, null,
     ]);
   });
@@ -121,7 +129,7 @@ describe('CandidatesService', () => {
     };
     database.query.mockResolvedValueOnce({ rows: [consent], rowCount: 1 });
     await expect(service.getConsent(studyId, candidate.id, researcherId)).resolves.toEqual(consent);
-    expect(studies.findById).toHaveBeenCalledWith(studyId, researcherId);
+    expect(studies.assertConsentStudyAccess).toHaveBeenCalledWith(studyId, researcherId);
     expect(database.query.mock.calls[0]?.[0]).toContain('ORDER BY registrado_em DESC, id_consentimento DESC');
 
     const unrecorded = {
@@ -138,7 +146,8 @@ describe('CandidatesService', () => {
   });
 
   it('não registra consentimento para candidato de outro estudo e rejeita dados inválidos', async () => {
-    database.query.mockResolvedValue({ rows: [], rowCount: 0 });
+    transactionClient.query.mockResolvedValueOnce({ rows: [{ status: StudyStatus.Recrutamento }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 });
     await expect(service.registerConsent(studyId, candidate.id, {
       status: 'Registrado',
       termVersion: 'simulado-v1',
@@ -148,7 +157,15 @@ describe('CandidatesService', () => {
       status: 'Registrado',
       termVersion: '',
     }, researcherId)).rejects.toThrow(BadRequestException);
-    expect(database.query).toHaveBeenCalledTimes(1);
+    expect(transactionClient.query).toHaveBeenCalledTimes(2);
+  });
+
+  it('revalida a fase sob bloqueio antes de registrar consentimento como Coordenador', async () => {
+    transactionClient.query.mockResolvedValueOnce({ rows: [{ status: StudyStatus.Execucao }], rowCount: 1 });
+    await expect(service.registerConsent(studyId, candidate.id, { status: 'Registrado', termVersion: 'v1' }, 'coordinator-id'))
+      .rejects.toThrow('só pode registrar consentimentos de estudos em recrutamento');
+    expect(transactionClient.query).toHaveBeenCalledTimes(1);
+    expect(transactionClient.query.mock.calls[0][0]).toContain('FOR SHARE');
   });
 
   it('retorna não encontrado ao consultar consentimento de candidato inexistente no estudo', async () => {
@@ -156,7 +173,7 @@ describe('CandidatesService', () => {
     await expect(service.getConsent(studyId, candidate.id, researcherId)).rejects.toThrow(NotFoundException);
   });
 
-  it('inclui candidato elegível e consentido, persiste participação e atualiza contador', async () => {
+  it.each([researcherId, '00000000-0000-4000-8000-000000000006'])('inclui por usuário autorizado %s usando o proprietário real na transação', async (userId) => {
     transactionClient.query
       .mockResolvedValueOnce({
         rows: [{ status: 'recrutamento', participantLimit: 5, participantsLinked: 2 }],
@@ -180,7 +197,7 @@ describe('CandidatesService', () => {
       .mockResolvedValueOnce({ rows: [], rowCount: 1 })
       .mockResolvedValueOnce({ rows: [{ participantLimit: 5 }], rowCount: 1 });
 
-    await expect(service.include(studyId, candidate.id, researcherId)).resolves.toEqual({
+    await expect(service.include(studyId, candidate.id, userId)).resolves.toEqual({
       participationId: '00000000-0000-4000-8000-000000000005',
       candidateId: candidate.id,
       studyId,
@@ -189,12 +206,26 @@ describe('CandidatesService', () => {
       participantsLinked: 3,
       participantLimit: 5,
     });
-    expect(studies.findById).toHaveBeenCalledWith(studyId, researcherId);
+    expect(studies.assertInclusionStudyAccess).toHaveBeenCalledWith(studyId, userId);
+    expect(transactionClient.query.mock.calls[0]?.[1]).toEqual([studyId, researcherId]);
     expect(database.transaction).toHaveBeenCalledTimes(1);
     expect(transactionClient.query.mock.calls[0]?.[0]).toContain('FOR UPDATE');
     expect(transactionClient.query.mock.calls[5]?.[0]).toContain('INSERT INTO participacoes_estudo');
     expect(transactionClient.query.mock.calls[6]?.[0]).toContain("SET status_recrutamento = 'Incluído'");
     expect(transactionClient.query.mock.calls[7]?.[1]).toEqual([studyId, researcherId, 3]);
+  });
+
+  it('revalida recrutamento sob bloqueio antes de incluir como Coordenador', async () => {
+    transactionClient.query.mockResolvedValueOnce({ rows: [{ status: StudyStatus.Execucao, participantLimit: 5, participantsLinked: 0 }], rowCount: 1 });
+    await expect(service.include(studyId, candidate.id, 'coordinator')).rejects.toThrow(ForbiddenException);
+    expect(transactionClient.query).toHaveBeenCalledTimes(1);
+    expect(transactionClient.query.mock.calls[0]?.[0]).toContain('FOR UPDATE');
+  });
+
+  it('não inicia transação de inclusão sem autorização específica do RF11', async () => {
+    studies.assertInclusionStudyAccess.mockRejectedValueOnce(new ForbiddenException());
+    await expect(service.include(studyId, candidate.id, 'coordinator')).rejects.toThrow(ForbiddenException);
+    expect(database.transaction).not.toHaveBeenCalled();
   });
 
   it('bloqueia inclusão quando o candidato não é elegível', async () => {
@@ -210,18 +241,36 @@ describe('CandidatesService', () => {
     expect(transactionClient.query).toHaveBeenCalledTimes(2);
   });
 
-  it('bloqueia inclusão se algum critério ativo não foi aprovado', async () => {
+  it.each([
+    [[{ type: 'Inclusão', result: null }], 'ELIGIBILITY_PENDING'],
+    [[{ type: 'Exclusão', result: 'Pendente' }], 'ELIGIBILITY_PENDING'],
+    [[{ type: 'Inclusão', result: 'Não atende' }], 'CANDIDATE_INELIGIBLE'],
+    [[{ type: 'Exclusão', result: 'Atende' }, { type: 'Inclusão', result: null }], 'CANDIDATE_INELIGIBLE'],
+    [[], 'INCLUSION_REQUIREMENTS_NOT_MET'],
+  ])('identifica a recusa pelos critérios reais %j com código %s', async (rows, code) => {
     transactionClient.query
       .mockResolvedValueOnce({
         rows: [{ status: 'recrutamento', participantLimit: 5, participantsLinked: 2 }],
         rowCount: 1,
       })
       .mockResolvedValueOnce({ rows: [{ status: 'Elegível' }], rowCount: 1 })
-      .mockResolvedValueOnce({ rows: [{ type: 'Inclusão', result: null }], rowCount: 1 });
+      .mockResolvedValueOnce({ rows, rowCount: rows.length });
 
     await expect(service.include(studyId, candidate.id, researcherId))
-      .rejects.toThrow('todos os critérios ativos devem estar avaliados');
+      .rejects.toMatchObject({ response: { statusCode: 400, error: 'Bad Request', code, message: 'Candidato inelegível: todos os critérios ativos devem estar avaliados e atendidos.' } });
     expect(transactionClient.query).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([
+    ['Novo', 'ELIGIBILITY_PENDING'], ['Em avaliação', 'ELIGIBILITY_PENDING'],
+    ['Inelegível', 'CANDIDATE_INELIGIBLE'], ['Incluído', 'CANDIDATE_ALREADY_INCLUDED'],
+    ['Desistiu', 'INCLUSION_REQUIREMENTS_NOT_MET'],
+  ])('identifica status persistido %s sem inferir outro motivo (%s)', async (status, code) => {
+    transactionClient.query
+      .mockResolvedValueOnce({ rows: [{ status: 'recrutamento', participantLimit: 5, participantsLinked: 0 }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ status }], rowCount: 1 });
+    await expect(service.include(studyId, candidate.id, researcherId)).rejects.toMatchObject({ response: expect.objectContaining({ code }) });
+    expect(transactionClient.query).toHaveBeenCalledTimes(2);
   });
 
   it('bloqueia inclusão quando não há registro de consentimento', async () => {
@@ -271,7 +320,7 @@ describe('CandidatesService', () => {
   });
 
   it('bloqueia cadastro quando o estudo está encerrado', async () => {
-    studies.assertStudyCanBeModified.mockRejectedValue(new BadRequestException());
+    studies.assertCandidateStudyAccess.mockRejectedValue(new BadRequestException());
     await expect(service.create(studyId, { name: candidate.name }, researcherId))
       .rejects.toThrow(BadRequestException);
     expect(database.query).not.toHaveBeenCalled();

@@ -76,6 +76,38 @@ describe('VisitsService', () => {
       .rejects.toThrow(ConflictException);
   });
 
+  it('propaga falhas de persistência que não correspondem à constraint de ordem', async () => {
+    const databaseError = { code: '23505', constraint: 'outra_constraint' };
+    database.query.mockRejectedValue(databaseError);
+
+    await expect(service.create(studyId, { name: 'Consulta inicial', order: 1 }, researcherId))
+      .rejects.toBe(databaseError);
+  });
+
+  it('não retorna sucesso se o banco não devolver a visita ou atividade inserida', async () => {
+    database.query.mockResolvedValue({ rows: [], rowCount: 0 });
+    await expect(service.create(studyId, { name: 'Consulta inicial', order: 1 }, researcherId))
+      .rejects.toThrow('O banco não retornou a visita prevista cadastrada.');
+
+    database.query
+      .mockResolvedValueOnce({ rows: [visit], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    await expect(service.createActivity(studyId, visitId, {
+      name: 'Coleta de sinais vitais',
+      type: 'Exame',
+    }, researcherId)).rejects.toThrow('O banco não retornou a atividade cadastrada.');
+  });
+
+  it('não tenta cadastrar atividade quando a visita não pertence ao estudo', async () => {
+    database.query.mockResolvedValue({ rows: [], rowCount: 0 });
+
+    await expect(service.createActivity(studyId, visitId, {
+      name: 'Coleta de sinais vitais',
+      type: 'Exame',
+    }, researcherId)).rejects.toThrow(NotFoundException);
+    expect(database.query).toHaveBeenCalledTimes(1);
+  });
+
   it('cadastra e lista atividades apenas dentro da visita do estudo', async () => {
     database.query
       .mockResolvedValueOnce({ rows: [visit], rowCount: 1 })
