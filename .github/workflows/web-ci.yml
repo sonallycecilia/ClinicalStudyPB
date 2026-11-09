@@ -4,10 +4,12 @@ on:
   pull_request:
     paths:
       - "web/**"
+      - "backend/**"
       - ".github/workflows/web-ci.yml"
   push:
     paths:
       - "web/**"
+      - "backend/**"
       - ".github/workflows/web-ci.yml"
 
 permissions:
@@ -41,3 +43,109 @@ jobs:
 
       - name: Build production bundle
         run: npm run build
+
+  cypress:
+    name: Cypress E2E with PostgreSQL
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-bookworm
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: clinicalstudypb_cypress
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d clinicalstudypb_cypress"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/clinicalstudypb_cypress
+      AUTH_JWT_SECRET: cypress-ci-secret-with-at-least-thirty-two-characters
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.15.0"
+          cache: npm
+          cache-dependency-path: |
+            web/package-lock.json
+            backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Build API
+        working-directory: backend
+        run: npm run build
+
+      - name: Apply migrations and seed isolated demo data
+        working-directory: backend
+        env:
+          ALLOW_DEMO_SEED: "true"
+        run: |
+          npm run db:migrate
+          npm run db:seed:demo
+
+      - name: Start API
+        working-directory: backend
+        run: |
+          node dist/main.js > "$RUNNER_TEMP/cypress-api.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/cypress-api.pid"
+          for attempt in $(seq 1 60); do
+            if curl --silent --fail http://localhost:3000/ > /dev/null; then
+              exit 0
+            fi
+            if ! kill -0 "$(cat "$RUNNER_TEMP/cypress-api.pid")" 2>/dev/null; then
+              cat "$RUNNER_TEMP/cypress-api.log"
+              exit 1
+            fi
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/cypress-api.log"
+          exit 1
+
+      - name: Start web application
+        working-directory: web
+        run: |
+          ./node_modules/.bin/vite --host 0.0.0.0 > "$RUNNER_TEMP/cypress-web.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/cypress-web.pid"
+          for attempt in $(seq 1 60); do
+            if curl --silent --fail http://localhost:5173/ > /dev/null; then
+              exit 0
+            fi
+            if ! kill -0 "$(cat "$RUNNER_TEMP/cypress-web.pid")" 2>/dev/null; then
+              cat "$RUNNER_TEMP/cypress-web.log"
+              exit 1
+            fi
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/cypress-web.log"
+          exit 1
+
+      - name: Run Cypress browser tests
+        working-directory: web
+        run: npm run cypress:run -- --browser electron
+
+      - name: Stop applications
+        if: always()
+        run: |
+          for service in api web; do
+            pid_file="$RUNNER_TEMP/cypress-$service.pid"
+            if [ -f "$pid_file" ]; then
+              kill "$(cat "$pid_file")" 2>/dev/null || true
+            fi
+          done
