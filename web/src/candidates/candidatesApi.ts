@@ -91,4 +91,45 @@ const registerEligibilityAssessment: (
   throw new EligibilityUnavailableError();
 };
 
-export const candidatesApi = { listByStudy, listEligibilityCriteria, getEligibilityAssessment, registerEligibilityAssessment };
+export type CandidateConsentStatus = 'Registrado' | 'Recusado' | 'Revogado';
+
+export interface RegisterCandidateConsentInput {
+  status: CandidateConsentStatus;
+  termVersion: string;
+  observation?: string | null;
+}
+
+export interface CandidateConsent {
+  candidateId: string;
+  studyId: string;
+  status: CandidateConsentStatus | null;
+  termVersion: string | null;
+  registeredAt: string | null;
+  registrarId: string | null;
+  observation: string | null;
+}
+
+export const CONSENT_UNAVAILABLE_MESSAGE = 'A consulta e o registro de consentimento simulado ainda não estão disponíveis para o Coordenador. Dependem da liberação de acesso ao estudo e da integração com a API. Nenhum consentimento será salvo.';
+
+export class ConsentUnavailableError extends Error {
+  constructor() {
+    super(CONSENT_UNAVAILABLE_MESSAGE);
+    this.name = 'ConsentUnavailableError';
+  }
+}
+
+// Contratos do GET e POST /studies/:studyId/candidates/:candidateId/consents.
+// Não chamar as rotas enquanto exigirem o Pesquisador proprietário do estudo.
+const getConsent: (
+  request: AuthenticatedRequest, studyId: string, candidateId: string, signal?: AbortSignal,
+) => Promise<CandidateConsent> = async () => {
+  throw new ConsentUnavailableError();
+};
+
+const registerConsent: (
+  request: AuthenticatedRequest, studyId: string, candidateId: string, input: RegisterCandidateConsentInput,
+) => Promise<CandidateConsent> = async () => {
+  throw new ConsentUnavailableError();
+};
+
+export const candidatesApi = { listByStudy, listEligibilityCriteria, getEligibilityAssessment, registerEligibilityAssessment, getConsent, registerConsent };
