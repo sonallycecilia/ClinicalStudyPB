@@ -620,8 +620,8 @@ A estratégia de QA contempla os requisitos RF05 a RF11, com o objetivo de verif
 
 A validação está organizada em dois documentos complementares:
 
-- **[Checklist de testes funcionais — RF05 a RF11](./docs/releases/release1/sprint02/checklist-rf05-rf11.md):** reúne os cenários funcionais, contemplando fluxos positivos, validações, situações de erro e comportamentos esperados. Seu objetivo é acompanhar a verificação dos requisitos e garantir que as principais situações de uso sejam consideradas.
-- **[Relatório de cobertura dos testes automatizados](./docs/releases/release1/sprint02/relatorio-cobertura-testes-automatizados.md):** apresenta as tecnologias utilizadas, os tipos de testes, os resultados das execuções, os percentuais de cobertura de código e os pontos que ainda precisam de maior validação.
+- **[Checklist de testes funcionais — RF05 a RF11](./sprint02/testes/checklist-rf05-rf11.md):** reúne os cenários funcionais, contemplando fluxos positivos, validações, situações de erro e comportamentos esperados. Seu objetivo é acompanhar a verificação dos requisitos e garantir que as principais situações de uso sejam consideradas.
+- **[Relatório de cobertura dos testes automatizados](./sprint02/testes/relatorio-cobertura-testes-automatizados.md):** apresenta as tecnologias utilizadas, os tipos de testes, os resultados das execuções, os percentuais de cobertura de código e os pontos que ainda precisam de maior validação.
 
 **Resultados preliminares — 09/11/2026**
 
