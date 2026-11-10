@@ -10,12 +10,12 @@ O ClinicalStudyPB — Sistema de Gestão de Estudos Clínicos é um projeto acad
 
 A Release 1 estabelece a base do sistema e prioriza o fluxo web de usuários, estudos e recrutamento (RF01–RF11). O público-alvo é composto por administradores, pesquisadores, coordenadores de estudo e participantes; a aplicação web atende aos três primeiros perfis, enquanto o perfil Participante é destinado ao aplicativo mobile.
 
-| Perfil | Funcionalidades e acesso |
+| Perfil | Funcionalidades e acesso na Release 1 |
 |---|---|
 | Administrador | Gerencia usuários e perfis pela interface web. Não pode excluir a própria conta. |
-| Pesquisador | Cadastra e consulta estudos próprios; define critérios e visitas previstas; a API também oferece operações de recrutamento para o pesquisador proprietário do estudo. |
-| Coordenador | Acessa o painel operacional; há interfaces de candidatos na branch principal e de elegibilidade e consentimento em branches da release. A integração dessas telas e a permissão esperada para o fluxo de recrutamento precisam de confirmação da equipe. |
-| Participante | Perfil reconhecido pela API e utilizado no cliente mobile. O código mobile integra login e logout; a sessão fica em memória. A tela inicial não oferece acompanhamento funcional de estudos ou visitas. |
+| Pesquisador | Cadastra e consulta estudos próprios, define critérios de inclusão/exclusão, visitas previstas e atividades, e altera o estado dos estudos. A API também permite ao pesquisador proprietário operar o fluxo de recrutamento. |
+| Coordenador | Utiliza as interfaces web integradas de cadastro e consulta de candidatos, avaliação de elegibilidade, registro de consentimento e inclusão. O acesso operacional é limitado aos estudos em recrutamento, conforme as regras da API. Painel, visitas individuais, reagendamentos e relatórios exibidos no cliente ainda possuem dados/ações demonstrativos. |
+| Participante | A API reconhece o perfil e o aplicativo mobile permite login e logout. A tela inicial apresenta os dados da conta; consulta de estudos, visitas e ações do participante ainda não estão implementadas funcionalmente no aplicativo. |
 
 A API e a documentação de acesso detalham as permissões e diferenças entre os perfis: [Usuários e controle de acesso](./usuarios-e-controle-de-acesso.md).
 
@@ -38,12 +38,12 @@ Testes, documentação e revisão de código foram previstos como atividades com
 
 A solução é organizada em quatro componentes:
 
-- **Aplicação web:** React e TypeScript, executada com Vite. Atende administradores, pesquisadores e coordenadores; controla sessão, rotas e menus por perfil e consome a API REST.
-- **Aplicativo mobile:** React Native com Expo e Expo Router, destinado ao participante. O código disponível integra à API somente login e logout; a sessão é mantida em memória e não é restaurada ao reabrir o aplicativo. Os protótipos de estudos e visitas produzidos no Figma não correspondem a telas funcionais integradas no aplicativo deste repositório.
-- **Backend/API:** aplicação modular NestJS em TypeScript. Centraliza autenticação, autorização, validação, regras de negócio e acesso aos dados. Os módulos principais incluem autenticação e sessões, usuários e estudos.
-- **Banco de dados:** PostgreSQL. O backend usa o driver `pg`, SQL parametrizado e migrations em SQL; não utiliza ORM como camada predominante.
+- **Aplicação web:** React e TypeScript, executada com Vite. Atende aos perfis Administrador, Pesquisador e Coordenador. Implementa autenticação, restauração de sessão, proteção de rotas e menus por perfil e consome a API REST. Os fluxos de usuários, estudos e recrutamento da Release 1 estão integrados ao backend.
+- **Aplicativo mobile:** React Native com Expo e Expo Router, destinado ao perfil Participante. No código desta entrega, login e logout utilizam a API; a sessão permanece somente em memória. A tela inicial apresenta os dados da conta. As telas de estudos, visitas e ações do participante estão representadas por protótipos no Figma, não por funcionalidades integradas do aplicativo.
+- **Backend/API:** aplicação modular NestJS em TypeScript. Centraliza autenticação, sessões, autorização por perfil, validações, regras de negócio e persistência. Os módulos implementados abrangem autenticação, usuários e estudos, incluindo critérios, visitas previstas, candidatos, avaliações de elegibilidade, consentimentos e inclusão.
+- **Banco de dados:** PostgreSQL. O backend usa o driver `pg`, `DatabaseService`, SQL parametrizado e migrations SQL; não utiliza ORM como camada predominante.
 
-A web e o backend comunicam-se por HTTP/REST nas operações integradas. No mobile, a comunicação com a API está comprovada somente para login e logout; a prévia em `/preview` usa dados simulados e não faz chamadas ao backend. Nenhum dos clientes acessa diretamente o banco. A web usa `VITE_API_URL` (padrão local `http://localhost:3000`); o mobile usa `EXPO_PUBLIC_API_URL` quando configurada e, em desenvolvimento, pode detectar o host do servidor Expo. O backend lê `DATABASE_URL` para conectar ao PostgreSQL e configura CORS pelas origens definidas no ambiente.
+A web e o backend comunicam-se por HTTP/REST nas operações integradas. No mobile utiliza a API somente para login e logout. Nenhum dos clientes acessa diretamente o banco. A web usa `VITE_API_URL` (padrão local `http://localhost:3000`); o mobile usa `EXPO_PUBLIC_API_URL` quando configurada e, em desenvolvimento, pode detectar o host do servidor Expo. O backend lê `DATABASE_URL` para conectar ao PostgreSQL e configura CORS pelas origens definidas no ambiente.
 
 As migrations versionadas criam tabelas para usuários e sessões, estudos, critérios, visitas previstas e atividades, candidatos, avaliações de elegibilidade, consentimentos e participações, além de estruturas destinadas a etapas posteriores do ciclo operacional. O Compose usa PostgreSQL 17 e publica a porta 5433 no host; dentro da rede Docker, o backend acessa o serviço `postgres` na porta 5432. A descrição detalhada está em [Arquitetura e integração](./arquitetura-e-integracao.md) e [Banco de dados](./sprint01/banco_de_dados/README-BD.md).
 
@@ -328,7 +328,73 @@ flowchart TB
 ```
 
 #### 2.1.3 Diagramas de Sequência
-<!-- Inserir os diagramas de sequência dos fluxos principais. -->
+
+Os diagramas abaixo representam os fluxos funcionais implementados na Release 1. O primeiro mostra a autenticação na web; o segundo, o fluxo de recrutamento do cadastro do candidato à inclusão como participante.
+
+**Autenticação e restauração de sessão na web (RF02):**
+
+```mermaid
+sequenceDiagram
+    actor Usuario
+    participant Web as Aplicação Web
+    participant API as API NestJS
+    participant DB as PostgreSQL
+
+    Usuario->>Web: Informa e-mail e senha
+    Web->>API: POST /auth/login
+    API->>DB: Validar credenciais e criar sessão
+    DB-->>API: Usuário e sessão
+    API-->>Web: accessToken e dados do usuário
+    Web->>Web: Armazena token no navegador
+    Note over Web,API: Ao iniciar/recarregar a aplicação
+    Web->>API: GET /auth/me (Bearer token)
+    API->>DB: Validar sessão e estado da conta
+    DB-->>API: Sessão válida e perfil
+    API-->>Web: Dados do usuário autenticado
+    Usuario->>Web: Solicita logout
+    Web->>API: POST /auth/logout
+    API->>DB: Revogar sessão
+    API-->>Web: Confirmação do encerramento
+    Web->>Web: Remove sessão local
+```
+
+**Recrutamento e inclusão (RF08–RF11):**
+
+```mermaid
+sequenceDiagram
+    actor Coordenador
+    participant Web as Aplicação Web
+    participant API as API NestJS
+    participant DB as PostgreSQL
+
+    Coordenador->>Web: Seleciona estudo em recrutamento
+    Web->>API: GET /studies/disponiveis-recrutamento
+    API->>DB: Consultar estudos disponíveis
+    DB-->>API: Estudos autorizados
+    API-->>Web: Lista de estudos
+    Coordenador->>Web: Cadastra candidato
+    Web->>API: POST /studies/{studyId}/candidates
+    API->>DB: Validar estudo/permissão e persistir candidato
+    DB-->>API: Candidato criado
+    API-->>Web: Dados do candidato
+    Coordenador->>Web: Registra avaliação dos critérios
+    Web->>API: POST /studies/{studyId}/candidates/{candidateId}/eligibility-assessments
+    API->>DB: Validar critérios e persistir avaliações
+    DB-->>API: Resultado da elegibilidade
+    API-->>Web: Situação atualizada
+    Coordenador->>Web: Registra consentimento simulado
+    Web->>API: POST /studies/{studyId}/candidates/{candidateId}/consents
+    API->>DB: Persistir consentimento
+    DB-->>API: Consentimento registrado
+    API-->>Web: Estado do consentimento
+    Coordenador->>Web: Solicita inclusão
+    Web->>API: POST /studies/{studyId}/candidates/{candidateId}/include
+    API->>DB: Validar elegibilidade, consentimento e vagas
+    Note over API,DB: Inclusão e atualização dos vínculos em transação
+    DB-->>API: Participação criada ou operação rejeitada
+    API-->>Web: Resultado da inclusão
+    Web-->>Coordenador: Exibe sucesso ou motivo da rejeição
+```
 
 #### 2.1.4 Diagrama de Arquitetura
 ```mermaid
@@ -392,7 +458,7 @@ Os requisitos RF01–RF11 compõem o escopo funcional planejado para esta releas
 
 ### RF01 — Cadastrar e gerenciar usuários
 
-**Perfil:** Administrador. O administrador pode cadastrar, consultar, editar e excluir usuários pela web. A API reconhece os perfis Administrador, Pesquisador, Coordenador e Participante; os formulários web de administração trabalham com Administrador, Pesquisador e Coordenador. A conta autenticada não pode excluir a si própria, e alterações de senha ou inativação revogam as sessões da conta.
+**Perfil:** Administrador. O administrador pode cadastrar, consultar, editar e excluir usuários pela web. A API reconhece os perfis Administrador, Pesquisador, Coordenador e Participante. No formulário de criação web são oferecidos Administrador, Pesquisador e Coordenador. A conta autenticada não pode excluir a si própria, e alterações de senha ou inativação revogam as sessões da conta.
 
 **Figura**: Validação de campos no cadastro de usuários.
 ![validação de campos no cadastro de usuários.](./evidencias/validacao_cadastro_usuario.png)
@@ -405,17 +471,17 @@ Os requisitos RF01–RF11 compõem o escopo funcional planejado para esta releas
 
 ### RF02 — Permitir autenticação e encerramento de sessão
 
-**Perfis:** usuários autenticados dos quatro perfis, conforme as permissões do cliente. O login e o logout são atendidos pela API. A web restaura a sessão e protege páginas privadas. O aplicativo mobile disponível no repositório atualmente chama a API para login e logout, mas mantém o estado de sessão somente em memória: não consulta `/auth/me` para restaurá-la e requer novo login após recarregar ou fechar o aplicativo.
+**Perfis:** usuários autenticados dos quatro perfis, conforme as permissões do cliente. O login e o logout são atendidos pela API. A web restaura a sessão por meio de `GET /auth/me` e protege páginas privadas. O aplicativo mobile também chama a API para login e logout, mas mantém o estado de sessão somente em memória: não consulta `/auth/me` para restaurá-la e requer novo login após recarregar ou fechar o aplicativo.
 
 **Figura**: Credenciais inválidas ou erro de autenticação.
 ![credenciais inválidas ou erro de autenticação.](./evidencias/login_invalido.png)
 
-**Figura**: Login bem-sucedido e sessão do adiministrador ativa.
-![login bem-sucedido e sessão ativa.](./evidencias/login_adimin.png)
+**Figura**: Login bem-sucedido e sessão do Administrador ativa.
+![Login bem-sucedido e sessão ativa.](./evidencias/login_adimin.png)
 
 ### RF03 — Restringir funcionalidades conforme o perfil
 
-**Perfis:** Administrador, Pesquisador, Coordenador e Participante, com acesso conforme o cliente e a operação. A web restringe navegação, rotas e menus aos perfis Administrador, Pesquisador e Coordenador. A API valida token, sessão, status da conta e perfil nas rotas protegidas. Participante é reconhecido pela API e destinado ao cliente mobile, sem página própria na web. As permissões específicas estão descritas em [Usuários e controle de acesso](./usuarios-e-controle-de-acesso.md).
+**Perfis:** Administrador, Pesquisador, Coordenador e Participante, com acesso conforme o cliente e a operação. A web restringe navegação, rotas e menus aos perfis Administrador, Pesquisador e Coordenador, rejeitando o perfil Participante. A API valida token, sessão, status da conta e perfil nas rotas protegidas. O aplicativo mobile, embora destinado ao Participante, ainda aceita login dos quatro perfis reconhecidos pela API; essa restrição de perfil no cliente mobile permanece pendente. As permissões específicas estão descritas em [Usuários e controle de acesso](./usuarios-e-controle-de-acesso.md).
 
 **Figura**: Acesso negado ou rota restrita por perfil (usuário do tipo participante não consegue acessar o web).
 ![acesso negado ou rota restrita por perfil.](./evidencias/acesso_negado.png)
@@ -423,10 +489,10 @@ Os requisitos RF01–RF11 compõem o escopo funcional planejado para esta releas
 **Figura**: Acesso negado ou rota restrita por perfil (usuário não consegue acessar rota restrita a outro tipo de usuário).
 ![acesso negado ou rota restrita por perfil.](./evidencias/rota_restrita.png)
 
-**Figura**: Acesso ao perfil no web permitido ao coordenador.
+**Figura**: Acesso ao perfil na web permitido ao Coordenador.
 ![acesso permitido ao coordenador.](./evidencias/login_coordenador.png)
 
-**Figura**: Acesso ao perfil no web permitido ao pesquisador.
+**Figura**: Acesso ao perfil na web permitido ao Pesquisador.
 ![acesso permitido ao pesquisador.](./evidencias/login_pesquisador.png)
 
 ### RF04 — Cadastrar estudos
@@ -474,13 +540,14 @@ Os requisitos RF01–RF11 compõem o escopo funcional planejado para esta releas
 ![Alteração do estado do estudo.](./evidencias/estado_estudo.png)
 
 **Figura**: Opções para transição de estado ou edição de estudo não aparecem no estudo encerrado.
+
 ![Estudo encerrado.](./evidencias/estudo_encerrado.png)
 
 ### RF08 – Cadastrar e consultar candidatos
 
 **Perfil:** Coordenador de estudo. O sistema permite cadastrar e consultar candidatos vinculados a um estudo. O cadastro exige o nome do candidato, enquanto o e-mail é opcional.
 
-A aplicação web possui interfaces para cadastro e consulta de candidatos no módulo do Coordenador. O backend valida a existência e a propriedade do estudo, impede operações em estudos encerrados e persiste os dados dos candidatos no banco de dados.
+A aplicação web possui interfaces para cadastro e consulta de candidatos no módulo do Coordenador. O backend valida a existência e a propriedade do estudo, impede operações incompatíveis com o estado do estudo e persiste os dados no banco de dados.
 
 **Figura**: Cadastro de candidato.
 ![Cadastro de candidato.](./evidencias/cadastro_candidato.png)
@@ -542,9 +609,13 @@ A operação é realizada com controle transacional no banco de dados, impedindo
 **Figura**: Participante inelegível não pode ser incluído no estudo.
 ![Participante inelegível não pode ser incluído no estudo.](./evidencias/participante_inelegivel.png)
 
+### Limite de integração das demais telas do Coordenador
+
+O fluxo de candidatos, elegibilidade, consentimento e inclusão descrito em RF08–RF11 consome a API e persiste os dados no PostgreSQL. Isso não significa que todas as páginas do perfil Coordenador estejam integradas: o painel, as telas de visitas individuais, reagendamentos e relatórios presentes em `coordenatorPage.tsx` usam dados locais demonstrativos. O agendamento e o acompanhamento de visitas individuais pertencem aos requisitos RF12–RF16, previstos para a Release 2.
+
 ### Protótipos mobile produzidos na Release 1
 
-Todas as tarefas mobile previstas para a Release 1 foram concluídas. As entregas de consulta de estudos do participante, próximas visitas, histórico de comparecimento e ações de confirmação de presença, solicitação de reagendamento e retirada foram realizadas como protótipos navegáveis no Figma, com estados demonstrativos de sucesso e erro. Esses protótipos não representam integração funcional com a API e não antecipam a entrega dos requisitos mobile RF17–RF20, planejados para releases posteriores.
+As telas de consulta de estudos do participante, próximas visitas, histórico de comparecimento e ações de confirmação de presença, solicitação de reagendamento e retirada foram produzidas como protótipos navegáveis no Figma, com estados demonstrativos de sucesso e erro. Esses protótipos não representam integração funcional com a API e não antecipam a entrega dos requisitos mobile RF17–RF20, planejados para a Release 2.
 
 No código mobile atual está presente uma implementação parcial das telas de login e inicial/conta, além de uma prévia de desenvolvimento com dados fictícios, sem API, disponível nas rotas `/preview`, `/preview/login` e `/preview/inicio`. Os links dos protótipos estão reunidos em [Links úteis](./LINKS-UTEIS.md) e as limitações atuais constam no [README mobile](../../../mobile/README.md).
 
@@ -571,7 +642,7 @@ No código mobile atual está presente uma implementação parcial das telas de 
 
 ## 4. Tecnologias utilizadas
 
-As versões abaixo foram conferidas nos arquivos de configuração e nos lockfiles disponíveis. A versão do Node.js do backend é declarada como `>=24.15.0 <25`; os workflows web e backend usam Node.js 24.15.0, enquanto o workflow mobile usa Node.js 22.
+As versões abaixo foram conferidas nos arquivos de configuração e nos lockfiles disponíveis. A versão do Node.js do backend é declarada como `>=24.15.0 <25`; os workflows web e backend usam Node.js 24.15.0, enquanto o workflow mobile usa Node.js 22. As imagens Docker do backend e da web usam Node.js 24.22.0.
 
 | Componente | Tecnologias e versões registradas |
 |---|---|
@@ -579,7 +650,7 @@ As versões abaixo foram conferidas nos arquivos de configuração e nos lockfil
 | Web | TypeScript 5.9.3, React 19.3.1, React Router 7.18.4, Vite 7.3.7, Vitest 3.2.7, Testing Library 16.3.3, `jest-dom` 6.9.1 e Cypress 16.2.0. |
 | Mobile | Expo SDK 58.0.17, Expo Router 58.0.25, React Native 0.88.0, React 19.3.0, Jest 30.5.2, `jest-expo` 58.0.12 e React Native Testing Library 14.1.0. |
 | Banco de dados | PostgreSQL 17 (`postgres:17-bookworm` no Compose); migrations SQL e driver `pg`. |
-| Execução e integração contínua | `concurrently` 10.0.6, GitHub Actions; Azure Boards/DevOps para organização do trabalho. |
+| Execução e integração contínua | `concurrently` 10.0.6, Docker Compose e GitHub Actions; Azure Boards/DevOps para organização do trabalho. |
 
 **Pré-requisitos:** Docker Desktop com Docker Compose para a execução integrada; Node.js 24 para os comandos locais do backend e npm; PostgreSQL 17 se o banco não for executado pelo Compose; e Expo Go em dispositivo físico ou um emulador Android para abrir o aplicativo mobile. Para desenvolver ou executar o cliente mobile, instale também as dependências da pasta `mobile/`.
 
@@ -743,40 +814,47 @@ As rotas protegidas utilizam autenticação HTTP Bearer com o token JWT retornad
 
 Informações complementares sobre os endpoints, parâmetros, validações e permissões estão disponíveis no [README do backend](../../../backend/README.md).
 
-## 8. Processo de desenvolvimento
+## 8. Problemas conhecidos e pendências
+
+- **RF03 no mobile:** o aplicativo é destinado ao Participante, mas o fluxo de login atual aceita os quatro perfis retornados pela API. Falta restringir o acesso do cliente mobile ao perfil esperado.
+- **Sessão mobile:** o token e os dados do usuário ficam em memória. Ao recarregar ou fechar o aplicativo, é necessário autenticar novamente; não há restauração de sessão no mobile.
+- **Funcionalidades do participante:** o código mobile contém login e tela inicial/conta. Consulta de estudos, próximas visitas, histórico, confirmação de presença, reagendamento e retirada permanecem como protótipos no Figma, sem integração funcional no aplicativo. Esses fluxos pertencem à Release 2 (RF17–RF20).
+- **Telas operacionais do Coordenador:** painel, visitas individuais, reagendamentos e relatórios usam dados locais demonstrativos. O fluxo de recrutamento RF08–RF11, por sua vez, está integrado à API e ao banco.
+
+## 9. Processo de desenvolvimento
 
 ### Sprint 1
 
-- **Período planejado:** 13/10/2026 a 26/10/2026.
+- **Período:** 13/10/2026 a 26/10/2026.
 - **Objetivo:** estabelecer arquitetura e ambientes, implementar RF01–RF04 na web e preparar protótipos navegáveis web/mobile.
-- **Esforço registrado no planejamento específico:** 240 horas.
+- **Esforço planejado:** 240 horas para a equipe. Esse valor é a estimativa do planejamento, não uma medição de horas efetivamente consumidas.
+- **Papéis:** Marcella (líder técnico/gerente), Sonally (backend), Lethycia (web 1), Zeton (web 2), Leticia (mobile) e Laryssa (QA/DevOps).
 
-As atividades abrangeram estrutura e arquitetura, ambiente da API/PostgreSQL/web/mobile e CI, usuários (RF01), autenticação (RF02), permissões (RF03), estudos (RF04), protótipos, testes e documentação. O acompanhamento foi planejado no Azure Boards, com atualização de responsáveis, tarefas e impedimentos, revisão das entregas e retrospectiva em 26/10.
+As atividades planejadas abrangeram estrutura e arquitetura, ambientes e CI, usuários (RF01), autenticação (RF02), permissões (RF03), estudos (RF04), protótipos, testes e documentação. O backlog detalhado está no [planejamento da Sprint 1](./sprint01/planejamento.md).
 
-Na retrospectiva, a equipe registrou como pontos positivos a liderança, a definição inicial da arquitetura e a colaboração. Como melhorias, apontou descrições mais claras das tarefas, comunicação e integração contínuas e definição mais explícita dos papéis. Para a sprint seguinte, foram propostas a criação de um canal de avisos e a aprovação de pelo menos dois integrantes antes de integrar alterações à branch principal. Consulte o [planejamento](./sprint01/planejamento.md) e a [retrospectiva](./sprint01/retrospectiva.md).
+Na retrospectiva de 26/10, a equipe apontou como pontos positivos a liderança, a definição antecipada da arquitetura e a colaboração. Como melhorias, registrou a necessidade de descrições mais claras nas tasks, comunicação e integração contínuas e definição mais explícita dos papéis. Para a sprint seguinte, foram propostas a criação de um canal de avisos e a aprovação de pelo menos dois integrantes antes de integrar alterações à branch principal. Consulte a [retrospectiva da Sprint 1](./sprint01/retrospectiva.md).
 
 **Figura**: Burndown da Sprint 1.
 <p><img src="./evidencias/grafico_sprint1.png" alt="Burndown da Sprint 1." width="700"></p>
 
 ### Sprint 2
 
-- **Período planejado:** 27/10/2026 a 09/11/2026.
-- **Objetivo:** completar o fluxo de recrutamento e inclusão, com RF05–RF11, integração web/API/banco, continuidade dos protótipos mobile, qualidade e consolidação da documentação.
+- **Período:** 27/10/2026 a 09/11/2026.
+- **Objetivo:** completar RF05–RF11, integrando critérios, visitas previstas, estados do estudo e fluxo de recrutamento à web/API/banco; evoluir protótipos mobile; consolidar testes e documentação.
 - **Esforço planejado:** 187 horas.
+- **Papéis:** Laryssa (líder técnico/gerente), Letícia (backend), Zeton (web 1), Lethycia (web 2), Sonally (mobile) e Marcella (QA/DevOps).
 
-O backlog inclui critérios de inclusão e exclusão, visitas previstas e atividades, transições de estado, candidatos, avaliação de elegibilidade, consentimento simulado e inclusão sujeita à elegibilidade, consentimento e limite de vagas. Também prevê revisão de contratos da API, testes, pipeline, integração e estudo de viabilidade do AWS EC2 Free Tier, sem exigir implantação. A distribuição de tarefas e responsáveis está no [planejamento da Sprint 2](./sprint02/planejamento.md).
+O backlog contemplou critérios de inclusão e exclusão, visitas previstas e atividades, transições de estado, candidatos, elegibilidade, consentimento simulado, inclusão, protótipos mobile, integração, testes e documentação. O backlog detalhado com PBIs, tarefas, responsáveis, estimativas e dependências está no [planejamento da Sprint 2](./sprint02/planejamento.md).
 
-O acompanhamento foi planejado no Azure DevOps, com atualização de responsáveis, dependências, andamento e impedimentos. Para a organização da sprint, foi realizada uma reunião de acompanhamento em 02/11 e uma revisão das entregas e retrospectiva em 08/11, com a conclusão da Release 1 prevista para 09/11. Consulte o [planejamento](./sprint02/planejamento.md) e a [retrospectiva](./sprint02/retrospectiva.md).
+Na retrospectiva de 08/11, a equipe registrou melhora na comunicação, na clareza das tasks e na colaboração. Como principal dificuldade, apontou a dependência entre funcionalidades desenvolvidas por integrantes diferentes. A ação definida foi manter as práticas de comunicação e organização da sprint anterior e reduzir, quando possível, as dependências entre tarefas. Consulte a [retrospectiva da Sprint 2](./sprint02/retrospectiva.md).
 
 **Figura**: Burndown da Sprint 2.
 <p><img src="./evidencias/grafico_sprint2.png" alt="Burndown da Sprint 2." width="700"></p>
 
-## 9. Documentação complementar
+## 10. Documentação complementar
 
 ### Planejamento e acompanhamento
 
-- [Contexto e requisitos do projeto](../../../.github/contexto.md)
-- [Plano de trabalho da equipe](../../../.github/ClinicalStudyPB%20-%20Plano%20de%20Trabalho.md)
 - [Sprint 1 — Planejamento](./sprint01/planejamento.md)
 - [Sprint 1 — Retrospectiva](./sprint01/retrospectiva.md)
 - [Sprint 2 — Planejamento e backlog](./sprint02/planejamento.md)
@@ -784,13 +862,13 @@ O acompanhamento foi planejado no Azure DevOps, com atualização de responsáve
 
 ### Arquitetura, dados e acesso
 
-- [Arquitetura e integração](./arquitetura-e-integracao.md)
 - [Banco de dados, migrations e seed](./sprint01/banco_de_dados/README-BD.md)
 - [Usuários e controle de acesso](./usuarios-e-controle-de-acesso.md)
 
 ### Testes, execução e protótipos
 
-- [Documentação de testes](./sprint01/testes/README-TESTES.md)
+- [Workflows de CI — backend, web e mobile](../../../.github/workflows/)
+- [Documentação centralizada de testes](./sprint01/testes/README-TESTES.md)
 - [README principal](../../../README.md)
 - [README do backend](../../../backend/README.md)
 - [README mobile](../../../mobile/README.md)
