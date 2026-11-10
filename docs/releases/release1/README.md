@@ -523,14 +523,16 @@ Os requisitos RF01–RF11 compõem o escopo funcional planejado para esta releas
 
 ### RF06 — Definir visitas previstas e suas atividades
 
-<!-- **Perfil:** Coordenador de estudo. -->
-**Perfil:** Pesquisador responsável pelo estudo. Pode cadastrar e consultar visitas previstas e as atividades associadas a cada visita do estudo. A ordem da visita é única dentro do estudo; os campos obrigatórios e os valores numéricos são validados. Este requisito trata do cronograma previsto, não do agendamento individual de visitas de participantes.
+**Perfil:** Coordenador de estudo e Pesquisador responsável pelo estudo. É possível cadastrar e consultar visitas previstas e as atividades associadas a cada visita do estudo. A ordem da visita é única dentro do estudo; os campos obrigatórios e os valores numéricos são validados. Este requisito trata do cronograma previsto, não do agendamento individual de visitas de participantes.
 
-**Figura**: Validação de campos e aviso de ordem de visita duplicada.
+**Figura**: Validação de campos e aviso de ordem de visita duplicada - Pesquisador.
 ![validação de campos](./evidencias/visita_validacao.png)
 
-**Figura**: Cadastro de visita e atividades.
+**Figura**: Cadastro de visita e atividades - Pesquisador.
 ![Cadastro de visita e atividades.](./evidencias/visita_cadastro.png)
+
+**Figura**: Agendamento de visita - Coordenador.
+![Agendamento de visita.](./evidencias/visita_coordenador.png)
 
 ### RF07 — Gerenciar os estados dos estudos
 
