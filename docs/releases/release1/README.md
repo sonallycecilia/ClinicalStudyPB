@@ -49,10 +49,10 @@ As migrations versionadas criam tabelas para usuários e sessões, estudos, crit
 
 ### 2.1 Diagramas
 
-#### Diagrama de Casos de Uso
-<!-- Inserir o diagrama de casos de uso. -->
+#### 2.1.1 Diagrama de Casos de Uso
+![Diagrama de Casos de Uso](./evidencias/diagrama_cdu.svg)
 
-#### Modelo de Dados - Diagrama entidade-relacionamento
+#### 2.1.2 Modelo de Dados - Diagrama entidade-relacionamento
 
 ```mermaid
 flowchart TB
@@ -327,15 +327,66 @@ flowchart TB
     class U_ID,U_NOME,U_EMAIL,U_TEL,U_SENHA,U_SALT,U_PERFIL,U_STATUS,U_CRIACAO,SS_ID,SS_EXPIRA,SS_CRIADA,E_ID,E_CODIGO,E_TITULO,E_OBJ,E_INICIO,E_FIM,E_LIMITE,E_VINC,E_TIPO,E_SIMBOLO,E_STATUS,E_CRIADO,CE_ID,CE_TIPO,CE_DESC,CE_ATIVO,VP_ID,VP_NOME,VP_ORDEM,VP_INTERVALO,VP_DESC,AV_ID,AV_NOME,AV_DESC,AV_TIPO,C_ID,C_NOME,C_EMAIL,C_STATUS,C_CADASTRO,AE_ID,AE_RESULTADO,AE_OBS,AE_DATA,CO_ID,CO_STATUS,CO_VERSAO,CO_DATA,CO_OBS,P_ID,P_INCLUSAO,P_STATUS,P_RETIRADA,P_MOTIVO,V_ID,V_DATA,V_REALIZACAO,V_STATUS,V_OBS,V_CRIADO,RA_ID,RA_VALOR,RA_UNIDADE,RA_OBS,RA_DATA,SV_ID,SV_TIPO,SV_STATUS,SV_DATA,SV_JUST,SV_RESP,AU_ID,AU_ACAO,AU_ENTIDADE,AU_ENTID,AU_DATA,AU_DET atributo
 ```
 
-#### Diagrama de Sequência
+#### 2.1.3 Diagramas de Sequência
 <!-- Inserir os diagramas de sequência dos fluxos principais. -->
 
-#### Diagrama de Arquitetura
-<!-- Inserir o diagrama de arquitetura e comunicação entre componentes. -->
+#### 2.1.4 Diagrama de Arquitetura
+```mermaid
+flowchart TB
+    subgraph FRONT["Camada de apresentação"]
+        WEB["Aplicação Web<br/>React + Vite"]
+        MOBILE["Aplicação Mobile<br/>React Native + Expo"]
+    end
+
+    subgraph API["Camada de comunicação"]
+        REST["API HTTP REST<br/>NestJS"]
+        DOCS["Documentação<br/>OpenAPI / Swagger"]
+    end
+
+    subgraph BACKEND["Backend — aplicação e negócio"]
+        CTRL["Controllers<br/>app.controller.ts"]
+        SERVICE["Services<br/>app.service.ts"]
+        MODULE["Módulo raiz<br/>app.module.ts"]
+
+        AUTH["Usuários e autenticação"]
+        STUDY["Gestão de estudos"]
+        RECRUIT["Recrutamento e elegibilidade"]
+        VISITS["Visitas e acompanhamento"]
+        REPORTS["Monitoramento e relatórios"]
+    end
+
+    subgraph DATA["Camada de persistência"]
+        DB[("PostgreSQL")]
+    end
+
+    WEB <--> REST
+    MOBILE <--> REST
+    REST --- DOCS
+    REST --> CTRL
+    CTRL --> SERVICE
+    MODULE -. "registra componentes" .-> CTRL
+    MODULE -. "registra componentes" .-> SERVICE
+
+    SERVICE --> AUTH
+    SERVICE --> STUDY
+    SERVICE --> RECRUIT
+    SERVICE --> VISITS
+    SERVICE --> REPORTS
+
+    AUTH -.-> DB
+    STUDY -.-> DB
+    RECRUIT -.-> DB
+    VISITS -.-> DB
+    REPORTS -.-> DB
+
+    classDef existing fill:#dbeafe,stroke:#2563eb,color:#172554
+    classDef planned fill:#f3f4f6,stroke:#6b7280,color:#374151,stroke-dasharray:5 5
+
+    class CTRL,SERVICE,MODULE existing
+    class WEB,MOBILE,REST,DOCS,AUTH,STUDY,RECRUIT,VISITS,REPORTS,DB planned
+```
 
 ## 3. Funcionalidades implementadas
-
-<!-- VALIDAR TODAS AS FIGURAS E FUNCIONALIDADES APÓS SEREM FEITOS TODOS OS MERGES -->
 
 Os requisitos RF01–RF11 compõem o escopo funcional planejado para esta release. As descrições abaixo distinguem as operações implementadas no backend, as interfaces disponíveis nas branches consultadas e os fluxos cuja integração entre interface e API não está comprovada. A ausência de uma tela na branch principal não constitui, isoladamente, evidência de cancelamento de uma entrega registrada no planejamento.
 
@@ -354,7 +405,7 @@ Os requisitos RF01–RF11 compõem o escopo funcional planejado para esta releas
 
 ### RF02 — Permitir autenticação e encerramento de sessão
 
-**Perfis:** usuários autenticados dos quatro perfis, conforme as permissões do cliente. O login e o logout são atendidos pela API. A web restaura a sessão e protege páginas privadas. O aplicativo mobile disponível no repositório atualmente chama a API para login e logout, mas mantém o estado de sessão somente em memória: não consulta `/auth/me` para restaurá-la e requer novo login após recarregar ou fechar o aplicativo. A prévia mobile ainda não possui interface interativa.
+**Perfis:** usuários autenticados dos quatro perfis, conforme as permissões do cliente. O login e o logout são atendidos pela API. A web restaura a sessão e protege páginas privadas. O aplicativo mobile disponível no repositório atualmente chama a API para login e logout, mas mantém o estado de sessão somente em memória: não consulta `/auth/me` para restaurá-la e requer novo login após recarregar ou fechar o aplicativo.
 
 **Figura**: Credenciais inválidas ou erro de autenticação.
 ![credenciais inválidas ou erro de autenticação.](./evidencias/login_invalido.png)
@@ -368,6 +419,9 @@ Os requisitos RF01–RF11 compõem o escopo funcional planejado para esta releas
 
 **Figura**: Acesso negado ou rota restrita por perfil (usuário do tipo participante não consegue acessar o web).
 ![acesso negado ou rota restrita por perfil.](./evidencias/acesso_negado.png)
+
+**Figura**: Acesso negado ou rota restrita por perfil (usuário não consegue acessar rota restrita a outro tipo de usuário).
+![acesso negado ou rota restrita por perfil.](./evidencias/rota_restrita.png)
 
 **Figura**: Acesso ao perfil no web permitido ao coordenador.
 ![acesso permitido ao coordenador.](./evidencias/login_coordenador.png)
@@ -403,6 +457,7 @@ Os requisitos RF01–RF11 compõem o escopo funcional planejado para esta releas
 
 ### RF06 — Definir visitas previstas e suas atividades
 
+<!-- **Perfil:** Coordenador de estudo. -->
 **Perfil:** Pesquisador responsável pelo estudo. Pode cadastrar e consultar visitas previstas e as atividades associadas a cada visita do estudo. A ordem da visita é única dentro do estudo; os campos obrigatórios e os valores numéricos são validados. Este requisito trata do cronograma previsto, não do agendamento individual de visitas de participantes.
 
 **Figura**: Validação de campos e aviso de ordem de visita duplicada.
@@ -423,7 +478,7 @@ Os requisitos RF01–RF11 compõem o escopo funcional planejado para esta releas
 
 ### RF08 – Cadastrar e consultar candidatos
 
-**Perfil:** Coordenador. O sistema permite cadastrar e consultar candidatos vinculados a um estudo. O cadastro exige o nome do candidato, enquanto o e-mail é opcional.
+**Perfil:** Coordenador de estudo. O sistema permite cadastrar e consultar candidatos vinculados a um estudo. O cadastro exige o nome do candidato, enquanto o e-mail é opcional.
 
 A aplicação web possui interfaces para cadastro e consulta de candidatos no módulo do Coordenador. O backend valida a existência e a propriedade do estudo, impede operações em estudos encerrados e persiste os dados dos candidatos no banco de dados.
 
@@ -433,9 +488,12 @@ A aplicação web possui interfaces para cadastro e consulta de candidatos no m�
 **Figura**: Listagem de candidatos e participantes
 ![Listagem de candidatos e participantes](./evidencias/candidatos.png)
 
+**Figura**: Detalhes do candidato.
+![Detalhes do candidato.](./evidencias/detalhes_candidato.png)
+
 ### RF09 – Avaliar a elegibilidade dos candidatos
 
-**Perfil:** Coordenador. O sistema permite registrar e consultar avaliações de elegibilidade dos candidatos, considerando os critérios de inclusão e exclusão definidos para o estudo.
+**Perfil:** Coordenador de estudo. O sistema permite registrar e consultar avaliações de elegibilidade dos candidatos, considerando os critérios de inclusão e exclusão definidos para o estudo.
 
 A situação do candidato é determinada pelas avaliações registradas:
 - **Elegível:** atende a todos os critérios de inclusão e não atende a nenhum critério de exclusão.
@@ -444,19 +502,24 @@ A situação do candidato é determinada pelas avaliações registradas:
 
 As avaliações são persistidas no banco de dados, com validação dos critérios vinculados ao estudo e das respostas fornecidas. O backend impede a avaliação de candidatos já incluídos e operações em estudos encerrados.
 
-**Figura**: Tela de avaliação de elegibilidade e consentimento.
-![Tela de avaliação de elegibilidade e consentimento.](./evidencias/avaliar_elegibilidade.png)
+**Figura**: Tela de avaliação de elegibilidade.
+![Tela de avaliação de elegibilidade.](./evidencias/avaliar_elegibilidade.png)
 
 ### RF10 – Registrar e consultar o consentimento
 
-**Perfil:** Coordenador. O sistema permite registrar e consultar o estado do consentimento simulado dos candidatos. A API disponibiliza operações para registrar e consultar o consentimento mais recente, mantendo os registros persistidos no banco de dados.
+**Perfil:** Coordenador de estudo. O sistema permite registrar e consultar o estado do consentimento simulado dos candidatos. A API disponibiliza operações para registrar e consultar o consentimento mais recente, mantendo os registros persistidos no banco de dados.
 
-**Figura**: Tela de avaliação de elegibilidade e consentimento.
-![Tela de avaliação de elegibilidade e consentimento.](./evidencias/consentimento.png)
+Os estados previstos são:
+- **Registrado:** consentimento concedido pelo candidato.
+- **Recusado:** consentimento não concedido.
+- **Revogado:** consentimento anteriormente concedido foi revogado.
+
+**Figura**: Tela de avaliação de consentimento.
+![Tela de avaliação de consentimento.](./evidencias/consentimento.png)
 
 ### RF11 – Incluir participantes no estudo
 
-O sistema permite incluir um candidato como participante ativo de um estudo, desde que as condições necessárias sejam atendidas.
+**Perfil:** Coordenador de estudo. O sistema permite incluir um candidato como participante ativo de um estudo, desde que as condições necessárias sejam atendidas.
 
 Para efetivar a inclusão, o backend verifica se:
 - O candidato está classificado como elegível;
@@ -467,8 +530,17 @@ Para efetivar a inclusão, o backend verifica se:
 
 A operação é realizada com controle transacional no banco de dados, impedindo a inclusão quando alguma dessas condições não for atendida. Após a inclusão, o candidato passa a possuir uma participação ativa no estudo.
 
-<!-- Inserir captura Web: ação de inclusão integrada, se disponível. -->
-<!-- Inserir captura Web: validação/bloqueio de inclusão, identificando se é demonstrativo ou resposta da API. -->
+**Figura**: Tela de inclusão de participante.
+![Tela de inclusão de participante.](./evidencias/incluir_participante.png)
+
+**Figura**: Inclusão de participante concluída com sucesso.
+![Inclusão de participante concluída com sucesso.](./evidencias/inclusao_concluida.png)
+
+**Figura**: Participante com consentimento pendente, recusado ou revogado não pode ser incluído no estudo.
+![Participante com consentimento revogado não pode ser incluído no estudo.](./evidencias/consentimento_revogado.png)
+
+**Figura**: Participante inelegível não pode ser incluído no estudo.
+![Participante inelegível não pode ser incluído no estudo.](./evidencias/participante_inelegivel.png)
 
 ### Protótipos mobile produzidos na Release 1
 
@@ -497,7 +569,6 @@ No código mobile atual está presente uma implementação parcial das telas de 
 **Figura**: Protótipo mobile da tela de perfil do participante no Figma.
 <p><img src="./evidencias/mobile_perfil.png" alt="Tela de perfil do protótipo mobile no Figma" width="300"></p>
 
-
 ## 4. Tecnologias utilizadas
 
 As versões abaixo foram conferidas nos arquivos de configuração e nos lockfiles disponíveis. A versão do Node.js do backend é declarada como `>=24.15.0 <25`; os workflows web e backend usam Node.js 24.15.0, enquanto o workflow mobile usa Node.js 22.
@@ -522,6 +593,12 @@ Na raiz do repositório, execute:
 docker compose up --build
 ```
 
+As alterações nos arquivos de código disponibilizados por volumes no Compose são refletidas durante o desenvolvimento. Quando houver alterações nas dependências ou nos arquivos de configuração das imagens, reconstrua os serviços com:
+
+```powershell
+docker compose up --build -d
+```
+
 O Compose inicia o PostgreSQL, aguarda a disponibilidade do banco, aplica as migrations e executa o seed fictício do backend antes de iniciar a API e a web. Não é necessário criar arquivos `.env` nesse fluxo.
 
 | Serviço | Endereço |
@@ -532,7 +609,16 @@ O Compose inicia o PostgreSQL, aguarda a disponibilidade do banco, aplica as mig
 
 O banco do Compose usa a configuração local definida em `compose.yaml`. O volume `postgres_data` é persistente; `docker compose down` encerra os serviços sem apagar o banco. Não use `docker compose down -v` se precisar preservar os dados locais. Os parâmetros de conexão estão detalhados na documentação do [banco de dados](./sprint01/banco_de_dados/README-BD.md).
 
+```powershell
+docker compose down
+```
+
 O Compose não inicia o Expo. Para executar o aplicativo mobile em outro terminal, instale suas dependências (`npm.cmd ci --prefix mobile`) e inicie o Expo com `npm.cmd --prefix mobile run start`. Use o QR code no Expo Go conectado à mesma rede do computador ou um emulador Android configurado.
+
+```powershell
+npm.cmd ci --prefix mobile
+npm.cmd --prefix mobile run start
+```
 
 ### 5.2. Execução local sem container para a API e a web
 
@@ -585,7 +671,13 @@ Os comandos a seguir são executados na raiz do repositório. No PowerShell, `np
 
 ### 5.3. Aplicativo mobile em dispositivo, emulador e prévia
 
-Com as dependências instaladas, inicie o servidor Expo:
+Antes de executar o aplicativo mobile, instale suas dependências. Na raiz do repositório, execute:
+
+```powershell
+npm.cmd ci --prefix mobile
+```
+
+Após a instalação, inicie o servidor Expo:
 
 ```powershell
 npm.cmd --prefix mobile run start
@@ -677,7 +769,6 @@ O backlog inclui critérios de inclusão e exclusão, visitas previstas e ativid
 O acompanhamento foi planejado no Azure DevOps, com atualização de responsáveis, dependências, andamento e impedimentos. Para a organização da sprint, foi realizada uma reunião de acompanhamento em 02/11 e uma revisão das entregas e retrospectiva em 08/11, com a conclusão da Release 1 prevista para 09/11. Consulte o [planejamento](./sprint02/planejamento.md) e a [retrospectiva](./sprint02/retrospectiva.md).
 
 **Figura**: Burndown da Sprint 2.
-<!-- Inserir o burndown da Sprint 2. -->
 <p><img src="./evidencias/grafico_sprint2.png" alt="Burndown da Sprint 2." width="700"></p>
 
 ## 9. Documentação complementar
