@@ -31,13 +31,13 @@ describe('Task 3209 — fluxo de acesso e usuários', () => {
     visitWithCleanBrowser();
   });
 
-  it('redireciona para o login quando alguém tenta abrir uma rota protegida sem sessão', () => {
+  it('CYP-RF02-01 — redireciona para o login sem sessão', () => {
     cy.visit('/usuarios');
     cy.location('pathname').should('eq', '/login');
     cy.get('h1').should('contain.text', 'Acesse sua conta');
   });
 
-  it('mostra mensagem de erro para credenciais inválidas', () => {
+  it('CYP-RF02-02 — rejeita credenciais inválidas', () => {
     login('nao-existe@clinicalstudypb.test', 'SenhaErrada123!');
     cy.get('[role="alert"]')
       .should('be.visible')
@@ -45,7 +45,7 @@ describe('Task 3209 — fluxo de acesso e usuários', () => {
     cy.location('pathname').should('eq', '/login');
   });
 
-  it('impede o Pesquisador de acessar a administração de usuários', () => {
+  it('CYP-RF03-01 — bloqueia o Pesquisador na administração de usuários', () => {
     login(researcherEmail, demoPassword);
     cy.location('pathname', { timeout: 10000 }).should('eq', '/estudos');
     cy.visit('/usuarios');
@@ -53,7 +53,7 @@ describe('Task 3209 — fluxo de acesso e usuários', () => {
     cy.get('h1').should('contain.text', 'Acesso não permitido');
   });
 
-  it('mostra os menus do Coordenador e bloqueia páginas de outros perfis', () => {
+  it('CYP-RF03-02 — apresenta menu do Coordenador e restringe páginas de outros perfis', () => {
     login(coordinatorEmail, demoPassword);
     cy.location('pathname', { timeout: 10000 }).should('eq', '/coordenador/painel');
     cy.get('nav[aria-label="Menu do perfil Coordenador"]')
@@ -66,7 +66,7 @@ describe('Task 3209 — fluxo de acesso e usuários', () => {
     cy.location('pathname').should('eq', '/403');
   });
 
-  it('permite ao Administrador cadastrar, pesquisar, editar e excluir um usuário', () => {
+  it('CYP-RF01-01 — permite ao Administrador cadastrar, pesquisar, editar e excluir usuário', () => {
     const uniqueId = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
     const userName = `Usuário Cypress ${uniqueId}`;
     const userEmail = `cypress.${uniqueId}@example.test`;
@@ -113,7 +113,7 @@ describe('Task 3209 — fluxo de acesso e usuários', () => {
     cy.contains('[role="status"]', 'Conta excluída com sucesso.').should('be.visible');
   });
 
-  it('mantém a sessão após recarregar e revoga a sessão no servidor ao sair', () => {
+  it('CYP-RF02-03 — mantém a sessão após recarregar e revoga ao sair', () => {
     cy.intercept('POST', `${API_URL}/auth/logout`).as('serverLogout');
     login(adminEmail, demoAdminPassword);
     cy.location('pathname', { timeout: 10000 }).should('eq', '/usuarios');
