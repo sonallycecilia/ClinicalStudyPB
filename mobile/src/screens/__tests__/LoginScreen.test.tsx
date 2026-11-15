@@ -33,6 +33,18 @@ beforeEach(() => {
   jest.mocked(SecureStore.deleteItemAsync).mockReset().mockResolvedValue(undefined);
 });
 describe('Login mobile integrado à API', () => {
+  it.each(['Esqueci minha senha', 'Precisa de ajuda? Fale com o suporte'])('exibe aviso local em "%s" sem autenticar ou apagar os campos', async action => {
+    await setup();
+    await fireEvent.changeText(screen.getByLabelText('E-mail'), 'bianca@example.test');
+    await fireEvent.changeText(screen.getByLabelText('Senha'), 'senha-digitada');
+    await fireEvent.press(screen.getByRole('button', { name: action }));
+    expect(screen.getByText('Funcionalidade em desenvolvimento')).toBeTruthy();
+    expect(screen.getByLabelText('E-mail').props.value).toBe('bianca@example.test');
+    expect(screen.getByLabelText('Senha').props.value).toBe('senha-digitada');
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(SecureStore.setItemAsync).not.toHaveBeenCalled();
+  });
+
   it('permite testar o login na prévia sem chamar a API', async () => {
     const onLogin = jest.fn();
     await render(<AuthPreviewProvider onLogin={onLogin} onLogout={() => {}}><LoginScreen /></AuthPreviewProvider>);

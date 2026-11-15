@@ -8,6 +8,7 @@ const sources = {
   eyeOff: require('../../assets/icons/eye-off.svg'),
   profile: require('../../assets/icons/profile.svg'),
   chevron: require('../../assets/icons/chevron.svg'),
+  headphones: require('../../assets/icons/headphones.svg'),
 };
 export type IconName = keyof typeof sources;
 
