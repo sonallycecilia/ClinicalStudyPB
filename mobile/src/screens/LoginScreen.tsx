@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../auth/AuthContext';
 
 export default function LoginScreen() {
-  const { login } = useAuth();
+  const { login, message } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [visible, setVisible] = useState(false);
@@ -51,7 +51,7 @@ export default function LoginScreen() {
                 <Text style={styles.toggleText}>{visible ? 'Ocultar' : 'Mostrar'}</Text>
               </Pressable>
             </View>
-            {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.error}>{error}</Text>}
+            {!!(error || message) && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.error}>{error || message}</Text>}
             <Pressable accessibilityRole="button" accessibilityState={{ disabled: loading, busy: loading }} disabled={loading}
               onPress={() => void submit()} style={({ pressed }) => [styles.button, (loading || pressed) && styles.dimmed]}>
               {loading && <ActivityIndicator color="#FFFFFF" />}

@@ -12,17 +12,26 @@ function apiUrl() {
   throw new Error('Configure EXPO_PUBLIC_API_URL para conectar ao servidor.');
 }
 
-export async function authRequest(path: string, body?: object, token?: string) {
+export async function authRequest(path: 'login' | 'logout' | 'me', body?: object, token?: string) {
   const url = apiUrl();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
   try {
-    return await fetch(`${url}/auth/${path}`, {
-      method: 'POST',
+    const response = await fetch(`${url}/auth/${path}`, {
+      method: path === 'me' ? 'GET' : 'POST',
       headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       body: body ? JSON.stringify(body) : undefined,
       signal: controller.signal,
     });
+    let data: unknown = null;
+    if (response.ok && path !== 'logout') {
+      try { data = await response.json(); }
+      catch (error) {
+        // JSON malformado é resposta inválida; interrupção da leitura é falha de conexão.
+        if (!(error instanceof SyntaxError)) throw error;
+      }
+    }
+    return { ok: response.ok, status: response.status, data };
   } catch {
     throw new Error('Não foi possível conectar ao servidor. Confira sua conexão e tente novamente.');
   } finally { clearTimeout(timeout); }

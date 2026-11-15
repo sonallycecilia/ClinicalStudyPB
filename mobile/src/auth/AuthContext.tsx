@@ -1,19 +1,27 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { authRequest } from './api';
+import { tokenStorage } from './tokenStorage';
+import { accessError, isUser, type LoginResponse, type MeResponse, type User } from './types';
 
-export interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: 'Administrador' | 'Pesquisador' | 'Coordenador' | 'Participante';
-}
-interface Session { accessToken: string; user: User }
-interface AuthValue {
-  user: User | null;
+export type { User } from './types';
+export type AuthStatus = 'initializing' | 'unauthenticated' | 'verifying' | 'authenticated' | 'validation-error';
+interface AuthState { status: AuthStatus; user: User | null; message: string | null }
+interface AuthValue extends AuthState {
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  retry: () => Promise<void>;
 }
 const AuthContext = createContext<AuthValue | null>(null);
+const invalidResponse = 'O servidor retornou uma resposta inválida. Entre novamente.';
+const remoteWarning = 'Não foi possível confirmar a revogação no servidor. A sessão remota poderá permanecer ativa até expirar.';
+const signedOut = (message: string | null = null): AuthState => ({ status: 'unauthenticated', user: null, message });
+
+async function revoke(token: string): Promise<boolean> {
+  try {
+    const response = await authRequest('logout', undefined, token);
+    return response.ok;
+  } catch { return false; }
+}
 
 // Usado exclusivamente pelas rotas locais de prévia, sem token ou chamadas à API.
 export function AuthPreviewProvider({ children, onLogin, onLogout }: {
@@ -23,34 +31,137 @@ export function AuthPreviewProvider({ children, onLogin, onLogout }: {
 }) {
   if (!__DEV__) return null;
   return <AuthContext.Provider value={{
-    user: { id: 'preview', name: 'Bianca Oliveira (prévia)', email: 'bianca.oliveira@clinicalstudypb.test', role: 'Participante' },
+    status: 'authenticated', message: null,
+    user: { id: 'preview', name: 'Bianca Oliveira (prévia)', email: 'bianca.oliveira@clinicalstudypb.test', role: 'Participante', status: 'Ativo', phone: '', createdAt: '2026-11-01T00:00:00.000Z' },
     login: async () => { onLogin(); },
     logout: async () => { onLogout(); },
+    retry: async () => {},
   }}>{children}</AuthContext.Provider>;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  // A sessão fica apenas em memória; nunca salvamos a senha no dispositivo.
-  const [session, setSession] = useState<Session | null>(null);
-  async function login(email: string, password: string) {
-    const response = await authRequest('login', { email: email.trim(), password });
-    if (!response.ok) throw new Error(response.status === 401 ? 'E-mail ou senha inválidos.' : 'Não foi possível entrar. Tente novamente.');
-    const data = await response.json();
-    if (typeof data?.accessToken !== 'string' || !data.accessToken
-      || typeof data.user?.id !== 'string' || typeof data.user?.name !== 'string'
-      || typeof data.user?.email !== 'string'
-      || !['Administrador', 'Pesquisador', 'Coordenador', 'Participante'].includes(data.user?.role)) {
-      throw new Error('O servidor retornou uma resposta inválida. Tente novamente.');
+  const [state, setState] = useState<AuthState>({ status: 'initializing', user: null, message: null });
+  const token = useRef<string | null>(null);
+  const generation = useRef(0);
+  const busy = useRef(false);
+  const cleanupRequired = useRef(false);
+  const logoutPending = useRef<Promise<void> | null>(null);
+
+  const clearLocal = useCallback(async (id: number, message: string | null, remote = Promise.resolve(true)) => {
+    token.current = null;
+    cleanupRequired.current = true;
+    setState({ status: 'verifying', user: null, message: null });
+    let storageError: string | null = null;
+    try {
+      await tokenStorage.clear();
+      if (id === generation.current) cleanupRequired.current = false;
+    } catch (error) {
+      storageError = (error as Error).message;
     }
-    setSession(data);
+    const revoked = await remote;
+    if (id !== generation.current) return;
+    const notice = [message, storageError, !revoked ? remoteWarning : null].filter(Boolean).join(' ') || null;
+    setState(storageError ? { status: 'validation-error', user: null, message: notice } : signedOut(notice));
+  }, []);
+
+  const logout = useCallback((): Promise<void> => {
+    if (logoutPending.current) return logoutPending.current;
+    const id = ++generation.current;
+    const previousToken = token.current;
+    token.current = null;
+    busy.current = true;
+    setState({ status: 'verifying', user: null, message: null });
+    logoutPending.current = clearLocal(id, null, previousToken ? revoke(previousToken) : Promise.resolve(true)).finally(() => {
+      if (id === generation.current) busy.current = false;
+      logoutPending.current = null;
+    });
+    return logoutPending.current;
+  }, [clearLocal]);
+
+  const restore = useCallback(async () => {
+    if (busy.current) return;
+    busy.current = true;
+    const id = ++generation.current;
+    const current = () => id === generation.current;
+    try {
+      const savedToken = await (token.current ?? tokenStorage.read());
+      if (!current()) return;
+      if (!savedToken) { setState(signedOut()); return; }
+      token.current = savedToken;
+      setState({ status: 'verifying', user: null, message: null });
+      const response = await authRequest('me', undefined, savedToken);
+      if (!current()) return;
+      if (response.status >= 500 || response.status === 408 || response.status === 429) throw new Error('temporary');
+      if (!response.ok) {
+        await clearLocal(id, response.status === 401
+          ? 'Sua sessão expirou ou não está mais disponível. Entre novamente.'
+          : 'Esta conta está indisponível. Entre novamente ou contate a administração.');
+        return;
+      }
+      const data = response.data;
+      const error = isUser(data) ? accessError(data) : invalidResponse;
+      if (error) {
+        await clearLocal(id, error, revoke(savedToken));
+        return;
+      }
+      const user = data as MeResponse;
+      setState({ status: 'authenticated', user, message: null });
+    } catch (error) {
+      if (current()) setState({ status: 'validation-error', user: null, message: token.current
+        ? 'Não foi possível verificar sua sessão'
+        : (error as Error).message });
+    } finally { if (current()) busy.current = false; }
+  }, [clearLocal]);
+
+  const cancelPending = useCallback(() => {
+    ++generation.current;
+    busy.current = false;
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void Promise.resolve().then(() => { if (active) return restore(); });
+    return () => { active = false; cancelPending(); };
+  }, [restore, cancelPending]);
+
+  async function login(email: string, password: string) {
+    if (busy.current || cleanupRequired.current || state.status !== 'unauthenticated') return;
+    busy.current = true;
+    const id = ++generation.current;
+    let issuedToken: string | null = null;
+    setState(signedOut());
+    try {
+      const response = await authRequest('login', { email: email.trim(), password });
+      if (!response.ok) throw new Error(response.status === 401 ? 'E-mail ou senha inválidos, ou conta indisponível.' : 'Não foi possível entrar. Tente novamente.');
+      const candidate = response.data as Partial<LoginResponse> | null;
+      if (typeof candidate?.accessToken === 'string' && candidate.accessToken.trim()) issuedToken = candidate.accessToken;
+      if (id !== generation.current) { if (issuedToken) await revoke(issuedToken); return; }
+      if (!issuedToken || !isUser(candidate?.user)) throw new Error(invalidResponse);
+      const error = accessError(candidate.user);
+      if (error) throw new Error(error);
+      token.current = issuedToken;
+      await tokenStorage.save(issuedToken);
+      if (id !== generation.current) return;
+      setState({ status: 'authenticated', user: candidate.user, message: null });
+    } catch (error) {
+      if (id !== generation.current) return;
+      const message = (error as Error).message;
+      if (issuedToken) {
+        await clearLocal(id, message, revoke(issuedToken));
+      }
+      throw new Error(message);
+    } finally { if (id === generation.current) busy.current = false; }
   }
-  async function logout() {
-    if (!session) return;
-    const response = await authRequest('logout', undefined, session.accessToken);
-    if (!response.ok && response.status !== 401) throw new Error('Não foi possível sair. Tente novamente.');
-    setSession(null);
+
+  async function retry() {
+    if (cleanupRequired.current) await logout();
+    else {
+      setState({ status: 'verifying', user: null, message: null });
+      await restore();
+    }
   }
-  return <AuthContext.Provider value={{ user: session?.user ?? null, login, logout }}>{children}</AuthContext.Provider>;
+
+  return <AuthContext.Provider value={{ ...state, login, logout, retry }}>{children}</AuthContext.Provider>;
 }
 export function useAuth() {
   const context = useContext(AuthContext);

@@ -1,15 +1,19 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import * as SecureStore from 'expo-secure-store';
 import { AuthPreviewProvider, AuthProvider, useAuth } from '../../auth/AuthContext';
 import LoginScreen from '../LoginScreen';
 import HomeScreen from '../HomeScreen';
+import SessionScreen from '../SessionScreen';
 
+jest.mock('expo-secure-store');
+jest.setTimeout(15000);
 jest.mock('expo-constants', () => ({ __esModule: true, default: { expoConfig: { hostUri: 'localhost:8081' } } }));
 const fetchMock = jest.fn<typeof fetch>();
 Object.defineProperty(globalThis, 'fetch', { configurable: true, writable: true, value: fetchMock });
 function App() {
-  const { user } = useAuth();
-  return user ? <HomeScreen /> : <LoginScreen />;
+  const { status } = useAuth();
+  return status === 'authenticated' ? <HomeScreen /> : status === 'unauthenticated' ? <LoginScreen /> : <SessionScreen />;
 }
 async function setup() { await render(<AuthProvider><App /></AuthProvider>); }
 async function enterCredentials() {
@@ -20,9 +24,14 @@ async function enterCredentials() {
 function response(status: number, data = {}) {
   return { ok: status >= 200 && status < 300, status, json: async () => data } as Response;
 }
-const session = { accessToken: 'test-token', user: { id: 'participant', name: 'Bianca Oliveira', email: 'bianca.oliveira@clinicalstudypb.test', role: 'Participante' } };
+const session = { accessToken: 'test-token', user: { id: 'participant', name: 'Bianca Oliveira', email: 'bianca.oliveira@clinicalstudypb.test', role: 'Participante', status: 'Ativo', phone: '', createdAt: '2026-11-01T00:00:00.000Z' } };
 
-beforeEach(() => { fetchMock.mockReset(); });
+beforeEach(() => {
+  fetchMock.mockReset();
+  jest.mocked(SecureStore.getItemAsync).mockReset().mockResolvedValue(null);
+  jest.mocked(SecureStore.setItemAsync).mockReset().mockResolvedValue(undefined);
+  jest.mocked(SecureStore.deleteItemAsync).mockReset().mockResolvedValue(undefined);
+});
 describe('Login mobile integrado à API', () => {
   it('permite testar o login na prévia sem chamar a API', async () => {
     const onLogin = jest.fn();
@@ -44,7 +53,7 @@ describe('Login mobile integrado à API', () => {
   it('mostra credenciais inválidas e permite tentar novamente', async () => {
     fetchMock.mockResolvedValue(response(401));
     await setup(); await enterCredentials();
-    await waitFor(() => expect(screen.getByText('E-mail ou senha inválidos.')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('E-mail ou senha inválidos, ou conta indisponível.')).toBeTruthy());
     expect(screen.getByRole('button', { name: 'Entrar' })).toBeTruthy();
   });
   it('trata falha de rede', async () => {
@@ -65,14 +74,14 @@ describe('Login mobile integrado à API', () => {
       headers: expect.objectContaining({ Authorization: 'Bearer test-token' }),
     }));
   });
-  it('mantém a sessão se o logout falhar e permite tentar novamente', async () => {
-    fetchMock.mockResolvedValueOnce(response(201, session)).mockRejectedValueOnce(new TypeError('offline')).mockResolvedValueOnce(response(401));
+  it('encerra o acesso local se o logout falhar e informa a limitação remota', async () => {
+    fetchMock.mockResolvedValueOnce(response(201, session)).mockRejectedValueOnce(new TypeError('offline'));
     await setup(); await enterCredentials();
     await waitFor(() => expect(screen.getByText('Olá, Bianca Oliveira!')).toBeTruthy());
     await fireEvent.press(screen.getByRole('button', { name: 'Sair da conta' }));
-    await waitFor(() => expect(screen.getByText(/Não foi possível conectar ao servidor/)).toBeTruthy());
-    expect(screen.getByText('Olá, Bianca Oliveira!')).toBeTruthy();
-    await fireEvent.press(screen.getByRole('button', { name: 'Sair da conta' }));
     await waitFor(() => expect(screen.getByText('Acesse sua conta')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/A sessão remota poderá permanecer ativa até expirar/)).toBeTruthy());
+    expect(screen.queryByText('Olá, Bianca Oliveira!')).toBeNull();
+    expect(SecureStore.deleteItemAsync).toHaveBeenCalled();
   });
 });
