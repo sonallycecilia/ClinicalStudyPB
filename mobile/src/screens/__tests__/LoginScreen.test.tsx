@@ -69,7 +69,7 @@ describe('Login mobile integrado à API', () => {
       method: 'POST', body: JSON.stringify({ email: session.user.email, password: 'Demo123!' }),
     }));
     await fireEvent.press(screen.getByRole('button', { name: 'Sair da conta' }));
-    await waitFor(() => expect(screen.getByText('Acesse sua conta')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Bem-vindo de volta')).toBeTruthy());
     expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://localhost:3000/auth/logout', expect.objectContaining({
       headers: expect.objectContaining({ Authorization: 'Bearer test-token' }),
     }));
@@ -79,7 +79,7 @@ describe('Login mobile integrado à API', () => {
     await setup(); await enterCredentials();
     await waitFor(() => expect(screen.getByText('Olá, Bianca Oliveira!')).toBeTruthy());
     await fireEvent.press(screen.getByRole('button', { name: 'Sair da conta' }));
-    await waitFor(() => expect(screen.getByText('Acesse sua conta')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Bem-vindo de volta')).toBeTruthy());
     await waitFor(() => expect(screen.getByText(/A sessão remota poderá permanecer ativa até expirar/)).toBeTruthy());
     expect(screen.queryByText('Olá, Bianca Oliveira!')).toBeNull();
     expect(SecureStore.deleteItemAsync).toHaveBeenCalled();

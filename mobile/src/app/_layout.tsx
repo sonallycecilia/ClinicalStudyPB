@@ -1,7 +1,12 @@
 import { Stack, useSegments } from 'expo-router';
 import { AuthProvider, useAuth, type AuthStatus } from '../auth/AuthContext';
+import { VisualThemeProvider } from '../ui/theme';
 
 export default function RootLayout() {
+  return <VisualThemeProvider><RootNavigation /></VisualThemeProvider>;
+}
+
+function RootNavigation() {
   const segments = useSegments();
   // A prévia não inicializa armazenamento nem consulta a sessão real.
   if (__DEV__ && segments[0] === 'preview') return <RouteStack status="unauthenticated" previewOnly />;

@@ -32,7 +32,7 @@ describe('Rotas protegidas', () => {
     const app = await renderRouter('./src/app', { initialUrl: '/' });
     expect(app.getPathname()).toBe('/session');
     expect(screen.getByLabelText('Verificando sessão')).toBeTruthy();
-    expect(screen.queryByText('Acesse sua conta')).toBeNull();
+    expect(screen.queryByText('Bem-vindo de volta')).toBeNull();
     await act(async () => { resolve(null); });
     await waitFor(() => expect(app.getPathname()).toBe('/login'));
     expect(fetchMock).not.toHaveBeenCalled();
@@ -44,7 +44,7 @@ describe('Rotas protegidas', () => {
     const app = await renderRouter('./src/app', { initialUrl: '/' });
     expect(app.getPathname()).toBe('/session');
     expect(screen.getByLabelText('Verificando sessão')).toBeTruthy();
-    expect(screen.queryByText('Acesse sua conta')).toBeNull();
+    expect(screen.queryByText('Bem-vindo de volta')).toBeNull();
     expect(screen.queryByText('Olá, Bianca Oliveira!')).toBeNull();
     await act(async () => { resolve(response(200, user)); });
     await waitFor(() => expect(app.getPathname()).toBe('/'));
@@ -56,7 +56,7 @@ describe('Rotas protegidas', () => {
     const app = await renderRouter('./src/app', { initialUrl: '/' });
     expect(app.getPathname()).toBe('/session');
     expect(screen.getByText('Não foi possível verificar sua sessão')).toBeTruthy();
-    expect(screen.queryByText('Acesse sua conta')).toBeNull();
+    expect(screen.queryByText('Bem-vindo de volta')).toBeNull();
     expect(screen.getByRole('button', { name: 'Sair da conta' })).toBeTruthy();
     fetchMock.mockResolvedValueOnce(response(200, user));
     await fireEvent.press(screen.getByRole('button', { name: 'Tentar novamente' }));

@@ -33,3 +33,13 @@ A exportação usada no CI é `npx.cmd expo export --platform all --output-dir <
 Com o Expo em desenvolvimento, acesse http://localhost:8081/preview para escolher uma tela. Links diretos: `/preview/login` e `/preview/inicio`. É possível iniciar apenas o Expo com `npm.cmd --prefix mobile run web` na raiz, sem Docker ou API.
 
 O login da prévia aceita qualquer e-mail válido e senha não vazia; avança para a conta fictícia de Bianca. Sair retorna ao login da prévia. Nenhuma chamada é feita ao backend, e a sessão real permanece separada. O aviso amarelo identifica a simulação. As rotas de prévia são bloqueadas fora do desenvolvimento. Atualmente só Login e Inicial da conta estão implementadas; as demais telas do Figma não estão no repositório.
+
+## Referência visual do Mobile
+
+As telas de login, conta e verificação da sessão adaptam o ZIP `ClinicalStudyPB - mobile.zip` do Figma Make para componentes nativos. A paleta está em `src/ui/theme.tsx`; `Brand` e `Field` compartilham o logotipo, a tipografia e a aparência dos campos. O SVG original de `public/assets/29700.svg` foi preservado em `assets/brand/clinicalstudypb.svg`, e os ícones vetoriais foram adaptados do código do protótipo para arquivos SVG locais.
+
+A fonte Manrope é empacotada com o aplicativo e carregada com `expo-font`, sem depender do Google Fonts na rede. Durante o carregamento ou em caso de falha, a fonte nativa mantém a interface disponível. `expo-image` renderiza os SVGs em Android, iOS e web. Essas bibliotecas são compatíveis com o Expo Go do SDK 58.
+
+O dashboard foi adaptado ao conteúdo existente: cabeçalho, dados reais da conta e logout. Não exibe estudos ou visitas fictícios, abas sem conteúdo, notificações, recuperação de senha ou suporte sem implementação. O login continua aceitando somente e-mail. Sombras, foco e fundos decorativos são aproximações nativas dos efeitos CSS; a renderização pode variar entre Android e iOS. As telas permitem rolagem, respeitam as áreas seguras e limitam a largura do conteúdo em telas maiores.
+
+Para conferir no Expo Go após atualizar as dependências, reinicie o Metro (`npm.cmd --prefix mobile run start -- --clear`) e abra o QR code no dispositivo. Verifique os campos com o teclado aberto, mostrar/ocultar senha, mensagens de erro, restauração e saída da conta, além de tamanhos maiores de fonte nas configurações do aparelho. A prévia permite conferir login e conta sem API; os cenários reais de autenticação exigem o backend.
