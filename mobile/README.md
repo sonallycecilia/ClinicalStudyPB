@@ -8,7 +8,7 @@ No desenvolvimento, usa `localhost:3000` na web ou o host do Metro na porta 3000
 
 O backend permite a origem web `http://localhost:8081`. Para outro endereço no navegador, configure `MOBILE_WEB_ORIGIN` no backend e reinicie a API.
 
-Conta de participante: `bianca.oliveira@clinicalstudypb.test`, senha `Demo123!`. As contas precisam ter sido criadas pelo seed descrito no README principal. O Mobile permite somente contas ativas com perfil `Participante`; os demais perfis são recusados, com tentativa de revogação do token emitido. O acompanhamento ainda não está implementado.
+Conta de participante: `bianca.oliveira@clinicalstudypb.test`, senha `Demo123!`. As contas precisam ter sido criadas pelo seed descrito no README principal. O Mobile permite somente contas ativas com perfil `Participante`; os demais perfis são recusados, com tentativa de revogação do token emitido. A tela de estudos e seus estados estão preparados, mas a consulta autenticada aguarda a S3-BE-07 e sua integração definitiva será feita na S3-MOB-05. Até lá, o aplicativo não exibe estudos simulados nem usa `GET /studies`.
 
 O login usa `POST /auth/login`. Em Android/iOS, apenas o accessToken é persistido com `expo-secure-store`; senha e dados do usuário não são persistidos. Na web, o token fica somente em memória e recarregar a página exige novo login. Ao iniciar no dispositivo, o aplicativo consulta `GET /auth/me` com Bearer e só libera a tela inicial após validar a resposta, o perfil e a conta ativa. Não usa os dados decodificados do JWT como autorização.
 
@@ -32,7 +32,7 @@ A exportação usada no CI é `npx.cmd expo export --platform all --output-dir <
 
 Com o Expo em desenvolvimento, acesse http://localhost:8081/preview para escolher uma tela. Links diretos: `/preview/login` e `/preview/inicio`. É possível iniciar apenas o Expo com `npm.cmd --prefix mobile run web` na raiz, sem Docker ou API.
 
-O login da prévia aceita qualquer e-mail válido e senha não vazia; avança para a conta fictícia de Bianca. Sair retorna ao login da prévia. Nenhuma chamada é feita ao backend, e a sessão real permanece separada. O aviso amarelo identifica a simulação. As rotas de prévia são bloqueadas fora do desenvolvimento. Atualmente só Login e Inicial da conta estão implementadas; as demais telas do Figma não estão no repositório.
+O login da prévia aceita qualquer e-mail válido e senha não vazia; avança para a conta fictícia de Bianca. Sair retorna ao login da prévia. Nenhuma chamada é feita ao backend, e a sessão real permanece separada. O aviso amarelo identifica a simulação. As rotas de prévia são bloqueadas fora do desenvolvimento. Login e Inicial da conta estão implementadas; a lista de estudos mostra o estado de dependência da S3-BE-07, sem dados fictícios. As demais telas do Figma não estão no repositório.
 
 ## Referência visual do Mobile
 
