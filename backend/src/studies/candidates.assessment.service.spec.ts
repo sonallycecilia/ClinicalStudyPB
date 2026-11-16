@@ -85,6 +85,38 @@ describe('CandidatesService avaliação de elegibilidade', () => {
       .toEqual([studyId, candidateId, 'Elegível']);
   });
 
+  it('atualiza as avaliações atuais ao reavaliar sem criar uma linha por resposta anterior', async () => {
+    const updatedEvaluations = [
+      { id: 'assessment-1', criterionId: inclusionId, result: 'Não atende' },
+      { id: 'assessment-2', criterionId: exclusionId, result: 'Não atende' },
+    ];
+    txQuery
+      .mockResolvedValueOnce({ rows: [{ status: StudyStatus.Recrutamento }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ status: 'Elegível' }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: criteria, rowCount: criteria.length })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ status: 'Inelegível' }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: updatedEvaluations, rowCount: updatedEvaluations.length });
+
+    await expect(service.evaluate(studyId, candidateId, {
+      evaluations: [
+        { criterionId: inclusionId, result: 'Não atende' },
+        { criterionId: exclusionId, result: 'Não atende' },
+      ],
+    }, researcherId)).resolves.toMatchObject({
+      status: 'Inelegível',
+      evaluations: updatedEvaluations,
+    });
+
+    const writes = txQuery.mock.calls.filter(([sql]) => sql.includes('INSERT INTO avaliacoes_elegibilidade'));
+    expect(writes).toHaveLength(2);
+    expect(writes.every(([sql]) => /ON CONFLICT \(id_candidato, id_criterio\)\s+DO UPDATE/.test(sql))).toBe(true);
+    expect(writes.map(([, values]) => values?.[3])).toEqual(['Não atende', 'Não atende']);
+    expect(txQuery.mock.calls.find(([sql]) => sql.includes('UPDATE candidatos'))?.[1])
+      .toEqual([studyId, candidateId, 'Inelegível']);
+  });
+
   it('persiste a reprovação por critério e marca o candidato como inelegível', async () => {
     mockSuccessfulAssessment('Inelegível', []);
     const result = await service.evaluate(studyId, candidateId, {
