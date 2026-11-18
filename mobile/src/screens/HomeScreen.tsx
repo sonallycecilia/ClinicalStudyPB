@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useAuth, type User } from '../auth/AuthContext';
-import { Brand } from '../components/Brand';
+import { DashboardScaffold } from '../components/DashboardScaffold';
 import { participantStudiesService, type ParticipantStudy } from '../studies/participantStudiesApi';
-import { colors, layout, shadows, useTypography } from '../ui/theme';
+import { colors, shadows, useTypography } from '../ui/theme';
 
 type StudiesState =
   | { kind: 'success'; sessionUser: User; requestId: number; studies: ParticipantStudy[] }
@@ -17,7 +16,7 @@ const studyStatusLabels: Record<ParticipantStudy['status'], string> = {
   encerrado: 'Encerrado',
 };
 
-export default function HomeScreen() {
+export default function HomeScreen({ profile = false }: { profile?: boolean }) {
   const { status, user, logout } = useAuth();
   const [logoutLoading, setLogoutLoading] = useState(false);
   const [logoutError, setLogoutError] = useState('');
@@ -29,7 +28,7 @@ export default function HomeScreen() {
   const initials = names.slice(0, 2).map(name => name[0]).join('').toLocaleUpperCase('pt-BR');
 
   useEffect(() => {
-    if (!participantActive || !user) return;
+    if (!participantActive || !user || profile) return;
 
     let active = true;
     void participantStudiesService.listForAuthenticatedParticipant().then(
@@ -45,7 +44,7 @@ export default function HomeScreen() {
       },
     );
     return () => { active = false; };
-  }, [participantActive, retryCount, user]);
+  }, [participantActive, retryCount, user, profile]);
 
   async function signOut() {
     if (logoutLoading) return;
@@ -63,23 +62,8 @@ export default function HomeScreen() {
     : { kind: 'loading' as const };
 
   return (
-    <SafeAreaView edges={['left', 'right', 'bottom']} style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.page}>
-          <SafeAreaView edges={['top']} style={styles.header}>
-            <View pointerEvents="none" accessible={false} style={styles.decoration} />
-            <View style={styles.headerContent}>
-              <View style={styles.headerRow}>
-                <Brand compact />
-                <View accessible={false} style={styles.headerAvatar}><Text maxFontSizeMultiplier={1.5} style={[styles.headerInitials, type.extraBold]}>{initials}</Text></View>
-              </View>
-              <View style={styles.greeting}>
-                <Text accessibilityRole="header" style={[styles.title, type.extraBold]}>Olá, {user.name}!</Text>
-                <Text style={[styles.subtitle, type.regular]}>É bom ter você por aqui.</Text>
-              </View>
-            </View>
-          </SafeAreaView>
-          <View style={styles.body}>
+    <DashboardScaffold activeTab={profile ? 'profile' : 'studies'}>
+      {!profile && <>
             <Text style={[styles.eyebrow, type.extraBold]}>SEU ACOMPANHAMENTO</Text>
             <Text accessibilityRole="header" style={[styles.sectionTitle, type.extraBold]}>Meus Estudos Clínicos</Text>
             {visibleStudiesState.kind === 'loading' && (
@@ -121,6 +105,8 @@ export default function HomeScreen() {
                 </Pressable>
               </View>
             )}
+      </>}
+      {profile && (
             <View style={styles.accountSection}>
               <Text style={[styles.eyebrow, type.extraBold]}>SEU ACESSO</Text>
               <Text accessibilityRole="header" style={[styles.sectionTitle, type.extraBold]}>Minha conta</Text>
@@ -136,27 +122,12 @@ export default function HomeScreen() {
                 </Pressable>
               </View>
             </View>
-          </View>
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+      )}
+    </DashboardScaffold>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: colors.canvas },
-  content: { flexGrow: 1, alignItems: 'center', paddingBottom: 24 },
-  page: { width: '100%', maxWidth: layout.maxWidth },
-  header: { backgroundColor: colors.white, borderBottomLeftRadius: 32, borderBottomRightRadius: 32, overflow: 'hidden', boxShadow: shadows.header },
-  decoration: { position: 'absolute', right: -80, top: -112, width: 256, height: 256, borderRadius: 128, backgroundColor: colors.brandPale, opacity: 0.7 },
-  headerContent: { paddingHorizontal: 24, paddingTop: 24, paddingBottom: 28 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  headerAvatar: { width: 44, height: 44, borderRadius: 16, backgroundColor: colors.avatar, alignItems: 'center', justifyContent: 'center' },
-  headerInitials: { fontSize: 14, color: colors.brandDark },
-  greeting: { marginTop: 32 },
-  title: { fontSize: 28, color: colors.ink, letterSpacing: -0.98, lineHeight: 36 },
-  subtitle: { fontSize: 14, color: colors.muted, marginTop: 8, lineHeight: 22 },
-  body: { paddingHorizontal: 20, paddingTop: 28 },
   eyebrow: { fontSize: 12, color: colors.brand, letterSpacing: 1.68, marginBottom: 4 },
   sectionTitle: { fontSize: 23, color: colors.ink, letterSpacing: -0.575, marginBottom: 20 },
   studyList: { gap: 16 },
@@ -172,7 +143,7 @@ const styles = StyleSheet.create({
   loading: { minHeight: 88, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: colors.white, borderRadius: 22, borderWidth: 1, borderColor: colors.line },
   stateCard: { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.white, padding: 20, borderRadius: 22, borderWidth: 1, borderColor: colors.line, boxShadow: shadows.card },
   stateText: { fontSize: 14, color: colors.muted, lineHeight: 22, textAlign: 'center' },
-  accountSection: { marginTop: 32 },
+  accountSection: { },
   accountCard: { backgroundColor: colors.white, padding: 24, borderRadius: 22, borderWidth: 1, borderColor: colors.line, alignItems: 'center', boxShadow: shadows.card },
   avatar: { width: 64, height: 64, borderRadius: 16, backgroundColor: colors.avatar, alignItems: 'center', justifyContent: 'center' },
   initials: { fontSize: 20, color: colors.brandDark },

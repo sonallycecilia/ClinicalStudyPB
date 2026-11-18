@@ -13,6 +13,8 @@ export const colors = {
   brandPale: '#E7F5F3', skyPale: '#DCF3F0', ink: '#153532', muted: '#647B77',
   placeholder: '#94A6A3', line: '#E0EBE9', surface: '#F4F9F8', canvas: '#F2F7F6',
   avatar: '#D7EEEB', alert: '#A92E36', alertPale: '#FFF4F3', alertLine: '#FFD8D5',
+  success: '#16784A', successSoft: '#E6F7EF', alertDark: '#C83C44', notification: '#EF5B5B',
+  preparation: '#FFF8E8', preparationDark: '#956410', preparationLine: '#F3DFB0',
 };
 export const layout = { maxWidth: 430 };
 export const shadows = {
