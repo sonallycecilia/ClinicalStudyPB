@@ -23,22 +23,6 @@ async function revoke(token: string): Promise<boolean> {
   } catch { return false; }
 }
 
-// Usado exclusivamente pelas rotas locais de prévia, sem token ou chamadas à API.
-export function AuthPreviewProvider({ children, onLogin, onLogout }: {
-  children: ReactNode;
-  onLogin: () => void;
-  onLogout: () => void;
-}) {
-  if (!__DEV__) return null;
-  return <AuthContext.Provider value={{
-    status: 'authenticated', message: null,
-    user: { id: 'preview', name: 'Bianca Oliveira (prévia)', email: 'bianca.oliveira@clinicalstudypb.test', role: 'Participante', status: 'Ativo', phone: '', createdAt: '2026-11-01T00:00:00.000Z' },
-    login: async () => { onLogin(); },
-    logout: async () => { onLogout(); },
-    retry: async () => {},
-  }}>{children}</AuthContext.Provider>;
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({ status: 'initializing', user: null, message: null });
   const token = useRef<string | null>(null);

@@ -1,16 +1,9 @@
-import { Stack, useSegments } from 'expo-router';
+import { Stack } from 'expo-router';
 import { AuthProvider, useAuth, type AuthStatus } from '../auth/AuthContext';
 import { VisualThemeProvider } from '../ui/theme';
 
 export default function RootLayout() {
-  return <VisualThemeProvider><RootNavigation /></VisualThemeProvider>;
-}
-
-function RootNavigation() {
-  const segments = useSegments();
-  // A prévia não inicializa armazenamento nem consulta a sessão real.
-  if (__DEV__ && segments[0] === 'preview') return <RouteStack status="unauthenticated" previewOnly />;
-  return <AuthProvider><Navigation /></AuthProvider>;
+  return <VisualThemeProvider><AuthProvider><Navigation /></AuthProvider></VisualThemeProvider>;
 }
 
 function Navigation() {
@@ -18,20 +11,19 @@ function Navigation() {
   return <RouteStack status={status} participant={user?.role === 'Participante' && user.status === 'Ativo'} />;
 }
 
-function RouteStack({ status, participant = false, previewOnly = false }: { status: AuthStatus; participant?: boolean; previewOnly?: boolean }) {
+function RouteStack({ status, participant = false }: { status: AuthStatus; participant?: boolean }) {
   return (
     <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Protected guard={!previewOnly && status === 'unauthenticated'}>
+      <Stack.Protected guard={status === 'unauthenticated'}>
         <Stack.Screen name="login" />
       </Stack.Protected>
-      <Stack.Protected guard={!previewOnly && status === 'authenticated' && participant}>
+      <Stack.Protected guard={status === 'authenticated' && participant}>
         <Stack.Screen name="index" />
+        <Stack.Screen name="visitas" />
+        <Stack.Screen name="perfil" />
       </Stack.Protected>
-      <Stack.Protected guard={!previewOnly && (status === 'initializing' || status === 'verifying' || status === 'validation-error')}>
+      <Stack.Protected guard={status === 'initializing' || status === 'verifying' || status === 'validation-error'}>
         <Stack.Screen name="session" />
-      </Stack.Protected>
-      <Stack.Protected guard={__DEV__}>
-        <Stack.Screen name="preview" />
       </Stack.Protected>
     </Stack>
   );

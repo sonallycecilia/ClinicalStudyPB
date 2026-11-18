@@ -45,10 +45,10 @@ describe('Rotas protegidas', () => {
     expect(app.getPathname()).toBe('/session');
     expect(screen.getByLabelText('Verificando sessão')).toBeTruthy();
     expect(screen.queryByText('Bem-vindo de volta')).toBeNull();
-    expect(screen.queryByText('Olá, Bianca Oliveira!')).toBeNull();
+    expect(screen.queryByText('Olá, Bianca')).toBeNull();
     await act(async () => { resolve(response(200, user)); });
     await waitFor(() => expect(app.getPathname()).toBe('/'));
-    expect(screen.getByText('Olá, Bianca Oliveira!')).toBeTruthy();
+    expect(screen.getByText('Olá, Bianca')).toBeTruthy();
   });
 
   it('oferece nova tentativa após erro de rede e remove rota protegida após logout', async () => {
@@ -62,9 +62,10 @@ describe('Rotas protegidas', () => {
     await fireEvent.press(screen.getByRole('button', { name: 'Tentar novamente' }));
     await waitFor(() => expect(app.getPathname()).toBe('/'));
     fetchMock.mockResolvedValueOnce(response(201));
+    await fireEvent.press(screen.getByRole('tab', { name: 'Perfil' }));
     await fireEvent.press(screen.getByRole('button', { name: 'Sair da conta' }));
     await waitFor(() => expect(app.getPathname()).toBe('/login'));
-    expect(screen.queryByText('Olá, Bianca Oliveira!')).toBeNull();
+    expect(screen.queryByText('Olá, Bianca')).toBeNull();
     expect(app.getRouterState()?.routes.map(route => route.name)).not.toContain('index');
   });
 
@@ -73,22 +74,8 @@ describe('Rotas protegidas', () => {
     const app = await renderRouter('./src/app', { initialUrl: '/' });
     expect(app.getPathname()).toBe('/login');
     expect(screen.getByText(/Entre novamente/)).toBeTruthy();
-    expect(screen.queryByText('Olá, Bianca Oliveira!')).toBeNull();
+    expect(screen.queryByText('Olá, Bianca')).toBeNull();
   });
 
-  it('abre e navega na prévia sem ler token nem consultar a API real', async () => {
-    const app = await renderRouter('./src/app', { initialUrl: '/preview/login' });
-    expect(screen.getByText('PRÉVIA · Dados fictícios · Sem backend')).toBeTruthy();
-    await fireEvent.changeText(screen.getByLabelText('E-mail'), 'preview@example.test');
-    await fireEvent.changeText(screen.getByLabelText('Senha'), 'preview');
-    await fireEvent.press(screen.getByRole('button', { name: 'Entrar' }));
-    await waitFor(() => expect(app.getPathname()).toBe('/preview/inicio'));
-    expect(screen.getByText('Olá, Bianca Oliveira (prévia)!')).toBeTruthy();
-    await fireEvent.press(screen.getByRole('button', { name: 'Sair da conta' }));
-    await waitFor(() => expect(app.getPathname()).toBe('/preview/login'));
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(SecureStore.getItemAsync).not.toHaveBeenCalled();
-    expect(SecureStore.setItemAsync).not.toHaveBeenCalled();
-    expect(SecureStore.deleteItemAsync).not.toHaveBeenCalled();
-  });
+
 });

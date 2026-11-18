@@ -1,9 +1,9 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import * as SecureStore from 'expo-secure-store';
-import { AuthPreviewProvider, AuthProvider, useAuth } from '../../auth/AuthContext';
+import { AuthProvider, useAuth } from '../../auth/AuthContext';
 import LoginScreen from '../LoginScreen';
-import HomeScreen from '../HomeScreen';
+import ProfileScreen from '../ProfileScreen';
 import SessionScreen from '../SessionScreen';
 
 jest.mock('expo-secure-store');
@@ -13,7 +13,7 @@ const fetchMock = jest.fn<typeof fetch>();
 Object.defineProperty(globalThis, 'fetch', { configurable: true, writable: true, value: fetchMock });
 function App() {
   const { status } = useAuth();
-  return status === 'authenticated' ? <HomeScreen /> : status === 'unauthenticated' ? <LoginScreen /> : <SessionScreen />;
+  return status === 'authenticated' ? <ProfileScreen /> : status === 'unauthenticated' ? <LoginScreen /> : <SessionScreen />;
 }
 async function setup() { await render(<AuthProvider><App /></AuthProvider>); }
 async function enterCredentials() {
@@ -45,13 +45,6 @@ describe('Login mobile integrado à API', () => {
     expect(SecureStore.setItemAsync).not.toHaveBeenCalled();
   });
 
-  it('permite testar o login na prévia sem chamar a API', async () => {
-    const onLogin = jest.fn();
-    await render(<AuthPreviewProvider onLogin={onLogin} onLogout={() => {}}><LoginScreen /></AuthPreviewProvider>);
-    await enterCredentials();
-    await waitFor(() => expect(onLogin).toHaveBeenCalledTimes(1));
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
   it('valida campos obrigatórios e e-mail sem chamar a API', async () => {
     await setup();
     await fireEvent.press(screen.getByRole('button', { name: 'Entrar' }));
@@ -76,7 +69,7 @@ describe('Login mobile integrado à API', () => {
   it('autentica, mostra a conta e revoga a sessão ao sair', async () => {
     fetchMock.mockResolvedValueOnce(response(201, session)).mockResolvedValueOnce(response(201));
     await setup(); await enterCredentials();
-    await waitFor(() => expect(screen.getByText('Olá, Bianca Oliveira!')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Olá, Bianca')).toBeTruthy());
     expect(fetchMock).toHaveBeenNthCalledWith(1, 'http://localhost:3000/auth/login', expect.objectContaining({
       method: 'POST', body: JSON.stringify({ email: session.user.email, password: 'Demo123!' }),
     }));
@@ -89,11 +82,11 @@ describe('Login mobile integrado à API', () => {
   it('encerra o acesso local se o logout falhar e informa a limitação remota', async () => {
     fetchMock.mockResolvedValueOnce(response(201, session)).mockRejectedValueOnce(new TypeError('offline'));
     await setup(); await enterCredentials();
-    await waitFor(() => expect(screen.getByText('Olá, Bianca Oliveira!')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Olá, Bianca')).toBeTruthy());
     await fireEvent.press(screen.getByRole('button', { name: 'Sair da conta' }));
     await waitFor(() => expect(screen.getByText('Bem-vindo de volta')).toBeTruthy());
     await waitFor(() => expect(screen.getByText(/A sessão remota poderá permanecer ativa até expirar/)).toBeTruthy());
-    expect(screen.queryByText('Olá, Bianca Oliveira!')).toBeNull();
+    expect(screen.queryByText('Olá, Bianca')).toBeNull();
     expect(SecureStore.deleteItemAsync).toHaveBeenCalled();
   });
 });

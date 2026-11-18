@@ -9,6 +9,14 @@ const sources = {
   profile: require('../../assets/icons/profile.svg'),
   chevron: require('../../assets/icons/chevron.svg'),
   headphones: require('../../assets/icons/headphones.svg'),
+  calendar: require('../../assets/icons/calendar.svg'),
+  visits: require('../../assets/icons/visits.svg'),
+  studies: require('../../assets/icons/studies.svg'),
+  clock: require('../../assets/icons/clock.svg'),
+  location: require('../../assets/icons/location.svg'),
+  alert: require('../../assets/icons/alert.svg'),
+  arrowLeft: require('../../assets/icons/arrow-left.svg'),
+  bell: require('../../assets/icons/bell.svg'),
 };
 export type IconName = keyof typeof sources;
 

@@ -101,7 +101,7 @@ describe('HomeScreen — estudos do participante', () => {
     });
 
     expect(screen.queryByText('Qualidade do sono')).toBeNull();
-    expect(screen.queryByText('Olá, Bianca Oliveira!')).toBeNull();
+    expect(screen.queryByText('Olá, Bianca')).toBeNull();
   });
 
   it('ignora respostas de uma sessão anterior após a troca de participante', async () => {
