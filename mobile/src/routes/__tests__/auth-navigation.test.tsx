@@ -14,7 +14,7 @@ function response(status: number, data: unknown = {}) {
 const previousUrl = process.env.EXPO_PUBLIC_API_URL;
 beforeEach(() => {
   process.env.EXPO_PUBLIC_API_URL = 'http://localhost:3000';
-  fetchMock.mockReset();
+  fetchMock.mockReset().mockResolvedValue(response(200, []));
   jest.mocked(SecureStore.getItemAsync).mockReset().mockResolvedValue('saved-token');
   jest.mocked(SecureStore.setItemAsync).mockReset().mockResolvedValue(undefined);
   jest.mocked(SecureStore.deleteItemAsync).mockReset().mockResolvedValue(undefined);
@@ -75,6 +75,22 @@ describe('Rotas protegidas', () => {
     expect(app.getPathname()).toBe('/login');
     expect(screen.getByText(/Entre novamente/)).toBeTruthy();
     expect(screen.queryByText('Olá, Bianca')).toBeNull();
+  });
+
+  it.each(['studies', 'visits'])('retorna ao login quando a consulta de %s recebe 401', async resource => {
+    fetchMock.mockImplementation(async url => {
+      if (String(url).endsWith('/auth/me')) return response(200, user);
+      return response(String(url).includes(`/me/${resource}`) ? 401 : 200, []);
+    });
+    const app = await renderRouter('./src/app', { initialUrl: '/' });
+    if (resource === 'visits') {
+      await waitFor(() => expect(app.getPathname()).toBe('/'));
+      await fireEvent.press(screen.getByRole('tab', { name: 'Visitas' }));
+    }
+    await waitFor(() => expect(app.getPathname()).toBe('/login'));
+    expect(screen.getByText(/Entre novamente/)).toBeTruthy();
+    expect(screen.queryByText('Olá, Bianca')).toBeNull();
+    expect(SecureStore.deleteItemAsync).toHaveBeenCalled();
   });
 
 

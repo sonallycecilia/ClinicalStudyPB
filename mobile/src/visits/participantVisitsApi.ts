@@ -1,3 +1,6 @@
+import type { AuthenticatedHttpClient } from '../api/http';
+import { hasStrings, invalidListResponse, isDate, isRecord } from '../api/validation';
+
 export type VisitStatus = 'Agendada' | 'Realizada' | 'Ausente' | 'Cancelada';
 export type VisitScope = 'upcoming' | 'history';
 
@@ -23,19 +26,25 @@ export interface Visit extends ParticipantVisit {
 }
 
 export interface ParticipantVisitsService {
-  listForAuthenticatedParticipant(scope: VisitScope): Promise<Visit[]>;
+  listForAuthenticatedParticipant(scope: VisitScope, client: AuthenticatedHttpClient): Promise<Visit[]>;
 }
 
-export class ParticipantVisitsUnavailableError extends Error {
-  constructor() {
-    super('A consulta das visitas do participante ainda não está disponível. Aguarde a implementação da S3-BE-07.');
-    this.name = 'ParticipantVisitsUnavailableError';
-  }
+function isParticipantVisit(value: unknown): value is ParticipantVisit {
+  return isRecord(value)
+    && hasStrings(value, ['id', 'participationId', 'studyId', 'studyTitle', 'plannedVisitName'])
+    && Number.isInteger(value.plannedVisitOrder)
+    && isDate(value.scheduledAt)
+    && ['Agendada', 'Realizada', 'Ausente', 'Cancelada'].includes(value.status as string)
+    && (value.realizedAt === null || isDate(value.realizedAt));
 }
 
 // No /studies/:id/visits fallback: that route is RF06 and is not participant data.
 export const participantVisitsService: ParticipantVisitsService = {
-  async listForAuthenticatedParticipant() { throw new ParticipantVisitsUnavailableError(); },
+  async listForAuthenticatedParticipant(scope, client) {
+    const data = await client.get(`/me/visits?scope=${encodeURIComponent(scope)}`);
+    if (!Array.isArray(data) || !data.every(isParticipantVisit)) throw invalidListResponse();
+    return data;
+  },
 };
 
 export function visitsForScope(visits: Visit[], scope: VisitScope): Visit[] {

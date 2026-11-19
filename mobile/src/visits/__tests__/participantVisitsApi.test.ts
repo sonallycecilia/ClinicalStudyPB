@@ -4,13 +4,18 @@ import { visits } from '../../../tests/fixtures/visits';
 import { calendarCells, localDateKey } from '../../components/VisitDatePicker';
 
 describe('RF18 — contrato e isolamento', () => {
-  it('não consulta endpoints RF06 nem oferece mocks no serviço real', async () => {
-    const fetchSpy = jest.spyOn(globalThis, 'fetch');
-    try {
-      await expect(participantVisitsService.listForAuthenticatedParticipant('upcoming')).rejects.toThrow('S3-BE-07');
-      await expect(participantVisitsService.listForAuthenticatedParticipant('history')).rejects.toThrow('S3-BE-07');
-      expect(fetchSpy).not.toHaveBeenCalled();
-    } finally { fetchSpy.mockRestore(); }
+  it.each(['upcoming', 'history'] as const)('consulta apenas E10 com scope=%s, sem identificadores de terceiros', async scope => {
+    const data = visitsForScope(visits, scope).map(({ code, location, preparation, ...visit }) => visit);
+    const client = { get: jest.fn<() => Promise<unknown>>().mockResolvedValue(data) };
+    await expect(participantVisitsService.listForAuthenticatedParticipant(scope, client)).resolves.toEqual(data);
+    expect(client.get.mock.calls).toEqual([[`/me/visits?scope=${scope}`]]);
+  });
+  it.each(['upcoming', 'history'] as const)('aceita lista vazia em %s', async scope => {
+    await expect(participantVisitsService.listForAuthenticatedParticipant(scope, { get: async () => [] })).resolves.toEqual([]);
+  });
+  it.each([null, {}, { data: visits }, [{ ...visits[0], status: 'Inválido' }],
+    [{ ...visits[0], scheduledAt: 'inválida' }], [{ ...visits[0], plannedVisitOrder: '1' }]])('recusa resposta fora de E10: %j', async data => {
+    await expect(participantVisitsService.listForAuthenticatedParticipant('upcoming', { get: async () => data })).rejects.toThrow('formato inválido');
   });
   it('ordena próximas em ordem crescente e inclui agendamentos vencidos (E10)', () => {
     const overdue = { ...visits[0], id: 'overdue', scheduledAt: '2020-01-01T12:00:00Z' };

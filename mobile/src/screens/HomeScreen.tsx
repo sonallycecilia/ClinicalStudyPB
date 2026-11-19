@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useAuth, type User } from '../auth/AuthContext';
+import type { AuthenticatedHttpClient } from '../api/http';
 import { DashboardScaffold } from '../components/DashboardScaffold';
 import { participantStudiesService, type ParticipantStudy } from '../studies/participantStudiesApi';
 import { colors, shadows, useTypography } from '../ui/theme';
 
 type StudiesState =
-  | { kind: 'success'; sessionUser: User; requestId: number; studies: ParticipantStudy[] }
-  | { kind: 'error'; sessionUser: User; requestId: number; message: string };
+  | { kind: 'success'; sessionUser: User; client: AuthenticatedHttpClient; requestId: number; studies: ParticipantStudy[] }
+  | { kind: 'error'; sessionUser: User; client: AuthenticatedHttpClient; requestId: number; message: string };
 
-const studyStatusLabels: Record<ParticipantStudy['status'], string> = {
+const studyStatusLabels: Record<ParticipantStudy['study']['status'], string> = {
   planejamento: 'Planejamento',
   recrutamento: 'Recrutamento',
   execução: 'Em execução',
@@ -17,7 +18,7 @@ const studyStatusLabels: Record<ParticipantStudy['status'], string> = {
 };
 
 export default function HomeScreen({ profile = false }: { profile?: boolean }) {
-  const { status, user, logout } = useAuth();
+  const { status, user, logout, client } = useAuth();
   const [logoutLoading, setLogoutLoading] = useState(false);
   const [logoutError, setLogoutError] = useState('');
   const [studiesState, setStudiesState] = useState<StudiesState | null>(null);
@@ -28,23 +29,23 @@ export default function HomeScreen({ profile = false }: { profile?: boolean }) {
   const initials = names.slice(0, 2).map(name => name[0]).join('').toLocaleUpperCase('pt-BR');
 
   useEffect(() => {
-    if (!participantActive || !user || profile) return;
+    if (!participantActive || !user || !client || profile) return;
 
     let active = true;
-    void participantStudiesService.listForAuthenticatedParticipant().then(
+    void participantStudiesService.listForAuthenticatedParticipant(client).then(
       studies => {
-        if (active) setStudiesState({ kind: 'success', sessionUser: user, requestId: retryCount, studies });
+        if (active) setStudiesState({ kind: 'success', sessionUser: user, client, requestId: retryCount, studies });
       },
       reason => {
         if (!active) return;
         const message = reason instanceof Error && reason.message.trim()
           ? reason.message
           : 'Não foi possível carregar seus estudos. Tente novamente.';
-        setStudiesState({ kind: 'error', sessionUser: user, requestId: retryCount, message });
+        setStudiesState({ kind: 'error', sessionUser: user, client, requestId: retryCount, message });
       },
     );
     return () => { active = false; };
-  }, [participantActive, retryCount, user, profile]);
+  }, [participantActive, retryCount, user, client, profile]);
 
   async function signOut() {
     if (logoutLoading) return;
@@ -57,7 +58,7 @@ export default function HomeScreen({ profile = false }: { profile?: boolean }) {
 
   if (!participantActive || !user) return null;
 
-  const visibleStudiesState = studiesState?.sessionUser === user && studiesState.requestId === retryCount
+  const visibleStudiesState = studiesState?.sessionUser === user && studiesState.client === client && studiesState.requestId === retryCount
     ? studiesState
     : { kind: 'loading' as const };
 
@@ -79,8 +80,8 @@ export default function HomeScreen({ profile = false }: { profile?: boolean }) {
             )}
             {visibleStudiesState.kind === 'success' && visibleStudiesState.studies.length > 0 && (
               <View style={styles.studyList}>
-                {visibleStudiesState.studies.map(study => (
-                  <View key={study.id} style={styles.studyCard}>
+                {visibleStudiesState.studies.map(({ study, participationId, participationStatus }) => (
+                  <View key={participationId} style={styles.studyCard}>
                     <View accessible={false} style={styles.studyAccent} />
                     <View style={styles.studyContent}>
                       <View style={styles.statusRow}>
@@ -91,6 +92,7 @@ export default function HomeScreen({ profile = false }: { profile?: boolean }) {
                       </View>
                       <Text accessibilityRole="header" style={[styles.studyTitle, type.extraBold]}>{study.title}</Text>
                       <Text numberOfLines={3} style={[styles.studyDescription, type.regular]}>{study.objective}</Text>
+                      <Text style={[styles.studyDescription, type.regular]}>Participação: {participationStatus}</Text>
                     </View>
                   </View>
                 ))}

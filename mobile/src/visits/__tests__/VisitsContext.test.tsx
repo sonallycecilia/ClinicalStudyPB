@@ -25,7 +25,7 @@ function deferred() {
   return { promise, resolve };
 }
 beforeEach(() => {
-  mockAuth = { status: 'authenticated', user, message: null, login: async () => {}, logout: async () => {}, retry: async () => {} };
+  mockAuth = { status: 'authenticated', user, client: { get: async () => [] }, message: null, login: async () => {}, logout: async () => {}, retry: async () => {} };
   mockList.mockReset();
 });
 
