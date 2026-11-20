@@ -8,7 +8,7 @@
 | **Responsável** | Zeton (Líder técnico / Gerente) |
 | **Base** | S3-PO-03 [`contratos-api-rf12-rf18.md`](./contratos-api-rf12-rf18.md) · S3-PO-04 [`matriz-acesso-e-identificacao-participante-rf12-rf18.md`](./matriz-acesso-e-identificacao-participante-rf12-rf18.md) |
 | **Código analisado** | Branch `feat/proposta-contrato-api-e-matriz-acesso`, commit `3649b91` (inclui o PR #27, autenticação Mobile) |
-| **Versão** | 1.0 — 16/11/2026 |
+| **Versão** | 1.1 — 20/11/2026 |
 
 ### Legenda usada em todo o documento
 
@@ -29,7 +29,7 @@ Nos diagramas `flowchart`: borda contínua indica existente, borda tracejada ind
 2. [Objetivo](#2-objetivo)
 3. [Referências](#3-referências)
 4. [Estado atual da arquitetura](#4-estado-atual-da-arquitetura)
-5. [Decisões técnicas aprovadas — D-01 a D-12](#5-decisões-técnicas-aprovadas--d-01-a-d-12)
+5. [Decisões técnicas aprovadas — D-01 a D-13](#5-decisões-técnicas-aprovadas--d-01-a-d-13)
 6. [Diagrama geral de arquitetura](#6-diagrama-geral-de-arquitetura)
 7. [Diagrama do modelo persistente](#7-diagrama-do-modelo-persistente)
 8. [Sequência RF12–RF13 — agendamento e situação das visitas](#8-sequência-rf12rf13--agendamento-e-situação-das-visitas)
@@ -50,7 +50,7 @@ Este documento é a entrega da S3-PO-05. Ele representa visualmente a comunicaç
 
 - os contratos da S3-PO-03 (endpoints X01–X03 e E01–E10);
 - a matriz de acesso e o fluxo de identificação da S3-PO-04;
-- as decisões D-01 a D-12, **aprovadas pela equipe** após a S3-PO-04.
+- as decisões D-01 a D-13, **aprovadas pela equipe** após a S3-PO-04.
 
 ## 2. Objetivo
 
@@ -66,7 +66,7 @@ Servir como referência arquitetural única para a implementação e a integraç
 |---|---|
 | Especificação *ProjetoES2-2026.2* | RF12–RF18, perfis e interfaces. |
 | *Plano de Trabalho*, backlog da Sprint 3 | Descrição de S3-PO-05 e das tasks S3-BE, S3-W1, S3-W2, S3-MOB e S3-QA. |
-| S3-PO-03 — `contratos-api-rf12-rf18.md` | Rotas, corpos, respostas, códigos de erro e decisões D-01 a D-12 (seção 13). |
+| S3-PO-03 — `contratos-api-rf12-rf18.md` | Rotas, corpos, respostas, códigos de erro e decisões D-01 a D-13 (seção 13). |
 | S3-PO-04 — `matriz-acesso-e-identificacao-participante-rf12-rf18.md` | Perfis, condições P1–P3, C1–C2 e T1–T2, fluxo de identificação e limitações L-01 a L-06. |
 | `docs/releases/release2/Plano_Contingencia_ClinicalStudyPB.docx` | Contingências adiadas (consulta, sem alteração). |
 | `docs/releases/release1/README.md`, seção 2.1 | Padrão dos diagramas da Release 1 (atores “Aplicação Web”, “API NestJS” e “PostgreSQL”). |
@@ -105,9 +105,9 @@ Servir como referência arquitetural única para a implementação e a integraç
 | **S3-MOB-02 — restauração segura da sessão** | **[Existente]** (PR #27): `tokenStorage.ts` grava o token com `expo-secure-store` (`WHEN_UNLOCKED_THIS_DEVICE_ONLY`). Ao abrir, o `AuthContext.restore()` chama `GET /auth/me`. Um **401** limpa a sessão local. **5xx, 408 ou 429** mantêm o token e oferecem nova tentativa (`SessionScreen`). Perfil diferente de Participante ou conta inativa fazem o app limpar a sessão local e revogar o token no servidor. As rotas protegidas (`Stack.Protected`) exigem `role = Participante` e `status = Ativo`. |
 | Estudos e visitas do participante (RF17–RF18) | [Planejado] S3-MOB-03 a S3-MOB-05. Ainda não existe cliente HTTP para `/me/*`. A tela inicial mostra apenas os dados da conta. |
 
-## 5. Decisões técnicas aprovadas — D-01 a D-12
+## 5. Decisões técnicas aprovadas — D-01 a D-13
 
-A equipe **aprovou** as recomendações da seção 13 da S3-PO-03. As marcações “pendente” de D-01 a D-12 existentes na S3-PO-03 e na S3-PO-04 estão **superadas** por esta aprovação; os documentos anteriores não foram editados. A aprovação vale para a regra, mas a implementação continua **[Planejado]**.
+A equipe **aprovou** as recomendações D-01 a D-12 da seção 13 da S3-PO-03. As marcações “pendente” dessas decisões na S3-PO-03 e na S3-PO-04 estão **superadas** por essa aprovação; D-13 foi aprovada e registrada nesta versão. A aprovação vale para a regra, mas a implementação continua **[Planejado]**.
 
 | Decisão | Regra aprovada |
 |---|---|
@@ -123,6 +123,7 @@ A equipe **aprovou** as recomendações da seção 13 da S3-PO-03. As marcaçõe
 | D-10 | Não existe vínculo Coordenador–estudo. O Coordenador acessa todos os estudos nos estados permitidos. |
 | D-11 | As novas respostas usam ISO 8601 em UTC (`2026-11-20T12:00:00.000Z`) e as requisições, ISO 8601 com fuso. Os endpoints existentes mantêm o formato atual. |
 | D-12 | As recusas de domínio de RF12–RF16 incluem o campo `code` (por exemplo, `VISIT_ALREADY_SCHEDULED`), que é distinto do `statusCode` HTTP. |
+| D-13 | `America/Sao_Paulo` é o fuso oficial para regras de negócio que dependem de datas civis. Em E02, o dia de `scheduledAt` nesse fuso é comparado inclusivamente a `data_inclusao` e `data_fim`; em E03, `from` e `to` filtram inclusivamente por esse dia civil. Instantes continuam armazenados e retornados em UTC (D-11). |
 
 **Itens não abrangidos por esta aprovação:**
 
@@ -375,7 +376,7 @@ sequenceDiagram
         SVC-->>Web: 404 Participante ou Visita prevista não encontrada neste estudo
     else Participação não Ativo
         SVC-->>Web: 400 code PARTICIPATION_NOT_ACTIVE
-    else scheduledAt fora de inclusão até término do estudo (D-06)
+    else dia civil de scheduledAt em Brasília fora de inclusão até término do estudo (D-06, D-13)
         SVC-->>Web: 400 code SCHEDULE_OUT_OF_RANGE
     else Válido
         SVC->>DB: BEGIN + SELECT participação FOR UPDATE
@@ -708,3 +709,4 @@ Fundamentação:
 | Versão | Data | Autor | Descrição |
 |---|---|---|---|
 | 1.0 | 16/11/2026 | Zeton (S3-PO-05) | Diagramas de arquitetura (flowchart), modelo persistente (erDiagram), transições de visita e sequências de RF12–RF18 com as decisões D-01 a D-12 aprovadas, a S3-MOB-02 implementada (PR #27) e as limitações em aberto. |
+| 1.1 | 20/11/2026 | Equipe | Registrada D-13: `America/Sao_Paulo` como referência para comparações por dia civil em E02 e E03; instantes continuam persistidos e retornados em UTC conforme D-11. |

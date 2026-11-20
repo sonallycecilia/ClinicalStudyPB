@@ -12,13 +12,29 @@ import { StudiesController } from './studies.controller.js';
 import { StudiesService } from './studies.service.js';
 import { VisitsController } from './visits.controller.js';
 import { VisitsService } from './visits.service.js';
+import { ParticipantVisitsController } from './participant-visits.controller.js';
+import { ParticipantVisitsService } from './participant-visits.service.js';
 
 @Module({
   // Controllers apply these guards locally. Their dependencies are made
   // available through AuthModule and UsersModule.
   imports: [DatabaseModule, AuthModule, UsersModule],
-  controllers: [StudiesController, CriteriaController, VisitsController, CandidatesController],
-  providers: [StudiesService, CriteriaService, VisitsService, CandidatesService, AccessTokenGuard, RolesGuard],
+  controllers: [
+    StudiesController,
+    CriteriaController,
+    VisitsController,
+    CandidatesController,
+    ParticipantVisitsController,
+  ],
+  providers: [
+    StudiesService,
+    CriteriaService,
+    VisitsService,
+    CandidatesService,
+    ParticipantVisitsService,
+    AccessTokenGuard,
+    RolesGuard,
+  ],
   exports: [StudiesService],
 })
 export class StudiesModule {}

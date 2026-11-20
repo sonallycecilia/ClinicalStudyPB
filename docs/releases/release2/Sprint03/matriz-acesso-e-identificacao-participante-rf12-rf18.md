@@ -95,7 +95,7 @@ Estabelecer uma referência única para Backend, Web e Mobile sobre:
 | Perfil | Interface | Responsabilidades em RF12–RF18 [Especificação] | Observação |
 |---|---|---|---|
 | **Administrador** | Web | Nenhuma. Gerencia usuários, perfis, configurações e auditoria (RF01). | Não opera estudos nem participantes. |
-| **Pesquisador** | Web | RF14 (registrar avaliações fictícias) e RF15 (consultar histórico de visitas e avaliações). | Atua somente nos **estudos próprios**. A operação de RF12, RF13 e RF16 pelo Pesquisador é proposta da S3-PO-03 (D-04). |
+| **Pesquisador** | Web | RF12–RF16 conforme permissões da matriz. | Atua somente nos **estudos próprios**. D-04 aprova RF12, RF13 e RF16 para o Pesquisador proprietário e mantém RF14 exclusivo desse perfil. |
 | **Coordenador** | Web | RF12–RF13 (agendar; registrar realização, ausência ou cancelamento), RF15 (histórico) e RF16 (processar retirada). | Sem vínculo formal com estudos. Acesso condicionado ao estado do estudo (D-03, D-10). |
 | **Participante** | Mobile | RF17 (consultar estudos e participação) e RF18 (próximas visitas e histórico de comparecimento). | Somente os próprios dados. As solicitações (RF19–RF20) são da Sprint 4. |
 
@@ -108,25 +108,25 @@ As condições de cada célula 🟡 estão nas notas abaixo da tabela e na seç�
 |---|---|---|---|---|---|---|
 | Participantes | Listar participantes incluídos no estudo | E01 | ⛔ | 🟡 (P1) | 🟡 (C1) | ⛔ |
 | Visitas | Consultar visitas previstas e atividades para agendar | X02, X03 | ⛔ | 🟡 (P1) [Código] | ⏳ (D-01) — hoje ⛔ | ⛔ |
-| Visitas | Agendar visita | E02 | ⛔ | 🟡 (P2) ⏳ D-04 | 🟡 (C2) | ⛔ |
+| Visitas | Agendar visita | E02 | ⛔ | 🟡 (P2) | 🟡 (C2) | ⛔ |
 | Visitas | Consultar visitas agendadas do estudo | E03 | ⛔ | 🟡 (P1) | 🟡 (C1) | ⛔ |
-| Visitas | Atualizar situação (Realizada / Ausente / Cancelada) | E04 | ⛔ | 🟡 (P2) ⏳ D-04 | 🟡 (C2) | ⛔ |
+| Visitas | Atualizar situação (Realizada / Ausente / Cancelada) | E04 | ⛔ | 🟡 (P2) | 🟡 (C2) | ⛔ |
 | Visitas | Consultar as próprias visitas (próximas e histórico) | E10 | ⛔ | ⛔ | ⛔ | 🟡 (T1) |
 | Resultados | Consultar atividades e resultados de uma visita | E05 | ⛔ | 🟡 (P1) | 🟡 (C1) | ⛔ |
-| Resultados | Registrar resultado fictício | E06 | ⛔ | 🟡 (P3) | ⛔ — ⏳ D-04 | ⛔ |
+| Resultados | Registrar resultado fictício | E06 | ⛔ | 🟡 (P3) | ⛔ | ⛔ |
 | Resultados | Alterar resultado registrado | — | — | — | — | — |
 | Histórico | Consultar histórico de um participante (visitas + resultados) | E07 | ⛔ | 🟡 (P1) | 🟡 (C1) | ⛔ |
 | Histórico | Consultar o próprio histórico de comparecimento | E10 (`scope=history`) | ⛔ | ⛔ | ⛔ | 🟡 (T1) |
 | Estudos do participante | Consultar estudos em que está incluído | E09 | ⛔ | ⛔ | ⛔ | 🟡 (T1) |
 | Retirada | Consultar dados da retirada (data, motivo, situação) | E01, E07 | ⛔ | 🟡 (P1) | 🟡 (C1) | 🟡 (T2) |
-| Retirada | Registrar retirada | E08 | ⛔ | 🟡 (P2) ⏳ D-04 | 🟡 (C2) | ⛔ |
+| Retirada | Registrar retirada | E08 | ⛔ | 🟡 (P2) | 🟡 (C2) | ⛔ |
 
 **Condições:**
 
 | Código | Condição |
 |---|---|
 | **P1** | Pesquisador ativo **proprietário** do estudo (`estudos.id_pesquisador = sub`), em qualquer estado do estudo (consulta). |
-| **P2** | P1 e estudo **não encerrado**. Inclusão do Pesquisador nessas operações é proposta de contrato (D-04): a especificação atribui RF12, RF13 e RF16 ao Coordenador. |
+| **P2** | P1 e estudo **não encerrado**. D-04 aprova essas operações para o Pesquisador proprietário, além do Coordenador nos estados de C2. |
 | **P3** | P2 e visita agendada na situação `Realizada`, com a atividade pertencente à visita prevista dessa visita. |
 | **C1** | Coordenador ativo; estudo em `recrutamento`, `execução` ou `encerrado` [Contrato, D-03]. |
 | **C2** | Coordenador ativo; estudo em `recrutamento` ou `execução` [Contrato, D-03]. |
@@ -157,7 +157,7 @@ As condições de cada célula 🟡 estão nas notas abaixo da tabela e na seç�
 | Opera somente estudos próprios (`id_pesquisador`). Estudo de outro pesquisador resulta em 403 “Você não tem permissão para alterar este estudo.” (mesma verificação do código atual). | [Código] |
 | Consulta participantes, visitas, resultados e histórico do estudo próprio em qualquer estado. | [Contrato] |
 | Registra resultados fictícios (RF14) somente em estudo não encerrado e em visita `Realizada`. | [Especificação] [Contrato] |
-| Agendar, atualizar situação e registrar retirada: permitido em estudo próprio não encerrado, **se D-04 for aprovada**. Sem essa aprovação, essas rotas passam a `@Roles('Coordenador')`. | [Pendente] |
+| Agendar, atualizar situação e registrar retirada: permitido em estudo próprio não encerrado (D-04). | [Contrato, decisão aprovada] |
 
 ### 7.3 Coordenador
 
@@ -166,7 +166,7 @@ As condições de cada célula 🟡 estão nas notas abaixo da tabela e na seç�
 | Não existe vínculo Coordenador–estudo. O Coordenador acessa **qualquer** estudo nos estados permitidos, como já ocorre no recrutamento (RF08–RF11). | [Código] D-10 |
 | Consulta: estudos em `recrutamento`, `execução` ou `encerrado`. | [Contrato] D-03 |
 | Escrita (agendar, atualizar situação, retirada): estudos em `recrutamento` ou `execução`. | [Especificação] [Contrato] D-03 |
-| **Não** registra resultados (RF14), salvo aprovação de D-04. | [Especificação] |
+| **Não** registra resultados (RF14); D-04 mantém essa operação exclusiva do Pesquisador proprietário. | [Especificação] [Decisão aprovada] |
 | **Não** lê visitas previstas (X02/X03) no código atual. A liberação é a pendência D-01 e **não está aprovada**. | [Código] [Pendente] |
 
 ### 7.4 Participante
@@ -358,13 +358,13 @@ A validação dos parâmetros (`ParseUUIDPipe` e `ValidationPipe`) ocorre antes 
 |---|---|---|---|---|
 | RF12 | E01 `GET /studies/:studyId/participants` | Consulta | Pesquisador, Coordenador | P1 / C1 |
 | RF12 | X02 `GET /studies/:studyId/visits`, X03 `.../activities` [Código] | Consulta | Pesquisador (Coordenador ⏳ D-01) | P1 |
-| RF12 | E02 `POST /studies/:studyId/scheduled-visits` | Escrita | Coordenador (Pesquisador ⏳ D-04) | C2 / P2; participação e visita prevista do mesmo estudo |
+| RF12 | E02 `POST /studies/:studyId/scheduled-visits` | Escrita | Coordenador e Pesquisador proprietário (D-04) | C2 / P2; participação e visita prevista do mesmo estudo |
 | RF12–13 | E03 `GET /studies/:studyId/scheduled-visits` | Consulta | Pesquisador, Coordenador | P1 / C1; `participationId` do mesmo estudo |
-| RF13 | E04 `PATCH .../scheduled-visits/:id/status` | Escrita | Coordenador (Pesquisador ⏳ D-04) | C2 / P2; visita do estudo; participação ativa |
+| RF13 | E04 `PATCH .../scheduled-visits/:id/status` | Escrita | Coordenador e Pesquisador proprietário (D-04) | C2 / P2; visita do estudo; participação ativa |
 | RF14 | E05 `GET .../scheduled-visits/:id/results` | Consulta | Pesquisador, Coordenador | P1 / C1 |
-| RF14 | E06 `POST .../scheduled-visits/:id/results` | Escrita | Pesquisador (Coordenador ⏳ D-04) | P3 |
+| RF14 | E06 `POST .../scheduled-visits/:id/results` | Escrita | Pesquisador proprietário | P3 |
 | RF15 | E07 `GET /studies/:studyId/participants/:participationId/history` | Consulta | Pesquisador, Coordenador | P1 / C1; participação do estudo |
-| RF16 | E08 `POST .../participants/:participationId/withdrawal` | Escrita | Coordenador (Pesquisador ⏳ D-04) | C2 / P2; participação ativa do estudo |
+| RF16 | E08 `POST .../participants/:participationId/withdrawal` | Escrita | Coordenador e Pesquisador proprietário (D-04) | C2 / P2; participação ativa do estudo |
 | RF17 | E09 `GET /me/studies` | Consulta | Participante | T1: `candidatos.id_usuario = sub` |
 | RF18 | E10 `GET /me/visits` | Consulta | Participante | T1; `studyId` opcional restrito às próprias participações |
 | Sessão | X01 `GET /auth/me` [Código] | Consulta | Todos | Somente a própria conta |
@@ -433,15 +433,16 @@ Mantidas **fora** desta matriz, por decisão da Weekly Meeting:
 |---|---|---|---|
 | D-01 (S3-PO-03) | Coordenador lê visitas previstas para agendar? | Liberar somente leitura (X02/X03) dentro de S3-BE-02. Exige confirmação de escopo. | O Coordenador não consegue agendar pela Web. |
 | D-03 (S3-PO-03) | Estados do estudo permitidos ao Coordenador | Consulta: recrutamento, execução, encerrado. Escrita: recrutamento, execução. | Sem `execução`, o acompanhamento para quando o estudo avança. |
-| D-04 (S3-PO-03) | Pesquisador opera RF12, RF13 e RF16? Coordenador registra RF14? | Pesquisador proprietário: sim (padrão de RF08–RF11). Coordenador em RF14: não (especificação). | Muda apenas `@Roles` e as células 🟡 marcadas com D-04. |
+| D-04 (S3-PO-03) | Permissões de RF12, RF13, RF14, RF15 e RF16 | Aprovada em PO-05: Pesquisador proprietário e Coordenador em RF12/RF13/RF16; apenas Pesquisador proprietário em RF14; ambos em RF15. | Decisão aprovada; refletida na matriz de permissões e nos contratos. |
 | D-09 (S3-PO-03) | E09 lista participações retiradas ou concluídas? | Sim, com o estado. | Apenas apresentação no app. |
 | D-10 (S3-PO-03) | Vínculo Coordenador–estudo | Manter o comportamento atual. | — |
 | **P-01** (S3-PO-03) / L-01 | Preenchimento de `candidatos.id_usuario` na Sprint 3 | Opção (a): fixtures e seed. | RF17–RF18 sem dados demonstráveis. |
 | **A-01** | A S3-BE-05 cita restringir o histórico “ao participante autorizado ou aos perfis Web”. O participante deve ver **resultados** de avaliação? | Não: o participante usa E10 (comparecimento, RF18). E07, com resultados, é exclusivo da equipe (RF15 é Web). | Se sim, seria necessário um novo contrato `/me`, fora da S3-PO-03. |
-| **A-02** | Coordenador consulta resultados (E05/E07) mesmo sem registrá-los? | Sim: RF15 atribui o histórico “de visitas e avaliações” ao Coordenador. | Se não, E05/E07 devem omitir resultados para o Coordenador. |
+| **A-02 (resolvido na S3-BE-04)** | Coordenador consulta resultados (E05/E07) mesmo sem registrá-los? | Sim: decisão confirmada pela equipe; RF15 atribui o histórico “de visitas e avaliações” ao Coordenador. | Coordenador ativo consulta resultados nos estados permitidos pela matriz; permanece sem permissão de escrita em E06. |
 
 ## 16. Histórico
 
 | Versão | Data | Autor | Descrição |
 |---|---|---|---|
 | 0.1 | 15/11/2026 | Zeton (S3-PO-04) | Versão inicial: matriz de acesso de RF12–RF18, fluxo de identificação por `candidatos.id_usuario`, cenários de erro, limitações L-01 a L-06 e pontos A-01/A-02, para validação da equipe. |
+| 0.2 | 20/11/2026 | Equipe | Resolvido A-02: Coordenadores podem consultar resultados em E05/E07 nos estados permitidos; o registro continua exclusivo do Pesquisador proprietário. |

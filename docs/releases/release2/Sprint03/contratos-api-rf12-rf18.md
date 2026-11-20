@@ -127,7 +127,8 @@ Convenções extraídas do código existente [Existente], salvo indicação em c
 | Valores de domínio | Em português, iguais às constraints do banco (`Agendada`, `Realizada`, `Ativo`, `Retirado`). Estado do estudo em minúsculas (`planejamento`, `recrutamento`, `execução`, `encerrado`). |
 | Identificadores | UUID em string. Parâmetros de rota validados com `ParseUUIDPipe`; UUID inválido resulta em 400. |
 | Datas sem hora | `YYYY-MM-DD` (`startDate`, `includedAt`). |
-| Data e hora | **[Proposta]** ISO 8601 em UTC (`2026-11-20T12:00:00.000Z`) nas respostas; nas requisições, ISO 8601 com fuso (`2026-11-20T09:00:00-03:00` ou `...Z`). Os campos existentes (`registeredAt`) usam hoje o formato textual do PostgreSQL (`2026-11-06 14:03:22.123+00`). Ver D-11. |
+| Data e hora | ISO 8601 em UTC (`2026-11-20T12:00:00.000Z`) nas respostas novas, e ISO 8601 com fuso nas requisições (`2026-11-20T09:00:00-03:00` ou `...Z`), conforme D-11 aprovado no PO-05. Os campos existentes (`registeredAt`) mantêm o formato textual atual do PostgreSQL (`2026-11-06 14:03:22.123+00`). |
+| Fuso das regras por data civil | `America/Sao_Paulo` é a referência para extrair o dia civil de instantes em regras de negócio. Datas `YYYY-MM-DD` já representam dias civis e não são convertidas. As respostas continuam em UTC conforme D-11. Ver D-13. |
 | Corpo das requisições | JSON validado por DTO `class-validator` com `ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true })`. Textos com `trim`, e texto opcional vazio convertido em `null`, como nos DTOs de visitas previstas. |
 | Textos livres | Observação e descrição com até 2000 caracteres (padrão dos DTOs atuais). |
 | Listas | Sem paginação, como nas listagens atuais. Ordenação definida em cada contrato. |
@@ -207,7 +208,7 @@ Estruturas reutilizadas por vários endpoints, todas **[Planejado]**. Os tipos s
 | `plannedVisitId` | `string` (uuid) | `id_visita_prevista` | Visita prevista (RF06). |
 | `plannedVisitName` | `string` | `visitas_previstas.nome` | Nome da visita prevista. |
 | `plannedVisitOrder` | `integer` | `visitas_previstas.ordem` | Ordem da visita prevista no protocolo. |
-| `scheduledAt` | `string` (date-time) | `data_agendada` | Data e hora agendadas. |
+| `scheduledAt` | `string` (date-time) | `data_agendada` | Instante da visita agendada; armazenado e retornado em UTC conforme D-11. Regras que o comparam a datas civis usam o dia em `America/Sao_Paulo` conforme D-13. |
 | `status` | `'Agendada' \| 'Realizada' \| 'Ausente' \| 'Cancelada'` | `status` | Situação da visita. |
 | `realizedAt` | `string` (date-time) \| `null` | `data_realizacao` | Obrigatório quando `Realizada` (constraint `visitas_realizacao_coerente`). |
 | `observation` | `string` \| `null` | `observacao` | Observação da equipe. |
@@ -498,7 +499,7 @@ Sem participações, retorna `[]` com 200.
 |---|---|---|---|
 | `participationId` | `string` (uuid) | Sim | `@IsUUID()` |
 | `plannedVisitId` | `string` (uuid) | Sim | `@IsUUID()` |
-| `scheduledAt` | `string` (date-time) | Sim | `@IsISO8601({ strict: true })`, com fuso. Não pode ser anterior à `data_inclusao` da participação nem posterior a `data_fim` do estudo (ver D-06 para datas passadas). |
+| `scheduledAt` | `string` (date-time) | Sim | `@IsISO8601({ strict: true })`, com fuso. Para comparar com `data_inclusao` e `data_fim`, converter o instante para o dia civil de `America/Sao_Paulo`; esse dia não pode ser anterior à inclusão nem posterior ao fim do estudo (D-06, D-13). |
 | `observation` | `string` \| `null` | Não | `trim`; vazio vira `null`; até 2000 caracteres. |
 
 ```json
@@ -574,7 +575,7 @@ Sem participações, retorna `[]` com 200.
 |---|---|
 | Método e rota | `GET /studies/:studyId/scheduled-visits` |
 | Parâmetros de rota | `studyId` (uuid) |
-| Parâmetros de query | `participationId` (uuid, opcional); `status` (opcional: `Agendada`, `Realizada`, `Ausente`, `Cancelada`); `from` e `to` (opcionais, `YYYY-MM-DD`, inclusivos, aplicados a `scheduledAt`). |
+| Parâmetros de query | `participationId` (uuid, opcional); `status` (opcional: `Agendada`, `Realizada`, `Ausente`, `Cancelada`); `from` e `to` (opcionais, `YYYY-MM-DD`, inclusivos, aplicados ao dia civil de `scheduledAt` em `America/Sao_Paulo`, conforme D-13). |
 | Headers | `Authorization: Bearer <accessToken>` |
 
 **Segurança**
@@ -586,7 +587,7 @@ Sem participações, retorna `[]` com 200.
 | Regra | **A-EQUIPE-LEITURA** |
 | Restrição de registros | Somente visitas cuja visita prevista pertence ao estudo. `participationId` de outro estudo resulta em 404. |
 
-**Requisição** — sem corpo. DTO de query: `ListScheduledVisitsQueryDto` (`@IsOptional() @IsUUID()`, `@IsIn([...])`, `@Matches(/^\d{4}-\d{2}-\d{2}$/)`). `from` maior que `to` resulta em 400.
+**Requisição** — sem corpo. DTO de query: `ListScheduledVisitsQueryDto` (`@IsOptional() @IsUUID()`, `@IsIn([...])`, `@Matches(/^\d{4}-\d{2}-\d{2}$/)`). `from` e `to` são inclusivos sobre a data civil de `scheduledAt` em `America/Sao_Paulo`; `from` maior que `to` resulta em 400.
 
 **Resposta — 200 OK** (`ScheduledVisit[]`), ordenada por `scheduledAt` crescente.
 
@@ -776,7 +777,7 @@ Sem participações, retorna `[]` com 200.
 | 403 | Perfil ou estado não permitido | conforme regra A-EQUIPE-LEITURA |
 | 404 | Visita agendada não pertence ao estudo | “Visita agendada não encontrada neste estudo.” |
 
-**Observações técnicas** — com este endpoint, o formulário de RF14 não precisa de X03.
+**Observações técnicas** — com este endpoint, o formulário de RF14 não precisa de X03. A ordem de cadastro é persistida em `atividades_visita.ordem`; o backfill dos registros existentes usa `nome, id_atividade` como ordem determinística, pois a ordem histórica original não está armazenada.
 
 ---
 
@@ -813,7 +814,7 @@ Sem participações, retorna `[]` com 200.
 | Campo | Tipo | Obrigatório | Validação |
 |---|---|---|---|
 | `activityId` | `string` (uuid) | Sim | `@IsUUID()` |
-| `value` | `string` | Sim | `trim`; 1 a 200 caracteres. **[Proposta]** limite de 200 (a coluna é `TEXT`). |
+| `value` | `string` | Sim | `trim`; deve restar conteúdo não vazio. Sem limite máximo (decisão confirmada pela equipe na S3-BE-04). |
 | `unit` | `string` \| `null` | Não | `trim`; vazio vira `null`; até 50 caracteres (`VARCHAR(50)`). |
 | `observation` | `string` \| `null` | Não | `trim`; vazio vira `null`; até 2000 caracteres. |
 
@@ -1296,7 +1297,7 @@ Para recusas de domínio, **[Proposta]** incluir `code`, como em `CandidateInclu
 
 - Os exemplos JSON deste documento são a fonte única para mocks na Web e no Mobile. Os identificadores repetem-se entre os exemplos para permitir encadear os fluxos (estudo → participação → visita agendada → resultado).
 - Os clientes devem tratar todos os códigos listados em cada contrato, inclusive listas vazias (`[]`) com 200.
-- Datas e horas: os clientes enviam ISO 8601 com fuso e exibem no fuso local (`America/Fortaleza` / `America/Recife`, UTC−3).
+- Datas e horas: os clientes enviam ISO 8601 com fuso e podem exibir no fuso local (`America/Fortaleza` / `America/Recife`, UTC−3). A exibição não altera a referência de negócio `America/Sao_Paulo` definida por D-13.
 - Qualquer alteração de contrato durante a implementação deve atualizar este documento e o Swagger no mesmo PR.
 
 ## 12. Relação com o Plano de Contingência
@@ -1331,6 +1332,12 @@ As propostas abaixo **não estão aprovadas**. A recomendação é aplicada nos 
 | D-11 | Formato de data e hora | ISO 8601 UTC nas respostas novas. | O backend atual responde timestamps no formato textual do PostgreSQL. Padronizar todos os endpoints exige ajuste nos existentes, fora desta task. |
 | D-12 | Códigos de domínio (`code`) | Adotar nas recusas de RF12–RF16. | Sem `code`, os clientes dependem do texto da mensagem. |
 
+### Decisão aprovada após a versão inicial do contrato
+
+| ID | Regra aprovada | Aplicação |
+|---|---|---|
+| D-13 | `America/Sao_Paulo` é o fuso de referência para regras de negócio que dependem do dia civil. | Em E02, converter o instante de `scheduledAt` para a data civil de Brasília antes de comparar inclusivamente com `data_inclusao` e `data_fim`. Em E03, aplicar `from` e `to` inclusivamente ao dia civil de `scheduledAt` em Brasília. Persistência e respostas de instantes permanecem em UTC (D-11). |
+
 ## 14. Pendências identificadas
 
 | ID | Pendência | Impacto | Encaminhamento sugerido |
@@ -1348,3 +1355,5 @@ As propostas abaixo **não estão aprovadas**. A recomendação é aplicada nos 
 | Versão | Data | Autor | Descrição |
 |---|---|---|---|
 | 0.1 | 15/11/2026 | Zeton (S3-PO-03) | Versão inicial: 10 contratos planejados (E01–E10), 3 existentes reutilizados (X01–X03), decisões D-01 a D-12 e pendências P-01 a P-07, para validação da equipe. |
+| 0.2 | 20/11/2026 | Equipe | Registrada D-13: `America/Sao_Paulo` como referência para comparações por dia civil em E02 e E03; instantes permanecem armazenados e retornados em UTC. |
+| 0.3 | 20/11/2026 | Equipe | Para S3-BE-04, confirmou `value` obrigatório, com `trim`, não vazio e sem limite máximo; definiu persistir a ordem das atividades e backfill determinístico para registros existentes. |
