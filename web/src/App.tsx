@@ -6,6 +6,7 @@ import { LoginPage } from './pages/LoginPage';
 import { UsersPage } from './pages/UsersPage';
 import { StudiesPage } from './pages/StudiesPage';
 import { CandidateFormPage } from './pages/CandidateFormPage';
+import { ParticipantsPage } from './pages/ParticipantsPage';
 import { ForbiddenPage, NotFoundPage } from './pages/StatusPages';
 import { getHomeForRole } from './security/access';
 import {CoordinatorDashboardPage, CoordinatorCandidatesPage, CoordinatorVisitsPage, CoordinatorReschedulesPage, CoordinatorReportsPage } from './pages/coordenatorPage';
@@ -29,6 +30,7 @@ function AppRoutes() {
           <Route path="/coordenador/painel" element={<CoordinatorDashboardPage />} />
           <Route path="/coordenador/candidatos" element={<CoordinatorCandidatesPage />} />
           <Route path="/coordenador/candidatos/novo" element={<CandidateFormPage />} />
+          <Route path="/coordenador/participantes" element={<ParticipantsPage />} />
           <Route path="/coordenador/visitas" element={<CoordinatorVisitsPage />} />
           <Route path="/coordenador/reagendamentos" element={<CoordinatorReschedulesPage />} />
           <Route path="/coordenador/relatorios" element={<CoordinatorReportsPage />} />
