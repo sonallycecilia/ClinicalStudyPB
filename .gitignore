@@ -12,3 +12,4 @@ Thumbs.db
 web/cypress/videos/
 web/cypress/screenshots/
 .claude/
+run.py

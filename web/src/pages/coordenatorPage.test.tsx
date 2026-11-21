@@ -59,6 +59,40 @@ function renderCoordinator(element: ReactNode) {
 
 afterEach(() => cleanup());
 
+const json = (status: number, body: unknown) => ({ ok: status < 300, status, json: async () => body } as Response);
+const scheduledResponse = {
+  id: 'scheduled-1', studyId: 'study-1', participationId: 'participation-1', participantName: 'Bianca Oliveira',
+  plannedVisitId: 'planned-1', plannedVisitName: 'Consulta inicial', plannedVisitOrder: 1,
+  scheduledAt: '2026-11-24T12:00:00.000Z', status: 'Agendada', realizedAt: null, observation: null, createdAt: '2026-11-16T13:20:41.512Z',
+};
+
+function mockScheduleApi(postResponse: () => Response) {
+  mockRequest.mockImplementation(async (path: string, init?: RequestInit) => {
+    if (path === '/studies/study-1/participants?status=Ativo') return json(200, [{
+      participationId: 'participation-1', candidateId: 'candidate-1', studyId: 'study-1', name: 'Bianca Oliveira',
+      participationStatus: 'Ativo', includedAt: '2026-11-06', withdrawnAt: null, withdrawalReason: null,
+    }]);
+    if (path === '/studies/study-1/visits') return json(200, [{ id: 'planned-1', studyId: 'study-1', name: 'Consulta inicial', order: 1, intervalDays: null, description: null }]);
+    if (path === '/studies/study-1/scheduled-visits' && init?.method === 'POST') return postResponse();
+    return json(200, studyOptions);
+  });
+}
+
+/** Abre o agendamento pelo botão indicado e preenche um agendamento válido. */
+async function fillSchedule(trigger = 'Agendar visita') {
+  fireEvent.click(screen.getByRole('button', { name: trigger }));
+  const dialog = screen.getByRole('dialog', { name: 'Agendar visita' });
+  const study = within(dialog).getByLabelText('Estudo') as HTMLSelectElement;
+  await waitFor(() => expect(study.disabled).toBe(false));
+  fireEvent.change(study, { target: { value: 'study-1' } });
+  const participant = within(dialog).getByLabelText('Participante') as HTMLSelectElement;
+  await waitFor(() => expect(participant.disabled).toBe(false));
+  fireEvent.change(participant, { target: { value: 'participation-1' } });
+  fireEvent.change(within(dialog).getByLabelText('Visita prevista'), { target: { value: 'planned-1' } });
+  fireEvent.change(within(dialog).getByLabelText('Data e horário'), { target: { value: '2026-11-24T09:00' } });
+  return dialog;
+}
+
 describe('CoordinatorDashboardPage', () => {
   it('pesquisa e filtra visitas, mostrando estado vazio sem resultados', () => {
     renderCoordinator(<CoordinatorDashboardPage />);
@@ -72,16 +106,18 @@ describe('CoordinatorDashboardPage', () => {
     expect(screen.getByText('Nenhuma visita encontrada para os filtros selecionados.')).toBeTruthy();
   });
 
-  it('cria registro de visita e atualiza o status de uma visita existente', () => {
+  it('agenda visita pela API a partir de "Novo registro" e confirma com os dados persistidos', async () => {
+    mockScheduleApi(() => json(201, scheduledResponse));
     renderCoordinator(<CoordinatorDashboardPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'Novo registro' }));
-    fireEvent.change(screen.getByPlaceholderText('Nome do participante'), {
-      target: { value: '  Pessoa Nova  ' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Registrar visita' }));
-    expect(screen.getByText('Pessoa Nova')).toBeTruthy();
+    const dialog = await fillSchedule('Novo registro');
+    await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: 'Agendar visita' })); });
+    expect(mockRequest).toHaveBeenCalledWith('/studies/study-1/scheduled-visits', expect.objectContaining({ method: 'POST' }));
     expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByRole('status').textContent).toContain('Visita agendada com sucesso! Bianca Oliveira · Consulta inicial · 24/11/2026 · 09:00');
+  });
 
+  it('atualiza o status de uma visita existente', () => {
+    renderCoordinator(<CoordinatorDashboardPage />);
     const visitsPanel = screen.getByRole('heading', { name: 'Próximas visitas' }).closest('section') as HTMLElement;
     const row = within(visitsPanel).getAllByRole('row').find((item) =>
       item.textContent?.includes('Bianca Oliveira') && item.textContent.includes('24/10/2026 · 09:00'),
@@ -664,17 +700,37 @@ describe('Inclusão de participante no Coordenador', () => {
 });
 
 describe('CoordinatorVisitsPage', () => {
-  it('agenda visita local e permite atualizar seu status', () => {
+  it('agenda a visita pela API e exibe a confirmação com os dados persistidos', async () => {
+    mockScheduleApi(() => json(201, scheduledResponse));
     renderCoordinator(<CoordinatorVisitsPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'Agendar visita' }));
-    const dialog = screen.getByRole('dialog', { name: 'Agendar visita' });
-    fireEvent.change(screen.getByPlaceholderText('Nome do participante'), {
-      target: { value: 'Participante Agendado' },
-    });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Agendar visita' }));
-    expect(screen.getByText('Participante Agendado')).toBeTruthy();
+    const dialog = await fillSchedule();
+    await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: 'Agendar visita' })); });
 
-    const row = screen.getByRole('row', { name: /Participante Agendado/ });
+    const [, init] = mockRequest.mock.calls.find(([path]) => path === '/studies/study-1/scheduled-visits') as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({
+      participationId: 'participation-1', plannedVisitId: 'planned-1', scheduledAt: new Date('2026-11-24T09:00').toISOString(),
+    });
+    expect(screen.queryByRole('dialog', { name: 'Agendar visita' })).toBeNull();
+    expect(screen.getByRole('status').textContent).toContain('Visita agendada com sucesso! Bianca Oliveira · Consulta inicial · 24/11/2026 · 09:00');
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar confirmação de agendamento' }));
+    expect(screen.queryByText(/Visita agendada com sucesso!/)).toBeNull();
+  });
+
+  it('mantém o formulário aberto e preenchido quando o agendamento é recusado', async () => {
+    mockScheduleApi(() => json(409, { statusCode: 409, message: 'Esta visita prevista já está agendada ou realizada para o participante.', error: 'Conflict', code: 'VISIT_ALREADY_SCHEDULED' }));
+    renderCoordinator(<CoordinatorVisitsPage />);
+    const dialog = await fillSchedule();
+    await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: 'Agendar visita' })); });
+
+    expect(within(dialog).getByRole('alert').textContent).toContain('Esta visita prevista já está agendada ou realizada para o participante.');
+    expect((within(dialog).getByLabelText('Participante') as HTMLSelectElement).value).toBe('participation-1');
+    expect((within(dialog).getByLabelText('Data e horário') as HTMLInputElement).value).toBe('2026-11-24T09:00');
+    expect(screen.queryByText(/Visita agendada com sucesso!/)).toBeNull();
+  });
+
+  it('permite atualizar a situação de uma visita da agenda', () => {
+    renderCoordinator(<CoordinatorVisitsPage />);
+    const row = screen.getByRole('row', { name: /Lucas Martins/ });
     fireEvent.click(within(row).getByRole('button', { name: 'Editar' }));
     fireEvent.click(screen.getByRole('button', { name: 'Concluir' }));
     expect(within(row).getByText('Concluída')).toBeTruthy();

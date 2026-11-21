@@ -700,7 +700,7 @@ body:has(.modal-backdrop), body:has(.study-dialog-backdrop) { overflow: hidden; 
 .coord-filter select { width: 100%; height: 100%; padding: 0 18px 0 0; border: 0; outline: 0; appearance: none; color: #24444f; background: transparent; font-size: 10px; cursor: pointer; }
 .coord-filter svg { position: absolute; right: 9px; width: 14px; height: 14px; color: #688793; pointer-events: none; }
 
-.coord-candidates-page > .notice { width: calc(100% - var(--page-content-indent)); margin-left: var(--page-content-indent); margin-bottom: 20px; }
+.coord-candidates-page > .notice, .coord-visits-page > .notice, .coord-dashboard-page > .notice { width: calc(100% - var(--page-content-indent)); margin-left: var(--page-content-indent); margin-bottom: 20px; }
 .coord-candidates-page .coord-filter select { padding: 0 32px 0 12px; min-width: 0; text-overflow: ellipsis; }
 .coord-candidates-page .coord-filter svg { top: 50%; transform: translateY(-50%); }
 .coord-candidates-page .coord-filter-disabled { background: #edf1f3; border-color: #dce3e7; }
@@ -807,6 +807,12 @@ body:has(.modal-backdrop), body:has(.study-dialog-backdrop) { overflow: hidden; 
 .coord-field-wide { grid-column: 1 / -1; }
 .coord-field input, .coord-field select { display: block; width: 100%; min-width: 0; height: 42px; padding: 0 11px; border: 1px solid #dce8eb; border-radius: 8px; color: #193943; background: #fff; font-size: 11px; font-weight: 400; }
 .coord-field input:focus, .coord-field select:focus { border-color: #83c7c4; outline: 0; box-shadow: 0 0 0 3px #e2f4f3; }
+.schedule-visit-form textarea { display: block; width: 100%; min-width: 0; padding: 10px 11px; border: 1px solid #dce8eb; border-radius: 8px; color: #193943; background: #fff; font: inherit; font-size: 11px; resize: vertical; }
+.schedule-visit-form textarea:focus { border-color: #83c7c4; outline: 0; box-shadow: 0 0 0 3px #e2f4f3; }
+.schedule-visit-form :is(input, select, textarea)[aria-invalid='true'] { border-color: #c8393d; }
+.schedule-visit-form :is(input, select, textarea):disabled { color: #7b8f95; background: #f5f8f9; cursor: not-allowed; }
+.schedule-visit-form .coord-help-copy, .schedule-visit-form .candidate-inclusion-error { margin: 0; }
+.schedule-visit-form .form-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .coord-modal-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px; padding-top: 16px; margin-top: 4px; border-top: 1px solid #edf2f3; }
 .coord-modal-actions .coord-primary-button, .coord-modal-actions .coord-secondary-button, .coord-modal-actions .coord-danger-button { min-height: 36px; font-size: 11px; }
 .coord-inclusion-action:disabled, .candidate-inclusion-form button:disabled { color: #708995; background: #fff; border-color: #dce8eb; cursor: default; opacity: 1; transform: none; }
