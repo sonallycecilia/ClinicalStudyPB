@@ -812,6 +812,44 @@ body:has(.modal-backdrop), body:has(.study-dialog-backdrop) { overflow: hidden; 
 .schedule-visit-form :is(input, select, textarea)[aria-invalid='true'] { border-color: #c8393d; }
 .schedule-visit-form :is(input, select, textarea):disabled { color: #7b8f95; background: #f5f8f9; cursor: not-allowed; }
 .schedule-visit-form .coord-help-copy, .schedule-visit-form .candidate-inclusion-error { margin: 0; }
+.visit-status-form textarea { display: block; width: 100%; min-width: 0; padding: 10px 11px; border: 1px solid #dce8eb; border-radius: 8px; color: #193943; background: #fff; font: inherit; font-size: 11px; resize: vertical; }
+.visit-status-form textarea:focus { border-color: #83c7c4; outline: 0; box-shadow: 0 0 0 3px #e2f4f3; }
+.visit-status-form :is(input, textarea)[aria-invalid='true'] { border-color: #c8393d; }
+.visit-status-form .coord-help-copy, .visit-status-form .candidate-inclusion-error { margin: 0; }
+.visit-status-options { display: grid; gap: 8px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.visit-status-options legend { margin-bottom: 8px; padding: 0; color: #173843; font-size: 12px; font-weight: 600; }
+.visit-status-option { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid #dce8eb; border-radius: 8px; background: #fff; cursor: pointer; }
+.visit-status-option:has(input:checked) { border-color: #83c7c4; background: #f1faf9; }
+.visit-status-options[aria-invalid='true'] .visit-status-option { border-color: #c8393d; }
+.visit-status-option input { margin-top: 2px; accent-color: #1a7f7a; }
+.visit-status-option span { display: grid; gap: 2px; }
+.visit-status-option strong { color: #173843; font-size: 12px; }
+.visit-status-option small { color: #5f7881; font-size: 11px; font-weight: 400; }
+.visit-results-panel { display: grid; gap: 12px; margin-top: 14px; padding-top: 14px; border-top: 1px solid #edf2f3; }
+.visit-results-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.visit-results-heading h3 { margin: 0; color: #173843; font-size: 13px; }
+.visit-results-heading span { color: #5f7881; font-size: 11px; }
+.visit-results-panel .coord-help-copy, .visit-results-panel .notice { margin: 0; }
+.visit-results-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.visit-result-item { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid #e1ebed; border-radius: 10px; background: #fff; }
+.visit-result-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.visit-result-title strong { color: #173843; font-size: 12px; }
+.visit-result-type { padding: 2px 8px; border-radius: 999px; color: #2f5f69; background: #eef5f6; font-size: 10px; font-weight: 600; }
+.visit-result-badge { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; color: #1a7659; font-size: 10px; font-weight: 600; }
+.visit-result-badge-pending { color: #8a6a12; }
+.visit-result-description { margin: 0; color: #5f7881; font-size: 11px; line-height: 1.5; }
+.visit-result-registered { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin: 0; padding: 10px 12px; border-radius: 8px; background: #f5faf9; }
+.visit-result-registered dt { color: #6b8791; font-size: 10px; font-weight: 600; }
+.visit-result-registered dd { margin: 2px 0 0; color: #173843; font-size: 12px; overflow-wrap: anywhere; }
+.visit-result-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.visit-result-form textarea { display: block; width: 100%; min-width: 0; padding: 10px 11px; border: 1px solid #dce8eb; border-radius: 8px; color: #193943; background: #fff; font: inherit; font-size: 11px; resize: vertical; }
+.visit-result-form :is(input, textarea)[aria-invalid='true'] { border-color: #c8393d; }
+.visit-result-form .coord-help-copy, .visit-result-form .candidate-inclusion-error { margin: 0; }
+.visit-result-actions { display: flex; justify-content: flex-end; }
+.visit-results-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+.scheduled-visit-toggle { justify-self: start; margin-top: 10px; }
+@media (max-width: 640px) { .visit-result-form { grid-template-columns: 1fr; } }
+.coord-visits-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .schedule-visit-form .form-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .coord-modal-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px; padding-top: 16px; margin-top: 4px; border-top: 1px solid #edf2f3; }
 .coord-modal-actions .coord-primary-button, .coord-modal-actions .coord-secondary-button, .coord-modal-actions .coord-danger-button { min-height: 36px; font-size: 11px; }

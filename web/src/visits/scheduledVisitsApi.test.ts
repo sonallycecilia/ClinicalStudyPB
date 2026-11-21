@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   formatScheduledAt, localDateTimeToIso, saoPauloDay, scheduledVisitsApi, ScheduledVisitsApiError,
   SCHEDULE_CONNECTION_ERROR, SCHEDULE_INVALID_RESPONSE, SCHEDULE_UNEXPECTED_ERROR,
+  STATUS_DOMAIN_ERRORS, STATUS_UPDATE_INVALID_RESPONSE, STATUS_UPDATE_UNEXPECTED_ERROR,
   type CreateScheduledVisitInput, type IncludedParticipant, type ScheduledVisit,
 } from './scheduledVisitsApi';
 
@@ -116,6 +117,95 @@ describe('scheduledVisitsApi.schedule', () => {
     const abort = new DOMException('Aborted', 'AbortError');
     const request = vi.fn().mockRejectedValue(abort);
     await expect(scheduledVisitsApi.schedule(request, studyId, input, controller.signal)).rejects.toBe(abort);
+  });
+});
+
+describe('scheduledVisitsApi.listScheduledVisits', () => {
+  const realized: ScheduledVisit = { ...created, id: 'scheduled-2', status: 'Realizada', realizedAt: '2026-11-24T12:40:00.000Z' };
+
+  it('consulta E03 e aceita todas as situações', async () => {
+    const request = vi.fn().mockResolvedValue(reply(200, [created, realized]));
+    await expect(scheduledVisitsApi.listScheduledVisits(request, studyId)).resolves.toEqual([created, realized]);
+    expect(request).toHaveBeenCalledWith('/studies/study-1/scheduled-visits', { signal: undefined });
+  });
+
+  it('recusa visitas de outro estudo ou com realização incoerente', async () => {
+    const otherStudy = vi.fn().mockResolvedValue(reply(200, [{ ...created, studyId: 'study-2' }]));
+    const incoherent = vi.fn().mockResolvedValue(reply(200, [{ ...created, status: 'Realizada', realizedAt: null }]));
+    expect((await rejection(scheduledVisitsApi.listScheduledVisits(otherStudy, studyId))).message).toMatch(/agenda inválida/);
+    expect((await rejection(scheduledVisitsApi.listScheduledVisits(incoherent, studyId))).message).toMatch(/agenda inválida/);
+  });
+
+  it('usa a mensagem do servidor em 403', async () => {
+    const message = 'O Coordenador só pode consultar visitas agendadas de estudos em recrutamento, execução ou encerrados.';
+    const request = vi.fn().mockResolvedValue(reply(403, { statusCode: 403, message }));
+    expect((await rejection(scheduledVisitsApi.listScheduledVisits(request, studyId))).message).toBe(message);
+  });
+});
+
+describe('scheduledVisitsApi.updateStatus', () => {
+  const realized: ScheduledVisit = { ...created, status: 'Realizada', realizedAt: '2026-11-24T12:40:00.000Z', observation: 'Compareceu.' };
+  const bodyOf = (request: ReturnType<typeof vi.fn>) => JSON.parse((request.mock.calls[0] as [string, RequestInit])[1].body as string);
+
+  it('envia PATCH com realizedAt somente para Realizada e retorna a visita atualizada', async () => {
+    const request = vi.fn().mockResolvedValue(reply(200, realized));
+    await expect(scheduledVisitsApi.updateStatus(request, created, { status: 'Realizada', realizedAt: '2026-11-24T12:40:00.000Z', observation: ' Compareceu. ' })).resolves.toEqual(realized);
+    const [path, init] = request.mock.calls[0] as [string, RequestInit];
+    expect(path).toBe('/studies/study-1/scheduled-visits/scheduled-1/status');
+    expect(init.method).toBe('PATCH');
+    expect(bodyOf(request)).toEqual({ status: 'Realizada', realizedAt: '2026-11-24T12:40:00.000Z', observation: 'Compareceu.' });
+  });
+
+  it('não envia realizedAt para Ausente e omite a observação quando não informada', async () => {
+    const request = vi.fn().mockResolvedValue(reply(200, { ...created, status: 'Ausente' }));
+    await scheduledVisitsApi.updateStatus(request, created, { status: 'Ausente', realizedAt: '2026-11-24T12:40:00.000Z' });
+    expect(bodyOf(request)).toEqual({ status: 'Ausente' });
+  });
+
+  it('envia null para remover a observação', async () => {
+    const request = vi.fn().mockResolvedValue(reply(200, { ...created, status: 'Cancelada', observation: null }));
+    await scheduledVisitsApi.updateStatus(request, created, { status: 'Cancelada', observation: '   ' });
+    expect(bodyOf(request)).toEqual({ status: 'Cancelada', observation: null });
+  });
+
+  it('recusa resposta de outra visita ou em outra situação', async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce(reply(200, { ...realized, id: 'outra' }))
+      .mockResolvedValueOnce(reply(200, { ...created, status: 'Agendada' }));
+    expect((await rejection(scheduledVisitsApi.updateStatus(request, created, { status: 'Realizada', realizedAt: realized.realizedAt! }))).message).toBe(STATUS_UPDATE_INVALID_RESPONSE);
+    expect((await rejection(scheduledVisitsApi.updateStatus(request, created, { status: 'Cancelada' }))).message).toBe(STATUS_UPDATE_INVALID_RESPONSE);
+  });
+
+  it('exibe a transição recusada com a mensagem do servidor', async () => {
+    const message = 'Transição de "Cancelada" para "Realizada" não permitida.';
+    const request = vi.fn().mockResolvedValue(reply(400, { statusCode: 400, message, code: 'VISIT_STATUS_FINAL' }));
+    const error = await rejection(scheduledVisitsApi.updateStatus(request, created, { status: 'Realizada', realizedAt: realized.realizedAt! }));
+    expect(error).toMatchObject({ message, code: 'VISIT_STATUS_FINAL', fieldErrors: { status: message } });
+  });
+
+  it.each([
+    ['REALIZED_AT_INVALID', STATUS_DOMAIN_ERRORS.REALIZED_AT_INVALID.message, 'realizedAt'],
+    ['STUDY_CLOSED', 'Não é possível alterar um estudo encerrado.', undefined],
+    ['PARTICIPATION_NOT_ACTIVE', 'Somente visitas de participantes ativos podem ser atualizadas.', undefined],
+  ])('traduz %s', async (code, message, field) => {
+    const request = vi.fn().mockResolvedValue(reply(400, { statusCode: 400, message: 'texto', code }));
+    const error = await rejection(scheduledVisitsApi.updateStatus(request, created, { status: 'Realizada', realizedAt: realized.realizedAt! }));
+    expect(error.message).toBe(message);
+    expect(error.fieldErrors).toEqual(field ? { [field]: message } : {});
+  });
+
+  it('aponta realizedAt quando o ValidationPipe recusa a data de realização', async () => {
+    const request = vi.fn().mockResolvedValue(reply(400, { statusCode: 400, message: ['Informe a data de realização somente para visitas realizadas.'] }));
+    const error = await rejection(scheduledVisitsApi.updateStatus(request, created, { status: 'Realizada', realizedAt: 'x' }));
+    expect(error.fieldErrors).toEqual({ realizedAt: 'Informe a data de realização somente para visitas realizadas.' });
+  });
+
+  it('trata 404 com a mensagem do servidor e erro inesperado com mensagem genérica', async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce(reply(404, { statusCode: 404, message: 'Visita agendada não encontrada neste estudo.' }))
+      .mockResolvedValueOnce(reply(503, null));
+    expect((await rejection(scheduledVisitsApi.updateStatus(request, created, { status: 'Ausente' }))).message).toBe('Visita agendada não encontrada neste estudo.');
+    expect((await rejection(scheduledVisitsApi.updateStatus(request, created, { status: 'Ausente' }))).message).toBe(STATUS_UPDATE_UNEXPECTED_ERROR);
   });
 });
 

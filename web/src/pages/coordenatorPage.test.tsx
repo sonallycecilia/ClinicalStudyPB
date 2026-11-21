@@ -66,8 +66,10 @@ const scheduledResponse = {
   scheduledAt: '2026-11-24T12:00:00.000Z', status: 'Agendada', realizedAt: null, observation: null, createdAt: '2026-11-16T13:20:41.512Z',
 };
 
-function mockScheduleApi(postResponse: () => Response) {
+function mockScheduleApi(postResponse: () => Response, agenda: () => unknown[] = () => [], patchResponse?: (body: { status: string }) => Response) {
   mockRequest.mockImplementation(async (path: string, init?: RequestInit) => {
+    if (path === '/studies/study-1/scheduled-visits' && !init?.method) return json(200, agenda());
+    if (path.startsWith('/studies/study-1/scheduled-visits/') && init?.method === 'PATCH' && patchResponse) return patchResponse(JSON.parse(init.body as string));
     if (path === '/studies/study-1/participants?status=Ativo') return json(200, [{
       participationId: 'participation-1', candidateId: 'candidate-1', studyId: 'study-1', name: 'Bianca Oliveira',
       participationStatus: 'Ativo', includedAt: '2026-11-06', withdrawnAt: null, withdrawalReason: null,
@@ -706,13 +708,15 @@ describe('CoordinatorVisitsPage', () => {
     const dialog = await fillSchedule();
     await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: 'Agendar visita' })); });
 
-    const [, init] = mockRequest.mock.calls.find(([path]) => path === '/studies/study-1/scheduled-visits') as [string, RequestInit];
+    const [, init] = mockRequest.mock.calls.find(([path, options]) => path === '/studies/study-1/scheduled-visits' && options?.method === 'POST') as [string, RequestInit];
     expect(JSON.parse(init.body as string)).toEqual({
       participationId: 'participation-1', plannedVisitId: 'planned-1', scheduledAt: new Date('2026-11-24T09:00').toISOString(),
     });
     expect(screen.queryByRole('dialog', { name: 'Agendar visita' })).toBeNull();
-    expect(screen.getByRole('status').textContent).toContain('Visita agendada com sucesso! Bianca Oliveira · Consulta inicial · 24/11/2026 · 09:00');
-    fireEvent.click(screen.getByRole('button', { name: 'Fechar confirmação de agendamento' }));
+    expect(screen.getByText(/Visita agendada com sucesso!/).textContent).toContain('Visita agendada com sucesso! Bianca Oliveira · Consulta inicial · 24/11/2026 · 09:00');
+    // A agenda é consultada de novo na API depois do agendamento.
+    await waitFor(() => expect(mockRequest.mock.calls.filter(([path, options]) => path === '/studies/study-1/scheduled-visits' && !options?.method)).toHaveLength(2));
+    fireEvent.click(screen.getByRole('button', { name: 'Fechar notificação' }));
     expect(screen.queryByText(/Visita agendada com sucesso!/)).toBeNull();
   });
 
@@ -728,12 +732,84 @@ describe('CoordinatorVisitsPage', () => {
     expect(screen.queryByText(/Visita agendada com sucesso!/)).toBeNull();
   });
 
-  it('permite atualizar a situação de uma visita da agenda', () => {
+  const agendaRows = [
+    { ...scheduledResponse, id: 'scheduled-1', participantName: 'Bianca Oliveira', status: 'Agendada' },
+    { ...scheduledResponse, id: 'scheduled-2', participantName: 'Lucas Martins', participationId: 'participation-2', status: 'Realizada', realizedAt: '2026-11-24T12:30:00.000Z' },
+    { ...scheduledResponse, id: 'scheduled-3', participantName: 'Mariana Alves', participationId: 'participation-3', status: 'Cancelada' },
+  ];
+
+  it('consulta a agenda do estudo na API, com indicadores e filtro por situação', async () => {
+    mockScheduleApi(() => json(500, null), () => agendaRows);
     renderCoordinator(<CoordinatorVisitsPage />);
-    const row = screen.getByRole('row', { name: /Lucas Martins/ });
-    fireEvent.click(within(row).getByRole('button', { name: 'Editar' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Concluir' }));
-    expect(within(row).getByText('Concluída')).toBeTruthy();
+    const table = screen.getByRole('table', { name: 'Agenda de visitas' });
+    expect(await within(table).findByText('Bianca Oliveira')).toBeTruthy();
+    expect(mockRequest).toHaveBeenCalledWith('/studies/study-1/scheduled-visits', expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    const bianca = within(table).getByRole('row', { name: /Bianca Oliveira/ });
+    expect(within(bianca).getByText('24/11/2026 · 09:00')).toBeTruthy();
+    expect(within(bianca).getByText('Agendada')).toBeTruthy();
+    expect(within(bianca).getByRole('button', { name: 'Atualizar situação' })).toBeTruthy();
+    expect(within(within(table).getByRole('row', { name: /Lucas Martins/ })).getByRole('button', { name: 'Detalhes' })).toBeTruthy();
+    const stats = screen.getByRole('region', { name: 'Indicadores' });
+    expect(within(stats).getByText('Visitas agendadas').parentElement?.textContent).toContain('01');
+    expect(within(stats).getByText('Ausências e cancelamentos').parentElement?.textContent).toContain('01');
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filtrar por situação' }), { target: { value: 'Cancelada' } });
+    expect(within(table).queryByText('Bianca Oliveira')).toBeNull();
+    expect(within(table).getByText('Mariana Alves')).toBeTruthy();
+  });
+
+  it('atualiza a situação pela API e só altera a linha após a confirmação', async () => {
+    let resolvePatch!: (response: Response) => void;
+    mockRequest.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (init?.method === 'PATCH') return new Promise<Response>((done) => { resolvePatch = done; });
+      if (path === '/studies/study-1/scheduled-visits') return json(200, agendaRows);
+      return json(200, studyOptions);
+    });
+    renderCoordinator(<CoordinatorVisitsPage />);
+    const row = await screen.findByRole('row', { name: /Bianca Oliveira/ });
+    fireEvent.click(within(row).getByRole('button', { name: 'Atualizar situação' }));
+    const dialog = screen.getByRole('dialog', { name: 'Atualizar situação da visita' });
+    fireEvent.click(within(dialog).getByRole('radio', { name: /^Ausente/ }));
+    await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar situação' })); });
+
+    const [path, init] = mockRequest.mock.calls.find(([, options]) => options?.method === 'PATCH') as [string, RequestInit];
+    expect(path).toBe('/studies/study-1/scheduled-visits/scheduled-1/status');
+    expect(JSON.parse(init.body as string)).toEqual({ status: 'Ausente' });
+    expect(within(row).getByText('Agendada')).toBeTruthy();
+
+    await act(async () => { resolvePatch(json(200, { ...agendaRows[0], status: 'Ausente' })); });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(within(screen.getByRole('row', { name: /Bianca Oliveira/ })).getByText('Ausente')).toBeTruthy();
+    expect(screen.getByText('Situação atualizada para “Ausente”: Bianca Oliveira · Consulta inicial.')).toBeTruthy();
+  });
+
+  it('mantém a situação e o formulário quando a API recusa a atualização', async () => {
+    const message = 'Transição de "Cancelada" para "Ausente" não permitida.';
+    mockScheduleApi(() => json(500, null), () => agendaRows, () => json(400, { statusCode: 400, message, code: 'VISIT_STATUS_FINAL' }));
+    renderCoordinator(<CoordinatorVisitsPage />);
+    const row = await screen.findByRole('row', { name: /Bianca Oliveira/ });
+    fireEvent.click(within(row).getByRole('button', { name: 'Atualizar situação' }));
+    const dialog = screen.getByRole('dialog', { name: 'Atualizar situação da visita' });
+    fireEvent.click(within(dialog).getByRole('radio', { name: /^Ausente/ }));
+    await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar situação' })); });
+
+    expect(within(dialog).getByRole('alert').textContent).toContain(message);
+    expect((within(dialog).getByRole('radio', { name: /^Ausente/ }) as HTMLInputElement).checked).toBe(true);
+    // A agenda é recarregada para mostrar a situação atual, sem fechar o formulário.
+    await waitFor(() => expect(mockRequest.mock.calls.filter(([path, options]) => path === '/studies/study-1/scheduled-visits' && !options?.method)).toHaveLength(2));
+    expect(screen.getByRole('dialog', { name: 'Atualizar situação da visita' })).toBeTruthy();
+  });
+
+  it('informa quando a consulta da agenda falha e permite tentar novamente', async () => {
+    let calls = 0;
+    mockRequest.mockImplementation(async (path: string) => {
+      if (path === '/studies/study-1/scheduled-visits') return ++calls === 1 ? json(503, null) : json(200, agendaRows);
+      return json(200, studyOptions);
+    });
+    renderCoordinator(<CoordinatorVisitsPage />);
+    expect(await screen.findByText('Não foi possível carregar as visitas agendadas. Tente novamente.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
+    expect(await screen.findByText('Bianca Oliveira')).toBeTruthy();
   });
 });
 
