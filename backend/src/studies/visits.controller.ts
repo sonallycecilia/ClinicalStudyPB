@@ -46,7 +46,7 @@ const visitBodyValidationPipe = new ValidationPipe({
 
 @Controller('studies/:studyId/visits')
 @UseGuards(AccessTokenGuard, RolesGuard)
-@Roles('Pesquisador')
+@Roles('Pesquisador', 'Coordenador')
 @ApiTags('Visitas previstas')
 @ApiBearerAuth('bearer')
 @ApiInternalServerErrorResponse({ description: 'Erro interno inesperado ao acessar ou persistir dados.', type: ApiErrorResponseDto })
@@ -54,18 +54,19 @@ export class VisitsController {
   constructor(private readonly visitsService: VisitsService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Listar visitas previstas de um estudo próprio' })
+  @ApiOperation({ summary: 'Listar visitas previstas de um estudo' })
   @ApiParam({ name: 'studyId', description: 'UUID do estudo.', format: 'uuid' })
   @ApiOkResponse({ description: 'Visitas previstas em ordem de execução.', type: PlannedVisitResponseDto, isArray: true })
   @ApiBadRequestResponse({ description: 'O parâmetro studyId não é um UUID válido.', type: ApiErrorResponseDto })
   @ApiUnauthorizedResponse({ description: 'Token ausente, inválido ou expirado.', type: ApiErrorResponseDto })
-  @ApiForbiddenResponse({ description: 'Somente o pesquisador proprietário pode consultar as visitas.', type: ApiErrorResponseDto })
+  @ApiForbiddenResponse({ description: 'Perfil sem permissão ou estudo fora do escopo de acesso.', type: ApiErrorResponseDto })
   @ApiNotFoundResponse({ description: 'Estudo não encontrado.', type: ApiErrorResponseDto })
   list(@Param('studyId', new ParseUUIDPipe()) studyId: string, @Req() request: AuthenticatedRequest) {
     return this.visitsService.list(studyId, request.user!.sub);
   }
 
   @Get(':visitId')
+  @Roles('Pesquisador')
   @ApiOperation({ summary: 'Consultar uma visita prevista do estudo' })
   @ApiParam({ name: 'studyId', description: 'UUID do estudo.', format: 'uuid' })
   @ApiParam({ name: 'visitId', description: 'UUID da visita prevista.', format: 'uuid' })
@@ -83,6 +84,7 @@ export class VisitsController {
   }
 
   @Post()
+  @Roles('Pesquisador')
   @ApiOperation({ summary: 'Cadastrar uma visita prevista em estudo próprio' })
   @ApiParam({ name: 'studyId', description: 'UUID do estudo.', format: 'uuid' })
   @ApiBody({ type: CreatePlannedVisitRequestDto })
@@ -108,7 +110,7 @@ export class VisitsController {
   @ApiOkResponse({ description: 'Atividades vinculadas à visita.', type: VisitActivityResponseDto, isArray: true })
   @ApiBadRequestResponse({ description: 'Um dos parâmetros não é um UUID válido.', type: ApiErrorResponseDto })
   @ApiUnauthorizedResponse({ description: 'Token ausente, inválido ou expirado.', type: ApiErrorResponseDto })
-  @ApiForbiddenResponse({ description: 'Somente o pesquisador proprietário pode consultar as atividades.', type: ApiErrorResponseDto })
+  @ApiForbiddenResponse({ description: 'Perfil sem permissão ou estudo fora do escopo de acesso.', type: ApiErrorResponseDto })
   @ApiNotFoundResponse({ description: 'Estudo ou visita prevista não encontrada neste estudo.', type: ApiErrorResponseDto })
   listActivities(
     @Param('studyId', new ParseUUIDPipe()) studyId: string,
@@ -119,6 +121,7 @@ export class VisitsController {
   }
 
   @Post(':visitId/activities')
+  @Roles('Pesquisador')
   @ApiOperation({ summary: 'Cadastrar uma atividade em uma visita prevista' })
   @ApiParam({ name: 'studyId', description: 'UUID do estudo.', format: 'uuid' })
   @ApiParam({ name: 'visitId', description: 'UUID da visita prevista.', format: 'uuid' })

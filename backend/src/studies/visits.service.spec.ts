@@ -1,5 +1,6 @@
 import { jest } from '@jest/globals';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import type { PoolClient } from 'pg';
 import { DatabaseService } from '../database/database.service.js';
 import { StudiesService } from './studies.service.js';
 import { VisitsService } from './visits.service.js';
@@ -30,21 +31,30 @@ describe('VisitsService', () => {
     query: jest.Mock<
       (sql: string, values?: unknown[]) => Promise<{ rows: object[]; rowCount: number | null }>
     >;
+    transaction: jest.Mock<
+      (operation: (client: PoolClient) => Promise<unknown>) => Promise<unknown>
+    >;
   };
   let studies: {
     findById: jest.Mock<(id: string, ownerId: string) => Promise<unknown>>;
+    assertTeamStudyReadAccess: jest.Mock<(id: string, userId: string) => Promise<unknown>>;
     assertStudyCanBeModified: jest.Mock<(id: string, ownerId: string) => Promise<unknown>>;
   };
   let service: VisitsService;
 
   beforeEach(() => {
-    database = {
-      query: jest.fn<
+    const query = jest.fn<
         (sql: string, values?: unknown[]) => Promise<{ rows: object[]; rowCount: number | null }>
-      >(),
+      >();
+    database = {
+      query,
+      transaction: jest.fn(async (operation: (client: PoolClient) => Promise<unknown>) =>
+        operation({ query } as unknown as PoolClient)),
     };
     studies = {
       findById: jest.fn<(id: string, ownerId: string) => Promise<unknown>>(),
+      assertTeamStudyReadAccess: jest.fn<(id: string, userId: string) => Promise<unknown>>()
+        .mockResolvedValue({}),
       assertStudyCanBeModified: jest.fn<(id: string, ownerId: string) => Promise<unknown>>()
         .mockResolvedValue({ status: StudyStatus.Planejamento }),
     };
@@ -91,6 +101,7 @@ describe('VisitsService', () => {
 
     database.query
       .mockResolvedValueOnce({ rows: [visit], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ order: 1 }], rowCount: 1 })
       .mockResolvedValueOnce({ rows: [], rowCount: 0 });
     await expect(service.createActivity(studyId, visitId, {
       name: 'Coleta de sinais vitais',
@@ -111,6 +122,7 @@ describe('VisitsService', () => {
   it('cadastra e lista atividades apenas dentro da visita do estudo', async () => {
     database.query
       .mockResolvedValueOnce({ rows: [visit], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ order: 3 }], rowCount: 1 })
       .mockResolvedValueOnce({ rows: [activity], rowCount: 1 })
       .mockResolvedValueOnce({ rows: [visit], rowCount: 1 })
       .mockResolvedValueOnce({ rows: [activity], rowCount: 1 });
@@ -120,17 +132,18 @@ describe('VisitsService', () => {
       description: 'Aferir pressão arterial.',
       type: 'Exame',
     }, researcherId)).resolves.toEqual(activity);
-    expect(database.query.mock.calls[1]?.[1]).toEqual([
-      visitId, 'Coleta de sinais vitais', 'Aferir pressão arterial.', 'Exame',
+    expect(database.query.mock.calls[2]?.[1]).toEqual([
+      visitId, 3, 'Coleta de sinais vitais', 'Aferir pressão arterial.', 'Exame',
     ]);
 
     await expect(service.listActivities(studyId, visitId, researcherId)).resolves.toEqual([activity]);
-    expect(database.query.mock.calls[3]?.[1]).toEqual([visitId]);
+    expect(database.query.mock.calls[4]?.[0]).toContain('ORDER BY ordem, id_atividade');
+    expect(database.query.mock.calls[4]?.[1]).toEqual([visitId]);
   });
 
   it('impede consultar atividades de uma visita que não pertence ao estudo', async () => {
     database.query.mockResolvedValue({ rows: [], rowCount: 0 });
-    studies.findById.mockRejectedValue(new NotFoundException());
+    studies.assertTeamStudyReadAccess.mockRejectedValue(new NotFoundException());
     await expect(service.listActivities(studyId, visitId, researcherId)).rejects.toThrow(NotFoundException);
   });
 
