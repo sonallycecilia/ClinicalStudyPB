@@ -117,6 +117,20 @@ export class StudiesService {
     return rows;
   }
 
+  /**
+   * Estudos que o Coordenador pode acompanhar (participantes, visitas, retirada).
+   * Segue as mesmas fases de assertTeamStudyReadAccess; encerrados são somente leitura.
+   */
+  async listForFollowUp(): Promise<Pick<Study, 'id' | 'title' | 'status'>[]> {
+    const { rows } = await this.database.query<Pick<Study, 'id' | 'title' | 'status'>>(
+      `SELECT id_estudo::text AS id, titulo AS title, status
+       FROM estudos WHERE status = ANY($1::text[])
+       ORDER BY titulo, id_estudo`,
+      [[StudyStatus.Recrutamento, StudyStatus.Execucao, StudyStatus.Encerrado]],
+    );
+    return rows;
+  }
+
   async findById(id: string, researcherId: string): Promise<Study> {
     await this.assertResearcher(researcherId);
     const study = await this.findByIdForOwnerCheck(id);
