@@ -126,6 +126,62 @@ export class StudiesService {
     return study;
   }
 
+  async assertTeamStudyReadAccess(
+    id: string,
+    userId: string,
+    resourceLabel = 'participantes',
+  ): Promise<Study> {
+    const user = await this.usersService.findById(userId);
+    if (user.status !== 'Ativo' || !['Pesquisador', 'Coordenador'].includes(user.role)) {
+      throw new ForbiddenException('Seu perfil não tem permissão para este recurso.');
+    }
+
+    const study = await this.findByIdForOwnerCheck(id);
+    if (user.role === 'Pesquisador') {
+      if (study.researcherId !== userId) {
+        throw new ForbiddenException('Você não tem permissão para acessar este estudo.');
+      }
+      return study;
+    }
+
+    if (![StudyStatus.Recrutamento, StudyStatus.Execucao, StudyStatus.Encerrado].includes(study.status)) {
+      throw new ForbiddenException(
+        `O Coordenador só pode consultar ${resourceLabel} de estudos em recrutamento, execução ou encerrados.`,
+      );
+    }
+    return study;
+  }
+
+  async assertTeamStudyWriteAccess(id: string, userId: string): Promise<Study> {
+    const user = await this.usersService.findById(userId);
+    if (user.status !== 'Ativo' || !['Pesquisador', 'Coordenador'].includes(user.role)) {
+      throw new ForbiddenException('Seu perfil não tem permissão para este recurso.');
+    }
+
+    const study = await this.findByIdForOwnerCheck(id);
+    if (user.role === 'Pesquisador') {
+      if (study.researcherId !== userId) {
+        throw new ForbiddenException('Você não tem permissão para alterar este estudo.');
+      }
+    } else if (study.status !== StudyStatus.Recrutamento && study.status !== StudyStatus.Execucao) {
+      if (study.status !== StudyStatus.Encerrado) {
+        throw new ForbiddenException(
+          'O Coordenador só pode alterar estudos em recrutamento ou execução.',
+        );
+      }
+    }
+
+    if (study.status === StudyStatus.Encerrado) {
+      throw new BadRequestException({
+        statusCode: 400,
+        message: 'Não é possível alterar um estudo encerrado.',
+        error: 'Bad Request',
+        code: 'STUDY_CLOSED',
+      });
+    }
+    return study;
+  }
+
   /** Exclusivo do RF08: Coordenadores ativos acessam todos os estudos em recrutamento.
    * Não existe vínculo individual Coordenador–estudo no modelo atual.
    * As demais operações continuam usando as verificações de propriedade existentes.
