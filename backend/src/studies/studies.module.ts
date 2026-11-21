@@ -14,6 +14,11 @@ import { VisitsController } from './visits.controller.js';
 import { VisitsService } from './visits.service.js';
 import { ParticipantVisitsController } from './participant-visits.controller.js';
 import { ParticipantVisitsService } from './participant-visits.service.js';
+import { ParticipantSelfServiceController } from './participant-self-service.controller.js';
+import {
+  ParticipantSelfService,
+  ParticipantSelfServiceClock,
+} from './participant-self-service.service.js';
 
 @Module({
   // Controllers apply these guards locally. Their dependencies are made
@@ -25,6 +30,7 @@ import { ParticipantVisitsService } from './participant-visits.service.js';
     VisitsController,
     CandidatesController,
     ParticipantVisitsController,
+    ParticipantSelfServiceController,
   ],
   providers: [
     StudiesService,
@@ -32,6 +38,8 @@ import { ParticipantVisitsService } from './participant-visits.service.js';
     VisitsService,
     CandidatesService,
     ParticipantVisitsService,
+    ParticipantSelfService,
+    ParticipantSelfServiceClock,
     AccessTokenGuard,
     RolesGuard,
   ],

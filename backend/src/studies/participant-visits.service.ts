@@ -14,6 +14,7 @@ import type {
   ListScheduledVisitsQuery,
   Participant,
   ParticipationStatus,
+  RegisterParticipantWithdrawalInput,
   ScheduledVisit,
   ScheduledVisitFinalStatus,
   ScheduledVisitStatus,
@@ -250,6 +251,142 @@ export class ParticipantVisitsService {
       values,
     );
     return rows;
+  }
+
+  async registerParticipantWithdrawal(
+    studyId: string,
+    participationId: string,
+    input: RegisterParticipantWithdrawalInput,
+    userId: string,
+  ): Promise<Participant> {
+    const authorizedStudy =
+      await this.studiesService.assertTeamStudyWriteAccess(studyId, userId);
+    if (!isValidDate(input.withdrawalDate)) {
+      throw new BadRequestException(
+        'Informe uma data válida no formato YYYY-MM-DD.',
+      );
+    }
+    if (typeof input.reason !== 'string' || !input.reason.trim()) {
+      throw new BadRequestException('Informe o motivo da retirada.');
+    }
+
+    return this.database.transaction(async (client) => {
+      const studyResult = await client.query<LockedStudyRow>(
+        `SELECT status, data_fim::text AS "endDate",
+                id_pesquisador::text AS "researcherId"
+         FROM estudos
+         WHERE id_estudo = $1
+         FOR SHARE`,
+        [studyId],
+      );
+      const study = studyResult.rows[0];
+      if (!study) throw new NotFoundException('Estudo não encontrado.');
+      if (study.researcherId !== authorizedStudy.researcherId) {
+        throw new ForbiddenException(
+          'O responsável pelo estudo foi alterado durante a operação.',
+        );
+      }
+      if (study.status === 'encerrado') {
+        throw domainBadRequest(
+          'STUDY_CLOSED',
+          'Não é possível alterar um estudo encerrado.',
+        );
+      }
+      if (
+        userId !== authorizedStudy.researcherId &&
+        study.status !== 'recrutamento' &&
+        study.status !== 'execução'
+      ) {
+        throw new ForbiddenException(
+          'O Coordenador só pode alterar estudos em recrutamento ou execução.',
+        );
+      }
+
+      const participationResult = await client.query<
+        ParticipantRow & { status: ParticipationStatus }
+      >(
+        `SELECT p.status,
+                p.data_inclusao::text AS "includedAt",
+                c.id_candidato::text AS "candidateId",
+                c.id_estudo::text AS "studyId",
+                c.nome AS name,
+                p.id_participacao::text AS "participationId",
+                p.data_retirada::text AS "withdrawnAt",
+                p.motivo_retirada AS "withdrawalReason"
+         FROM participacoes_estudo p
+         JOIN candidatos c ON c.id_candidato = p.id_candidato
+         WHERE p.id_participacao = $1
+           AND c.id_estudo = $2
+         FOR UPDATE OF p`,
+        [participationId, studyId],
+      );
+      const participation = participationResult.rows[0];
+      if (!participation) {
+        throw new NotFoundException(
+          'Participante não encontrado neste estudo.',
+        );
+      }
+      if (participation.status !== 'Ativo') {
+        throw domainBadRequest(
+          'PARTICIPATION_NOT_ACTIVE',
+          'Somente participantes ativos podem ser retirados do estudo.',
+        );
+      }
+
+      const todayResult = await client.query<{ today: string }>(
+        `SELECT (clock_timestamp() AT TIME ZONE 'America/Sao_Paulo')::date::text
+                  AS today`,
+      );
+      const todayRow = todayResult.rows[0];
+      if (!todayRow) {
+        throw new Error('O banco não retornou a data civil atual.');
+      }
+      const today = todayRow.today;
+      if (
+        input.withdrawalDate < participation.includedAt ||
+        input.withdrawalDate > today
+      ) {
+        throw domainBadRequest(
+          'WITHDRAWAL_DATE_INVALID',
+          'A data de retirada deve estar entre a inclusão e a data atual.',
+        );
+      }
+
+      const updated = await client.query<ParticipantRow>(
+        `UPDATE participacoes_estudo p
+         SET status = 'Retirado',
+             data_retirada = $3::date,
+             motivo_retirada = $4
+         FROM candidatos c
+         WHERE p.id_participacao = $1
+           AND p.id_candidato = c.id_candidato
+           AND c.id_estudo = $2
+           AND p.status = 'Ativo'
+         RETURNING
+           p.id_participacao::text AS "participationId",
+           c.id_candidato::text AS "candidateId",
+           c.id_estudo::text AS "studyId",
+           c.nome AS name,
+           p.status AS "participationStatus",
+           p.data_inclusao::text AS "includedAt",
+           p.data_retirada::text AS "withdrawnAt",
+           p.motivo_retirada AS "withdrawalReason"`,
+        [
+          participationId,
+          studyId,
+          input.withdrawalDate,
+          input.reason.trim(),
+        ],
+      );
+      const participant = updated.rows[0];
+      if (!participant) {
+        throw domainBadRequest(
+          'PARTICIPATION_NOT_ACTIVE',
+          'Somente participantes ativos podem ser retirados do estudo.',
+        );
+      }
+      return participant;
+    });
   }
 
   async getParticipantHistory(

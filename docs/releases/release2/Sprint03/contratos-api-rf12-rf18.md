@@ -6,13 +6,14 @@
 | **Release / Sprint** | Release 2 — Sprint 3 (10/11/2026 a 23/11/2026) |
 | **Task** | S3-PO-03 — Documentar contratos da API para RF12–RF18 |
 | **Responsável** | Zeton (Líder técnico / Gerente) |
-| **Versão** | 0.1 — proposta para validação da equipe (15/11/2026) |
-| **Situação** | Todos os contratos de RF12–RF18 estão **planejados**: nenhum endpoint desses requisitos existe no código atual. |
+| **Versão** | 0.6 — sincronização com a implementação (20/11/2026) |
+| **Situação** | X01–X03 e E01–E10 estão implementados no Backend. As integrações dos clientes Web/Mobile são acompanhadas separadamente. P-01 continua pendente para dados de produção. |
 
 > **Como ler este documento.** Cada informação está marcada como:
 > **[Existente]** — verificado no código do repositório;
-> **[Planejado]** — contrato a ser implementado na Sprint 3;
-> **[Proposta]** — detalhe técnico não definido pela especificação nem pelo backlog, sugerido aqui e pendente de validação (seção 13);
+> **[Implementado no Backend]** — endpoint, DTO e regra correspondentes existem no código atual;
+> **[Decisão aprovada]** — regra aprovada pela equipe, registrada nas seções 13 e 14;
+> **[Proposta]** — detalhe não aprovado e sem força de requisito;
 > **[Adiado]** — melhoria do Plano de Contingência adiada para a Sprint 4, citada apenas como dependência futura.
 
 ---
@@ -39,7 +40,7 @@
 
 ## 1. Objetivo
 
-Definir um contrato comum entre Backend, Web e Mobile para RF12–RF18, para que os três possam ser desenvolvidos em paralelo, usando respostas simuladas enquanto os endpoints não estiverem prontos.
+Registrar o contrato comum entre Backend, Web e Mobile para RF12–RF18 e mantê-lo sincronizado com a implementação atual do Backend. Este documento não declara concluída a integração dos clientes.
 
 O documento não implementa funcionalidades. Os pontos que dependem de aprovação estão destacados na seção 13 e não devem ser tratados como definitivos.
 
@@ -66,11 +67,11 @@ O documento não implementa funcionalidades. Os pontos que dependem de aprovaç�
 
 | Item | Situação verificada |
 |---|---|
-| Tabelas de RF12–RF16 | Existem (`participacoes_estudo`, `visitas`, `resultados_avaliacao`). **Nenhum endpoint as utiliza**, exceto a inclusão (RF11), que cria `participacoes_estudo`. |
-| Endpoints de RF12–RF18 | **Não existem.** Os controllers atuais são `auth`, `users`, `studies`, `criteria`, `visits` (visitas **previstas**, RF06) e `candidates`. |
-| Telas Web do Coordenador | `coordenatorPage.tsx` (Visitas, Reagendamentos, Painel) usa dados fixos em `useState`. A substituição pela API está prevista em S3-W2-07. |
-| Mobile | Somente login, tela inicial e logout. A sessão fica em memória e o login aceita os quatro perfis; S3-MOB-02 corrige esses dois pontos. |
-| Vínculo conta–participante | Coluna `candidatos.id_usuario` existe, mas **o cadastro de candidatos nunca a preenche** (ver P-01, seção 14). |
+| Endpoints de RF12–RF18 | X02/X03 e E01–E10 estão implementados nos controllers de visitas/participantes e autoatendimento; as regras e DTOs estão em `ParticipantVisitsService`, `ParticipantSelfService` e `swagger/api.models.ts`. |
+| Acesso do Coordenador a X02/X03 | Implementado como leitura nos estados permitidos, conforme D-01 e `StudiesService`. A escrita em visitas previstas permanece restrita ao Pesquisador proprietário. |
+| Integração Web | Os fluxos de acompanhamento da Web ainda não foram confirmados como integrados aos endpoints nesta etapa; isso não altera o status da API. |
+| Integração Mobile | A autenticação/sessão existe. Os serviços de dados RF17/RF18 ainda são placeholders indisponíveis e não consomem E09/E10. |
+| Vínculo conta–participante | `candidatos.id_usuario` existe e é usado por E09/E10. O cadastro de candidatos ainda não garante esse vínculo em produção (P-01). As fixtures E2E de BE-07 criam o vínculo explicitamente. |
 | Auditoria | Tabela `auditoria` existe sem uso. O registro de auditoria foi adiado e não está nestes contratos. |
 
 ### 3.3 Premissas
@@ -100,20 +101,20 @@ Texto da especificação oficial, perfis conforme a figura de perfis da especifi
 | ID | Método | Rota | RF | Situação |
 |---|---|---|---|---|
 | X01 | `GET` | `/auth/me` | RF17–RF18 (sessão) | [Existente] |
-| X02 | `GET` | `/studies/:studyId/visits` | RF12 | [Existente] — acesso do Coordenador pendente (D-01) |
-| X03 | `GET` | `/studies/:studyId/visits/:visitId/activities` | RF12, RF14 | [Existente] — acesso do Coordenador pendente (D-01) |
-| E01 | `GET` | `/studies/:studyId/participants` | RF12, RF15, RF16 | [Planejado] |
-| E02 | `POST` | `/studies/:studyId/scheduled-visits` | RF12 | [Planejado] |
-| E03 | `GET` | `/studies/:studyId/scheduled-visits` | RF12, RF13 | [Planejado] |
-| E04 | `PATCH` | `/studies/:studyId/scheduled-visits/:scheduledVisitId/status` | RF13 | [Planejado] |
-| E05 | `GET` | `/studies/:studyId/scheduled-visits/:scheduledVisitId/results` | RF14 | [Planejado] |
-| E06 | `POST` | `/studies/:studyId/scheduled-visits/:scheduledVisitId/results` | RF14 | [Planejado] |
-| E07 | `GET` | `/studies/:studyId/participants/:participationId/history` | RF15 | [Planejado] |
-| E08 | `POST` | `/studies/:studyId/participants/:participationId/withdrawal` | RF16 | [Planejado] |
-| E09 | `GET` | `/me/studies` | RF17 | [Planejado] |
-| E10 | `GET` | `/me/visits` | RF18 | [Planejado] |
+| X02 | `GET` | `/studies/:studyId/visits` | RF12 | [Existente] — leitura pelo Coordenador implementada (D-01) |
+| X03 | `GET` | `/studies/:studyId/visits/:visitId/activities` | RF12, RF14 | [Existente] — leitura pelo Coordenador implementada (D-01) |
+| E01 | `GET` | `/studies/:studyId/participants` | RF12, RF15, RF16 | [Implementado no Backend] |
+| E02 | `POST` | `/studies/:studyId/scheduled-visits` | RF12 | [Implementado no Backend] |
+| E03 | `GET` | `/studies/:studyId/scheduled-visits` | RF12, RF13 | [Implementado no Backend] |
+| E04 | `PATCH` | `/studies/:studyId/scheduled-visits/:scheduledVisitId/status` | RF13 | [Implementado no Backend] |
+| E05 | `GET` | `/studies/:studyId/scheduled-visits/:scheduledVisitId/results` | RF14 | [Implementado no Backend] |
+| E06 | `POST` | `/studies/:studyId/scheduled-visits/:scheduledVisitId/results` | RF14 | [Implementado no Backend] |
+| E07 | `GET` | `/studies/:studyId/participants/:participationId/history` | RF15 | [Implementado no Backend] |
+| E08 | `POST` | `/studies/:studyId/participants/:participationId/withdrawal` | RF16 | [Implementado no Backend] |
+| E09 | `GET` | `/me/studies` | RF17 | [Implementado no Backend] |
+| E10 | `GET` | `/me/visits` | RF18 | [Implementado no Backend] |
 
-São **13 endpoints**: 3 existentes reutilizados e 10 planejados. Os existentes não mudam, exceto pela possível ampliação de perfil prevista em D-01.
+São **13 endpoints**: 3 existentes reutilizados e 10 implementados para RF12–RF18. X02/X03 incorporam a leitura pelo Coordenador aprovada em D-01; as operações de escrita de visitas previstas não foram ampliadas.
 
 ## 5. Convenções comuns a todos os contratos
 
@@ -149,7 +150,7 @@ Convenções extraídas do código existente [Existente], salvo indicação em c
 | Login / sessão / logout | `POST /auth/login` → `{ accessToken, user }`; `GET /auth/me` → usuário público; `POST /auth/logout` revoga a sessão. **Não serão criados novos endpoints de autenticação.** |
 | Renovação | Não há refresh token. Após 1 hora, nova autenticação é necessária. |
 
-### 6.2 Regras de acesso dos contratos planejados [Proposta]
+### 6.2 Regras de acesso implementadas [Decisões aprovadas]
 
 Toda rota planejada usa `@UseGuards(AccessTokenGuard, RolesGuard)` e `@ApiBearerAuth('bearer')`.
 
@@ -157,12 +158,12 @@ Toda rota planejada usa `@UseGuards(AccessTokenGuard, RolesGuard)` e `@ApiBearer
 |---|---|---|
 | **A-EQUIPE-LEITURA** | E01, E03, E05, E07 | **Pesquisador** ativo **proprietário** do estudo, em qualquer estado; ou **Coordenador** ativo, em estudo `recrutamento`, `execução` ou `encerrado`. |
 | **A-EQUIPE-ESCRITA** | E02, E04, E08 | **Coordenador** ativo, em estudo `recrutamento` ou `execução`; ou **Pesquisador** ativo **proprietário** do estudo não encerrado. Estudo encerrado resulta em 400 “Não é possível alterar um estudo encerrado.” |
-| **A-PESQUISADOR-ESCRITA** | E06 | **Pesquisador** ativo **proprietário** do estudo não encerrado (RF14 é do Pesquisador na especificação). Inclusão do Coordenador pendente (D-04). |
+| **A-PESQUISADOR-ESCRITA** | E06 | **Pesquisador** ativo **proprietário** do estudo não encerrado. E06 permanece exclusivo desse perfil (D-04). |
 | **A-PARTICIPANTE** | E09, E10 | Somente perfil **Participante** ativo. A identidade vem **exclusivamente** de `request.user.sub` (seção 6.3). |
 
 Fundamentação: o padrão “Pesquisador proprietário ou Coordenador ativo condicionado ao estado do estudo” já existe em RF08–RF11 (`assertCandidateStudyAccess`, `assertInclusionStudyAccess`). O schema não tem vínculo entre Coordenador e estudo, então o Coordenador acessa todos os estudos nos estados permitidos, como hoje no recrutamento (D-10). Os estados permitidos estão em D-03.
 
-### 6.3 Regras de segurança de RF17–RF18 [Planejado]
+### 6.3 Regras de segurança implementadas de RF17–RF18 [Implementado no Backend]
 
 1. O participante é identificado **somente** pelo token: `usuarios.id_usuario = request.user.sub` → `candidatos.id_usuario` → `candidatos.id_candidato` → `participacoes_estudo.id_candidato`.
 2. As rotas `/me/*` **não aceitam** `userId`, `candidateId` ou `participationId` como parâmetro. O único filtro opcional (`studyId` em E10) é aplicado **depois** da restrição ao próprio participante. Um estudo sem participação do usuário resulta em 404, sem revelar se o estudo existe.
@@ -182,7 +183,7 @@ A S3-PO-03 não cria endpoints de autenticação. A implementação do armazenam
 
 ## 7. Modelos de dados compartilhados
 
-Estruturas reutilizadas por vários endpoints, todas **[Planejado]**. Os tipos seguem a notação TypeScript.
+Estruturas reutilizadas por vários endpoints e implementadas no Backend. Os tipos seguem a notação TypeScript.
 
 ### 7.1 `Participant` — participação no estudo (tabela `participacoes_estudo` + `candidatos.nome`)
 
@@ -310,8 +311,8 @@ Todos os contratos usam o mesmo modelo: **Identificação → Definição HTTP �
 | Item | Valor |
 |---|---|
 | Autenticação | Obrigatória. |
-| Perfis hoje | **Somente Pesquisador proprietário** (`@Roles('Pesquisador')`). |
-| Pendência | O agendamento (RF12, S3-W2-02) é feito pelo Coordenador, que hoje recebe 403. Ver **D-01**. |
+| Perfis | Pesquisador proprietário e Coordenador, segundo os estados de leitura permitidos (D-01, D-03). |
+| Restrição | O Coordenador tem somente leitura; não cria, edita ou remove visitas previstas. |
 
 **Requisição** — sem corpo.
 
@@ -339,7 +340,7 @@ Todos os contratos usam o mesmo modelo: **Identificação → Definição HTTP �
 | 403 | Perfil não autorizado ou estudo de outro pesquisador | “Seu perfil não tem permissão para este recurso.” / mensagem do `StudiesService` |
 | 404 | Estudo não encontrado | “Estudo não encontrado.” |
 
-**Observações técnicas** — contrato inalterado. Somente a regra de perfil pode mudar, conforme D-01.
+**Observações técnicas** — o acesso de leitura do Coordenador está implementado conforme D-01 e os estados de D-03. A escrita em visitas previstas permanece restrita ao Pesquisador proprietário.
 
 ---
 
@@ -367,8 +368,8 @@ Todos os contratos usam o mesmo modelo: **Identificação → Definição HTTP �
 | Item | Valor |
 |---|---|
 | Autenticação | Obrigatória. |
-| Perfis hoje | Somente Pesquisador proprietário. |
-| Pendência | Acesso do Coordenador (D-01). Para RF14, o formulário usa E05, que já retorna as atividades. |
+| Perfis | Pesquisador proprietário e Coordenador, segundo os estados de leitura permitidos (D-01, D-03). |
+| Restrição | O Coordenador tem somente leitura. Para RF14, o formulário usa E05, que também retorna as atividades. |
 
 **Requisição** — sem corpo.
 
@@ -395,13 +396,13 @@ Todos os contratos usam o mesmo modelo: **Identificação → Definição HTTP �
 | 403 | Perfil não autorizado | “Seu perfil não tem permissão para este recurso.” |
 | 404 | Estudo ou visita prevista inexistente | “Estudo não encontrado.” / “Visita prevista não encontrada neste estudo.” |
 
-**Observações técnicas** — contrato inalterado.
+**Observações técnicas** — a leitura pelo Coordenador está implementada conforme D-01 e os estados de D-03.
 
 ---
 
 ### 8.1 RF12 — Agendar visitas para os participantes incluídos
 
-#### E01 — Listar participantes incluídos no estudo [Planejado]
+#### E01 — Listar participantes incluídos no estudo [Implementado no Backend]
 
 **Identificação**
 
@@ -465,7 +466,7 @@ Sem participações, retorna `[]` com 200.
 
 ---
 
-#### E02 — Agendar visita para uma participação [Planejado]
+#### E02 — Agendar visita para uma participação [Implementado no Backend]
 
 **Identificação**
 
@@ -559,7 +560,7 @@ Sem participações, retorna `[]` com 200.
 
 ---
 
-#### E03 — Listar visitas agendadas do estudo [Planejado]
+#### E03 — Listar visitas agendadas do estudo [Implementado no Backend]
 
 **Identificação**
 
@@ -625,7 +626,7 @@ Sem participações, retorna `[]` com 200.
 
 ### 8.2 RF13 — Registrar a realização, ausência ou cancelamento de visitas
 
-#### E04 — Atualizar a situação da visita agendada [Planejado]
+#### E04 — Atualizar a situação da visita agendada [Implementado no Backend]
 
 **Identificação**
 
@@ -709,7 +710,7 @@ Sem participações, retorna `[]` com 200.
 
 ### 8.3 RF14 — Registrar resultados fictícios das avaliações previstas
 
-#### E05 — Consultar atividades e resultados de uma visita agendada [Planejado]
+#### E05 — Consultar atividades e resultados de uma visita agendada [Implementado no Backend]
 
 **Identificação**
 
@@ -781,7 +782,7 @@ Sem participações, retorna `[]` com 200.
 
 ---
 
-#### E06 — Registrar resultado fictício de uma atividade [Planejado]
+#### E06 — Registrar resultado fictício de uma atividade [Implementado no Backend]
 
 **Identificação**
 
@@ -861,7 +862,7 @@ Sem participações, retorna `[]` com 200.
 
 ### 8.4 RF15 — Consultar o histórico de visitas e avaliações de um participante
 
-#### E07 — Consultar histórico do participante [Planejado]
+#### E07 — Consultar histórico do participante [Implementado no Backend]
 
 **Identificação**
 
@@ -960,7 +961,7 @@ Sem visitas, retorna `visits: []` com 200. O histórico vazio não é erro.
 
 ### 8.5 RF16 — Registrar a retirada de um participante do estudo
 
-#### E08 — Registrar retirada da participação [Planejado]
+#### E08 — Registrar retirada da participação [Implementado no Backend]
 
 **Identificação**
 
@@ -993,7 +994,7 @@ Sem visitas, retorna `visits: []` com 200. O histórico vazio não é erro.
 | Campo | Tipo | Obrigatório | Validação |
 |---|---|---|---|
 | `withdrawalDate` | `string` (date) | Sim | `YYYY-MM-DD` válido; não anterior a `includedAt` (constraint `participacoes_datas_validas`) nem posterior à data atual. |
-| `reason` | `string` | Sim | `trim`; 3 a 2000 caracteres. **[Proposta]** obrigatório, pois S3-W2-06 pede “solicitar motivo e data”, embora a coluna aceite `NULL`. |
+| `reason` | `string` | Sim | `trim`; deve restar conteúdo não vazio. Não há limite mínimo ou máximo aprovado nem aplicado pelo DTO. |
 
 ```json
 {
@@ -1032,13 +1033,13 @@ Sem visitas, retorna `visits: []` com 200. O histórico vazio não é erro.
 **Observações técnicas**
 - A atualização deve ocorrer em transação, com `WHERE status = 'Ativo'`.
 - O histórico (visitas e resultados) é preservado. Não há exclusão de dados.
-- Efeitos colaterais pendentes de decisão (D-07): cancelamento das visitas `Agendada` futuras, contador `participantes_vinculados` e `status_recrutamento` do candidato. Até a decisão, a implementação **não** altera esses dados.
+- Conforme D-07 aprovada, a retirada altera somente a participação (`status`, `data_retirada`, `motivo_retirada`). Visitas, resultados, contador `participantes_vinculados` e `status_recrutamento` do candidato não são alterados.
 
 ---
 
 ### 8.6 RF17 — Permitir ao participante consultar os estudos em que está incluído
 
-#### E09 — Listar estudos do participante autenticado [Planejado]
+#### E09 — Listar estudos do participante autenticado [Implementado no Backend]
 
 **Identificação**
 
@@ -1111,11 +1112,12 @@ Sem participações, retorna `[]` com 200. O Mobile exibe o estado vazio (S3-MOB
 
 | Código | Situação | Mensagem |
 |---|---|---|
+| 400 | Parâmetros de query não permitidos | ERR-COMUNS |
 | 401 | Token ausente, inválido, expirado ou conta inativa | ERR-COMUNS |
 | 403 | Perfil diferente de Participante | “Seu perfil não tem permissão para este recurso.” |
 
 **Observações técnicas**
-- **[Proposta]** retorna também participações `Retirado` e `Concluído`, identificadas pelo campo de estado, para que o participante veja o histórico de vínculo (D-09).
+- Inclui participações `Ativo`, `Retirado` e `Concluído`, identificadas pelo campo de estado, conforme D-09.
 - Não retorna `participantLimit`, `participantsLinked`, `researcherId` nem dados de outros participantes.
 - **Atenção à pendência P-01:** o cadastro atual de candidatos não preenche `candidatos.id_usuario`. Sem esse vínculo, o endpoint retorna `[]` para qualquer participante real.
 
@@ -1123,7 +1125,7 @@ Sem participações, retorna `[]` com 200. O Mobile exibe o estado vazio (S3-MOB
 
 ### 8.7 RF18 — Exibir as próximas visitas e seu histórico de comparecimento
 
-#### E10 — Listar visitas do participante autenticado [Planejado]
+#### E10 — Listar visitas do participante autenticado [Implementado no Backend]
 
 **Identificação**
 
@@ -1153,9 +1155,9 @@ Sem participações, retorna `[]` com 200. O Mobile exibe o estado vazio (S3-MOB
 
 **Requisição** — sem corpo. DTO de query: `ListMyVisitsQueryDto { scope: 'upcoming' | 'history'; studyId?: string }`.
 
-| Escopo | Critério **[Proposta]** | Ordenação |
+| Escopo | Critério | Ordenação |
 |---|---|---|
-| `upcoming` | `status = 'Agendada'` (inclusive datas já passadas e ainda não registradas pela equipe) | `scheduledAt` crescente |
+| `upcoming` | `status = 'Agendada'` e `scheduledAt` posterior ao instante atual. Não inclui visitas agendadas cuja data/hora já passou. Inclui visitas futuras de participações `Retirado`. | `scheduledAt` crescente |
 | `history` | `status IN ('Realizada', 'Ausente', 'Cancelada')` | `scheduledAt` decrescente |
 
 **Resposta — 200 OK** (`ParticipantVisit[]`)
@@ -1201,6 +1203,8 @@ Sem visitas no escopo, retorna `[]` com 200.
 
 **Observações técnicas**
 - Não retorna `observation` (anotação interna da equipe) nem resultados de avaliação. RF18 trata de visitas e comparecimento.
+- A comparação de `scheduledAt` com o instante atual é feita pelo instante completo, sem conversão para data civil ou fuso horário. As respostas seguem UTC conforme D-11; D-13 não se aplica a essa comparação.
+- Visitas `Agendada` com data/hora passada não aparecem em `upcoming` nem em `history`, pois o histórico contém somente os três estados finais listados acima.
 - Mesma dependência de P-01 descrita em E09.
 - As ações sobre as visitas (confirmar presença, pedir reagendamento) pertencem a RF19 (Sprint 4).
 
@@ -1212,7 +1216,7 @@ Sem visitas no escopo, retorna `[]` com 200.
 { "statusCode": 400, "message": "Mensagem em português.", "error": "Bad Request" }
 ```
 
-Para recusas de domínio, **[Proposta]** incluir `code`, como em `CandidateInclusionErrorResponseDto`:
+As recusas de domínio dos endpoints E01–E08 incluem `code`, conforme D-12:
 
 ```json
 { "statusCode": 400, "message": "Somente participantes ativos podem ter visitas agendadas.", "error": "Bad Request", "code": "PARTICIPATION_NOT_ACTIVE" }
@@ -1230,7 +1234,7 @@ Para recusas de domínio, **[Proposta]** incluir `code`, como em `CandidateInclu
 | 403 | Perfil fora de `@Roles` | “Seu perfil não tem permissão para este recurso.” |
 | 500 | Erro inesperado | Mensagem genérica do NestJS. Os clientes devem exibir mensagem própria, sem detalhes técnicos. |
 
-### 9.3 Códigos de domínio propostos
+### 9.3 Códigos de domínio implementados
 
 | `code` | HTTP | Endpoints |
 |---|---|---|
@@ -1261,13 +1265,13 @@ Para recusas de domínio, **[Proposta]** incluir `code`, como em `CandidateInclu
 | Endpoint | Depende de | Observação |
 |---|---|---|
 | E01 | Inclusão RF11 [Existente] | Participações nascem em `POST /studies/:studyId/candidates/:candidateId/include`. |
-| E02 | E01, X02, X03 | X02/X03 dependem de D-01 para o Coordenador. |
+| E02 | E01, X02, X03 | X02/X03 permitem leitura ao Coordenador conforme D-01. |
 | E03 | E02 | — |
 | E04 | E02/E03 | — |
 | E05 | E02, E04 | O registro exige visita `Realizada`. |
 | E06 | E05 | — |
 | E07 | E01, E03, E06 | Agrega os dados de RF12–RF14. |
-| E08 | E01 | Efeitos sobre as visitas dependem de D-07. |
+| E08 | E01 | A retirada segue D-07; visitas, resultados e demais registros são preservados. |
 | E09 | X01, login [Existente], vínculo `candidatos.id_usuario` | Ver P-01. |
 | E10 | E09, E02/E04 | Ver P-01. |
 
@@ -1313,42 +1317,33 @@ O Plano de Contingência (`docs/releases/release2/Plano_Contingencia_ClinicalStu
 | S3C-PBI05 — Auditoria e matriz de rastreabilidade | Os contratos não gravam a tabela `auditoria`. |
 | S3C-PBI06 — Dados demonstrativos (**S3C-MOB-02**) | Sem impacto. Não confundir com **S3-MOB-02** (autenticação Mobile), que está no planejamento atual e é dependência de E09–E10. |
 
-## 13. Decisões técnicas e propostas para validação
+## 13. Decisões técnicas aprovadas e propostas remanescentes
 
-As propostas abaixo **não estão aprovadas**. A recomendação é aplicada nos contratos até que a equipe decida.
+D-01 a D-13 foram aprovadas pela equipe e estão implementadas no Backend conforme os contratos abaixo. As alternativas históricas da versão inicial não são decisões atuais.
 
-| ID | Questão | Recomendação aplicada | Alternativa / consequência |
+| ID | Decisão aprovada | Aplicação no contrato |
 |---|---|---|---|
-| D-01 | Como o Coordenador obtém as visitas previstas no agendamento (RF12)? | Ampliar **somente a leitura** de X02 e X03 ao Coordenador, nos estados de A-EQUIPE-LEITURA, dentro de S3-BE-02. A descrição de S3-BE-02 já exige vincular o agendamento à visita prevista, e S3-W2-02 exige selecioná-la. | É o mesmo ajuste da proposta adiada S3C-BE-03. **A equipe precisa confirmar se o considera parte do escopo original de S3-BE-02.** Sem ele, o Coordenador não consegue agendar e RF12 fica restrito ao Pesquisador proprietário. |
-| D-02 | Formato de rotas das visitas agendadas | `/studies/:studyId/scheduled-visits` | Aninhar em `/participants/:participationId/visits` deixaria as rotas mais longas e sem listagem por estudo. |
-| D-03 | Estados do estudo permitidos ao Coordenador | Leitura: `recrutamento`, `execução`, `encerrado`. Escrita: `recrutamento`, `execução`. | Hoje o Coordenador só atua em `recrutamento` (RF08–RF11). Sem `execução`, o acompanhamento para quando o estudo avança. |
-| D-04 | Perfis de cada operação | RF12, RF13 e RF16: Coordenador e Pesquisador proprietário (padrão de RF08–RF11). RF14: somente Pesquisador. RF15: ambos. | A especificação associa RF12, RF13 e RF16 ao Coordenador e RF14 ao Pesquisador. Excluir o Pesquisador de RF12/13/16 ou incluir o Coordenador em RF14 muda apenas `@Roles`. |
-| D-05 | Transições da situação da visita | `Agendada → Realizada / Ausente / Cancelada`; estados finais imutáveis; remarcar = novo agendamento. | Permitir correção exigiria regra adicional e reflete no histórico (RF15). |
-| D-06 | `scheduledAt` no passado | Permitido, desde que entre a inclusão e o término do estudo (facilita registrar visitas já ocorridas e dados demonstrativos). | Exigir data futura impede registrar retroativamente. |
-| D-07 | Efeitos da retirada | Nenhum efeito automático até a decisão. | Opções: cancelar as visitas `Agendada` futuras (evita que o participante as veja em E10); decrementar `participantes_vinculados` (libera vaga); mudar `status_recrutamento`. Cada opção altera regras de RF11. |
-| D-08 | Correção de resultados (RF14) | Não prevista: segundo registro resulta em 409. | Uma rota `PATCH` adicional, se a equipe julgar necessário. |
-| D-09 | RF17 inclui participações encerradas ou retiradas? | Sim, com `participationStatus`. | Retornar só `Ativo` simplifica a tela, mas esconde o histórico de vínculo. |
-| D-10 | Vínculo Coordenador–estudo | Mantido o comportamento atual: o Coordenador acessa todos os estudos nos estados permitidos. | Restringir exigiria nova tabela (fora do escopo). |
-| D-11 | Formato de data e hora | ISO 8601 UTC nas respostas novas. | O backend atual responde timestamps no formato textual do PostgreSQL. Padronizar todos os endpoints exige ajuste nos existentes, fora desta task. |
-| D-12 | Códigos de domínio (`code`) | Adotar nas recusas de RF12–RF16. | Sem `code`, os clientes dependem do texto da mensagem. |
-
-### Decisão aprovada após a versão inicial do contrato
-
-| ID | Regra aprovada | Aplicação |
-|---|---|---|
-| D-13 | `America/Sao_Paulo` é o fuso de referência para regras de negócio que dependem do dia civil. | Em E02, converter o instante de `scheduledAt` para a data civil de Brasília antes de comparar inclusivamente com `data_inclusao` e `data_fim`. Em E03, aplicar `from` e `to` inclusivamente ao dia civil de `scheduledAt` em Brasília. Persistência e respostas de instantes permanecem em UTC (D-11). |
+| D-01 | X02 e X03 permitem somente leitura ao Coordenador nos estados de leitura permitidos. | Acesso implementado; Coordenador não altera visitas previstas. |
+| D-02 | Visitas agendadas usam `/studies/:studyId/scheduled-visits`. | E02–E04 e E10 usam a rota definida no contrato. |
+| D-03 | Coordenador consulta em `recrutamento`, `execução` e `encerrado`; escreve em `recrutamento` e `execução`. | Leitura e escrita verificadas no Backend. |
+| D-04 | Pesquisador proprietário e Coordenador em RF12, RF13 e RF16; somente Pesquisador proprietário em RF14; ambos em RF15. | Perfis implementados nos endpoints E01–E08. |
+| D-05 | `Agendada → Realizada`, `Ausente` ou `Cancelada`; estados finais imutáveis; remarcar cria novo agendamento. | E04 valida transição condicional; E02 permite novo agendamento após ausência/cancelamento. |
+| D-06 | `scheduledAt` passado é permitido se o dia civil estiver entre inclusão e término do estudo. | Validado em E02 junto de D-13. |
+| D-07 | Retirada altera somente status, data e motivo da participação; preserva visitas, resultados e demais registros. | Implementado por E08. |
+| D-08 | Não há correção de resultado; registro duplicado retorna 409. | Implementado por E06. |
+| D-09 | E09 inclui participações `Ativo`, `Retirado` e `Concluído`, com estado. | Implementado por E09. |
+| D-10 | Não existe vínculo Coordenador–estudo; o acesso depende do estado permitido. | Implementado pelas verificações de acesso. |
+| D-11 | Instantes das novas respostas são ISO 8601 UTC; requisições com data/hora incluem fuso. Endpoints legados mantêm formato atual. | Serialização de E02–E10 segue o contrato. |
+| D-12 | Erros de domínio de RF12–RF16 incluem `code`, distinto de `statusCode`. | Implementado em E02, E04, E06 e E08. |
+| D-13 | `America/Sao_Paulo` é referência para regras por dia civil em E02/E03; instantes persistem e retornam em UTC. | Implementado conforme a seção 5 e E02/E03. |
 
 ## 14. Pendências identificadas
 
 | ID | Pendência | Impacto | Encaminhamento sugerido |
 |---|---|---|---|
-| **P-01** | **O cadastro de candidatos não preenche `candidatos.id_usuario`** (`CandidatesService.create` grava só estudo, nome e e-mail). A correção (S3C-PBI01) foi adiada para a Sprint 4. | **Alto.** E09 e E10 funcionam conforme o contrato, mas retornam `[]` para participantes cadastrados pela interface. A demonstração e o E2E Mobile de RF17–RF18 (S3-QA-06) ficam sem dados. | Decisão da equipe: (a) na Sprint 3, preencher o vínculo apenas nos dados de teste e demonstração (fixtures e seed), sem alterar o cadastro; ou (b) antecipar S3C-BE-02/S3C-W2-01, revendo a decisão da Weekly Meeting. Os contratos E09–E10 não mudam em nenhuma das opções. |
-| **P-02** | D-01: acesso do Coordenador às visitas previstas. | **Alto** para RF12 pelo Coordenador. | Confirmar se a ampliação de leitura faz parte de S3-BE-02. |
-| P-03 | O login Mobile aceita qualquer perfil e a sessão fica em memória. | Médio | Resolvido por S3-MOB-02. As rotas `/me/*` recusam outros perfis (403) de qualquer forma. |
-| P-04 | Sem refresh token: a sessão expira em 1 hora. | Baixo | Restaurar a sessão por X01 e pedir novo login após 401. Nenhum endpoint novo nesta sprint. |
-| P-05 | Mensagens do `ValidationPipe` em inglês. | Baixo | Os clientes traduzem por campo (padrão de `visitsApi.ts`). |
-| P-06 | D-03 a D-12 sem aprovação. | Médio | Validar com a equipe antes do início de S3-BE-02. |
-| P-07 | RF18 na figura da especificação inclui “acompanhar solicitações e decisões”. | Baixo | Coberto por RF19–RF20 na Sprint 4 (`solicitacoes_visita`). |
+| **P-01** | O fluxo atual de cadastro (`CandidatesService.create`) não garante o preenchimento de `candidatos.id_usuario`; não há associação automática por nome/e-mail. | Alto para consultas de participantes cujos candidatos permanecem sem vínculo. | Continua pendente para produção e depende de decisão futura da equipe. Fixtures E2E de BE-07 vinculam explicitamente candidato e usuário, mas não resolvem o cadastro real. |
+
+As decisões D-01–D-13 não são pendências. A expiração de sessão sem refresh token, a localização de mensagens do `ValidationPipe` e as solicitações de confirmação/reagendamento de RF19–RF20 permanecem limitações ou escopo futuro, não bloqueios de E01–E10.
 
 ## 15. Histórico de versões
 
@@ -1357,3 +1352,6 @@ As propostas abaixo **não estão aprovadas**. A recomendação é aplicada nos 
 | 0.1 | 15/11/2026 | Zeton (S3-PO-03) | Versão inicial: 10 contratos planejados (E01–E10), 3 existentes reutilizados (X01–X03), decisões D-01 a D-12 e pendências P-01 a P-07, para validação da equipe. |
 | 0.2 | 20/11/2026 | Equipe | Registrada D-13: `America/Sao_Paulo` como referência para comparações por dia civil em E02 e E03; instantes permanecem armazenados e retornados em UTC. |
 | 0.3 | 20/11/2026 | Equipe | Para S3-BE-04, confirmou `value` obrigatório, com `trim`, não vazio e sem limite máximo; definiu persistir a ordem das atividades e backfill determinístico para registros existentes. |
+| 0.4 | 20/11/2026 | Equipe | Confirmou os critérios de E10: `upcoming` exige visita Agendada com instante futuro e inclui participações Retirado; `history` inclui somente Realizada, Ausente e Cancelada. Removeu a marcação de proposta de D-09 em E09. |
+| 0.5 | 20/11/2026 | Equipe | Documentou HTTP 400 para parâmetros de query não permitidos em E09, conforme a validação do endpoint. |
+| 0.6 | 20/11/2026 | Equipe | Sincronizou o status do Backend E01–E10 e X02/X03, registrou D-01–D-13 como aprovadas e corrigiu P-01 e o contrato de `reason` de E08 sem impor limites não aprovados. |

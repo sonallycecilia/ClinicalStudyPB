@@ -7,12 +7,12 @@
 | **Task** | S3-PO-04 — Definir matriz de acesso e fluxo de identificação do participante |
 | **Responsável** | Zeton (Líder técnico / Gerente) |
 | **Depende de** | S3-PO-03 — [`contratos-api-rf12-rf18.md`](./contratos-api-rf12-rf18.md) |
-| **Versão** | 0.1 — proposta para validação da equipe (15/11/2026) |
+| **Versão** | 0.4 — sincronização com a implementação (20/11/2026) |
 
 > **Como ler este documento.** As regras estão marcadas por origem:
 > **[Especificação]** — definida no documento oficial do projeto;
 > **[Código]** — comportamento existente verificado no repositório;
-> **[Contrato]** — definida na S3-PO-03 como proposta, ainda pendente de validação;
+> **[Contrato]** — definida na S3-PO-03; D-01 a D-13 foram aprovadas pela equipe;
 > **[Pendente]** — depende de decisão da equipe (seção 15);
 > **[Adiado]** — proposta do Plano de Contingência fora do escopo da Sprint 3.
 
@@ -41,7 +41,7 @@
 
 ## 1. Identificação
 
-Este documento complementa a S3-PO-03. A S3-PO-03 definiu **rotas e formatos** de RF12–RF18; este define **quem pode usar cada rota, sob quais vínculos**, e **como o Backend identifica o participante** nas consultas do Mobile. Não altera nenhuma rota, campo ou código de erro da S3-PO-03.
+Este documento complementa a S3-PO-03. A S3-PO-03 definiu **rotas e formatos** de RF12–RF18; este define **quem pode usar cada rota, sob quais vínculos**, e **como o Backend identifica o participante** nas consultas do Mobile. D-01 a D-13 estão aprovadas. E01–E10 e a leitura de Coordenador em X02/X03 estão implementados no Backend; a integração dos clientes é um estado separado.
 
 ## 2. Objetivo
 
@@ -101,13 +101,13 @@ Estabelecer uma referência única para Backend, Web e Mobile sobre:
 
 ## 6. Matriz de acesso por funcionalidade e operação
 
-**Legenda:** ✅ Permitido · 🟡 Permitido com restrições · ⛔ Negado · — Não aplicável · ⏳ Pendente de decisão.
+**Legenda:** ✅ Permitido · 🟡 Permitido com restrições · ⛔ Negado · — Não aplicável.
 As condições de cada célula 🟡 estão nas notas abaixo da tabela e na seção 7.
 
 | Funcionalidade | Operação | Endpoint | Administrador | Pesquisador | Coordenador | Participante |
 |---|---|---|---|---|---|---|
 | Participantes | Listar participantes incluídos no estudo | E01 | ⛔ | 🟡 (P1) | 🟡 (C1) | ⛔ |
-| Visitas | Consultar visitas previstas e atividades para agendar | X02, X03 | ⛔ | 🟡 (P1) [Código] | ⏳ (D-01) — hoje ⛔ | ⛔ |
+| Visitas | Consultar visitas previstas e atividades para agendar | X02, X03 | ⛔ | 🟡 (P1) | 🟡 (C1) (D-01) | ⛔ |
 | Visitas | Agendar visita | E02 | ⛔ | 🟡 (P2) | 🟡 (C2) | ⛔ |
 | Visitas | Consultar visitas agendadas do estudo | E03 | ⛔ | 🟡 (P1) | 🟡 (C1) | ⛔ |
 | Visitas | Atualizar situação (Realizada / Ausente / Cancelada) | E04 | ⛔ | 🟡 (P2) | 🟡 (C2) | ⛔ |
@@ -128,8 +128,8 @@ As condições de cada célula 🟡 estão nas notas abaixo da tabela e na seç�
 | **P1** | Pesquisador ativo **proprietário** do estudo (`estudos.id_pesquisador = sub`), em qualquer estado do estudo (consulta). |
 | **P2** | P1 e estudo **não encerrado**. D-04 aprova essas operações para o Pesquisador proprietário, além do Coordenador nos estados de C2. |
 | **P3** | P2 e visita agendada na situação `Realizada`, com a atividade pertencente à visita prevista dessa visita. |
-| **C1** | Coordenador ativo; estudo em `recrutamento`, `execução` ou `encerrado` [Contrato, D-03]. |
-| **C2** | Coordenador ativo; estudo em `recrutamento` ou `execução` [Contrato, D-03]. |
+| **C1** | Coordenador ativo; estudo em `recrutamento`, `execução` ou `encerrado` (D-03 aprovado). |
+| **C2** | Coordenador ativo; estudo em `recrutamento` ou `execução` (D-03 aprovado). |
 | **T1** | Participante ativo; somente registros de participações vinculadas à própria conta por `candidatos.id_usuario = sub` (seção 9). |
 | **T2** | Somente a própria participação, via E09: `participationStatus` e `withdrawnAt`. O **motivo** da retirada não é exposto ao participante. |
 
@@ -167,7 +167,7 @@ As condições de cada célula 🟡 estão nas notas abaixo da tabela e na seç�
 | Consulta: estudos em `recrutamento`, `execução` ou `encerrado`. | [Contrato] D-03 |
 | Escrita (agendar, atualizar situação, retirada): estudos em `recrutamento` ou `execução`. | [Especificação] [Contrato] D-03 |
 | **Não** registra resultados (RF14); D-04 mantém essa operação exclusiva do Pesquisador proprietário. | [Especificação] [Decisão aprovada] |
-| **Não** lê visitas previstas (X02/X03) no código atual. A liberação é a pendência D-01 e **não está aprovada**. | [Código] [Pendente] |
+| Lê visitas previstas e atividades por X02/X03 nos estados de C1, somente para leitura; não cria, edita ou remove esse protocolo. | [D-01 aprovada e implementada] |
 
 ### 7.4 Participante
 
@@ -236,10 +236,11 @@ Consequência: uma conta Participante pode ter **várias participações, no má
 | Aspecto | Situação |
 |---|---|
 | **Existência no banco** | ✅ A coluna `candidatos.id_usuario` e a constraint existem (migration 008). |
-| **Preenchimento efetivo** | ⛔ **Nenhum código preenche o campo.** `CandidatesService.create` grava somente `id_estudo`, `nome` e `email`. O seed (`backend/scripts/seed-demo.mjs`) não cria candidatos, e nenhum teste grava `id_usuario`. |
-| **Uso nas consultas autenticadas** | Planejado em E09/E10 (S3-BE-07), conforme este documento. |
+| **Cadastro e dados de produção** | ⛔ O fluxo atual de cadastro (`CandidatesService.create`) grava somente `id_estudo`, `nome` e `email` e não garante o preenchimento de `id_usuario`. O seed (`backend/scripts/seed-demo.mjs`) não cria candidatos. Não existe associação automática por nome ou e-mail. |
+| **Fixtures de teste** | ✅ As fixtures E2E de BE-07 criam explicitamente o vínculo candidato–usuário, preenchendo `candidatos.id_usuario`. |
+| **Uso nas consultas autenticadas** | ✅ E09 e E10 usam `candidatos.id_usuario = request.user.sub` para localizar as participações do participante autenticado. |
 
-Limitação crítica: ver L-01 (seção 13).
+**P-01 permanece pendente:** a integração com contas reais continua dependendo de uma decisão para o fluxo de produção. As fixtures E2E validam o comportamento das consultas, mas não resolvem o vínculo no cadastro nem nos dados de produção. Ver L-01 (seção 13).
 
 ## 9. Fluxo de identificação do participante autenticado
 
@@ -285,7 +286,7 @@ Ao reabrir o app (S3-MOB-02), o Mobile chama `GET /auth/me` com o token salvo an
 6. Filtros opcionais de recurso (somente `studyId` em E10) são combinados com essa condição. Sem linha correspondente, a resposta é 404 “Estudo não encontrado entre as suas participações.”
 7. A resposta contém apenas os campos definidos nos contratos E09/E10 (sem e-mail, observações internas, resultados ou dados de terceiros).
 
-**Proposta de implementação:** concentrar os passos 3–5 em um único método reutilizado pelos dois endpoints (por exemplo, `resolveOwnParticipations(userId)`). Assim a regra de identidade fica em um só lugar e é testada uma vez.
+**Implementação atual:** E09 e E10 recebem `request.user.sub` do controller e restringem os respectivos SQLs por `c.id_usuario = $1`. E10 valida adicionalmente se o `studyId` informado está entre as participações do mesmo usuário antes de listar visitas. Não são aceitos identificadores de pessoa como fonte de autorização.
 
 ### 9.3 Identificadores proibidos e permitidos
 
@@ -406,9 +407,9 @@ Não foram encontradas contradições entre esta matriz e a S3-PO-03. Os pontos 
 
 | ID | Limitação | Impacto | Encaminhamento |
 |---|---|---|---|
-| **L-01** | **`candidatos.id_usuario` existe, mas nunca é preenchido** (seção 8.3). O vínculo conta–candidato foi tratado no Plano de Contingência (S3C-PBI01), **adiado para a Sprint 4**. | **Alto.** O fluxo de identificação está correto e seguro, mas E09/E10 retornam `[]` para todo participante real. O E2E Mobile (S3-QA-06) e a demonstração de RF17–RF18 ficam sem dados. | **Decisão da equipe (P-01 da S3-PO-03):** (a) preencher o vínculo apenas em fixtures de teste e no seed de demonstração, com o identificador real da conta, sem alterar o cadastro; ou (b) rever o adiamento de S3C-BE-02/S3C-W2-01. Em nenhuma hipótese associar por nome ou e-mail, nem aceitar o identificador vindo do Mobile. |
+| **L-01 / P-01** | **`candidatos.id_usuario` existe, mas o cadastro atual não garante seu preenchimento em produção** (seção 8.3). A integração com contas reais foi adiada (S3C-PBI01). | E09/E10 retornam somente participações que já estejam vinculadas; candidatos de produção sem vínculo não são localizados. As fixtures E2E de BE-07 preenchem explicitamente o vínculo e validam as consultas, mas não representam o cadastro de produção. | P-01 continua pendente para o fluxo real. Não associar por nome ou e-mail e não aceitar identificador enviado pelo Mobile. |
 | **L-02** | Não existe vínculo Coordenador–estudo. | Médio: qualquer Coordenador ativo acessa todos os estudos nos estados permitidos. | Comportamento atual mantido (D-10). Restringir exige nova estrutura (fora do escopo). |
-| **L-03** | O Coordenador não lê visitas previstas (X02/X03). | Alto para o agendamento (RF12) pelo Coordenador. | Pendência D-01, **não aprovada**. |
+| L-03 | A leitura do Coordenador de visitas previstas (X02/X03) foi liberada por D-01. | Sem bloqueio para obter o protocolo necessário ao agendamento. | D-01 aprovada e implementada; a escrita continua restrita ao Pesquisador proprietário. |
 | **L-04** | O Mobile aceita qualquer perfil e guarda a sessão em memória. | Médio | Corrigido na S3-MOB-02. A API recusa outros perfis em `/me/*` de qualquer forma. |
 | **L-05** | Sem refresh token; validade de 1 hora. | Baixo | Novo login após 401. Sem novos endpoints. |
 | **L-06** | Exclusão da conta desfaz o vínculo (`ON DELETE SET NULL`). | Baixo | O histórico da participação continua visível à equipe (E07). O ex-participante não tem mais acesso. |
@@ -421,24 +422,21 @@ Mantidas **fora** desta matriz, por decisão da Weekly Meeting:
 |---|---|
 | Consulta de contas Participante pelo Coordenador (S3C-BE-01) | Não incluída. Nenhum endpoint de contas disponíveis. |
 | Vínculo do candidato à conta no cadastro (S3C-BE-02, S3C-W2-01, S3C-W1-01) | Não incluído. Citado apenas como causa de L-01. |
-| Leitura das visitas **previstas** (RF06) pelo Coordenador (S3C-BE-03) | Não aprovada; registrada como D-01. **Não se confunde** com as permissões sobre visitas **agendadas** (RF12–RF16), definidas acima. |
+| Leitura das visitas **previstas** (RF06) pelo Coordenador (S3C-BE-03) | A leitura limitada de X02/X03 foi aprovada em D-01 e implementada na Sprint 3. Edição e remoção continuam fora do escopo. |
 | Edição de visitas previstas e atividades (S3C-BE-04, S3C-W1-03) | Não incluída. |
 | Termo de consentimento do participante (S3C-PBI04) | Não incluído. As rotas `/me/*` não exigem termo. |
 | Auditoria das operações (S3C-BE-06) | Não incluída. |
 | Dados demonstrativos (**S3C-MOB-02**) | Não incluído. Diferente da **S3-MOB-02** (autenticação), que está no escopo. |
 
-## 15. Pendências e decisões para validação
+## 15. Decisões concluídas e pendência restante
 
-| ID | Questão | Recomendação | Impacto se não decidido |
-|---|---|---|---|
-| D-01 (S3-PO-03) | Coordenador lê visitas previstas para agendar? | Liberar somente leitura (X02/X03) dentro de S3-BE-02. Exige confirmação de escopo. | O Coordenador não consegue agendar pela Web. |
-| D-03 (S3-PO-03) | Estados do estudo permitidos ao Coordenador | Consulta: recrutamento, execução, encerrado. Escrita: recrutamento, execução. | Sem `execução`, o acompanhamento para quando o estudo avança. |
-| D-04 (S3-PO-03) | Permissões de RF12, RF13, RF14, RF15 e RF16 | Aprovada em PO-05: Pesquisador proprietário e Coordenador em RF12/RF13/RF16; apenas Pesquisador proprietário em RF14; ambos em RF15. | Decisão aprovada; refletida na matriz de permissões e nos contratos. |
-| D-09 (S3-PO-03) | E09 lista participações retiradas ou concluídas? | Sim, com o estado. | Apenas apresentação no app. |
-| D-10 (S3-PO-03) | Vínculo Coordenador–estudo | Manter o comportamento atual. | — |
-| **P-01** (S3-PO-03) / L-01 | Preenchimento de `candidatos.id_usuario` na Sprint 3 | Opção (a): fixtures e seed. | RF17–RF18 sem dados demonstráveis. |
-| **A-01** | A S3-BE-05 cita restringir o histórico “ao participante autorizado ou aos perfis Web”. O participante deve ver **resultados** de avaliação? | Não: o participante usa E10 (comparecimento, RF18). E07, com resultados, é exclusivo da equipe (RF15 é Web). | Se sim, seria necessário um novo contrato `/me`, fora da S3-PO-03. |
-| **A-02 (resolvido na S3-BE-04)** | Coordenador consulta resultados (E05/E07) mesmo sem registrá-los? | Sim: decisão confirmada pela equipe; RF15 atribui o histórico “de visitas e avaliações” ao Coordenador. | Coordenador ativo consulta resultados nos estados permitidos pela matriz; permanece sem permissão de escrita em E06. |
+D-01 a D-13 estão aprovadas e refletidas na matriz e no Backend. Em particular, D-01 permite leitura de X02/X03 pelo Coordenador; D-03 define estados de leitura/escrita; D-04 define os perfis de E01–E08; D-09 inclui participações retiradas/concluídas; e D-10 mantém a ausência de vínculo Coordenador–estudo.
+
+| ID | Estado atual | Observação |
+|---|---|---|
+| **P-01 / L-01** | Pendente | O cadastro de produção não associa automaticamente candidato a usuário. Fixtures E2E de BE-07 preenchem `candidatos.id_usuario` explicitamente. A integração real permanece para decisão futura, sem associação por nome/e-mail. |
+| A-01 | Resolvido | Participante não recebe resultados; E10 expõe apenas visitas e comparecimento. E07 é consulta Web da equipe e inclui resultados. |
+| A-02 | Resolvido | Coordenador pode consultar E05/E07 nos estados permitidos, mas não pode registrar resultados por E06. |
 
 ## 16. Histórico
 
@@ -446,3 +444,5 @@ Mantidas **fora** desta matriz, por decisão da Weekly Meeting:
 |---|---|---|---|
 | 0.1 | 15/11/2026 | Zeton (S3-PO-04) | Versão inicial: matriz de acesso de RF12–RF18, fluxo de identificação por `candidatos.id_usuario`, cenários de erro, limitações L-01 a L-06 e pontos A-01/A-02, para validação da equipe. |
 | 0.2 | 20/11/2026 | Equipe | Resolvido A-02: Coordenadores podem consultar resultados em E05/E07 nos estados permitidos; o registro continua exclusivo do Pesquisador proprietário. |
+| 0.3 | 20/11/2026 | Equipe | Atualizado o estado das fixtures E2E de BE-07 que vinculam candidato e usuário; P-01 permanece pendente para integração com contas reais em produção. |
+| 0.4 | 20/11/2026 | Equipe | Sincronizou D-01–D-13 e as permissões de X02/X03 com a implementação; corrigiu P-01 para distinguir fixtures E2E da associação em produção. |

@@ -47,6 +47,7 @@ import {
   ScheduledVisitResultsResponseDto,
   AssessmentResultResponseDto,
   ScheduledVisitResponseDto,
+  RegisterWithdrawalRequestDto,
   UpdateScheduledVisitStatusRequestDto,
 } from '../swagger/api.models.js';
 import { ParticipantVisitsService } from './participant-visits.service.js';
@@ -273,6 +274,57 @@ export class ParticipantVisitsController {
   ) {
     return this.participantVisitsService.createScheduledVisit(
       studyId,
+      input,
+      request.user!.sub,
+    );
+  }
+
+  @Post('participants/:participationId/withdrawal')
+  @ApiOperation({
+    summary: 'Registrar a retirada de um participante do estudo',
+    description:
+      'Pesquisador proprietário ativo ou Coordenador ativo em estudo em recrutamento/execução. Altera somente a participação para Retirado; visitas, resultados e demais registros são preservados.',
+  })
+  @ApiParam({ name: 'studyId', description: 'UUID do estudo.', format: 'uuid' })
+  @ApiParam({
+    name: 'participationId',
+    description: 'UUID da participação no estudo.',
+    format: 'uuid',
+  })
+  @ApiBody({ type: RegisterWithdrawalRequestDto })
+  @ApiCreatedResponse({
+    description: 'Participação atualizada para Retirado.',
+    type: ParticipantResponseDto,
+  })
+  @ApiBadRequestResponse({
+    description:
+      'Corpo inválido, participação inativa, data de retirada inválida ou estudo encerrado.',
+    type: ApiErrorResponseDto,
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Token ausente, inválido ou expirado.',
+    type: ApiErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description:
+      'Perfil sem permissão, Pesquisador não proprietário ou Coordenador em estado não permitido.',
+    type: ApiErrorResponseDto,
+  })
+  @ApiNotFoundResponse({
+    description:
+      'Estudo não encontrado ou participação não encontrada neste estudo.',
+    type: ApiErrorResponseDto,
+  })
+  @UsePipes(bodyValidationPipe)
+  registerParticipantWithdrawal(
+    @Param('studyId', new ParseUUIDPipe()) studyId: string,
+    @Param('participationId', new ParseUUIDPipe()) participationId: string,
+    @Body() input: RegisterWithdrawalRequestDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.participantVisitsService.registerParticipantWithdrawal(
+      studyId,
+      participationId,
       input,
       request.user!.sub,
     );

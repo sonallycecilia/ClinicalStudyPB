@@ -17,6 +17,11 @@ export interface ListParticipantsQuery {
   status?: ParticipationStatus;
 }
 
+export interface RegisterParticipantWithdrawalInput {
+  withdrawalDate: string;
+  reason: string;
+}
+
 export interface CreateScheduledVisitInput {
   participationId: string;
   plannedVisitId: string;

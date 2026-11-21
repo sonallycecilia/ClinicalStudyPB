@@ -4,6 +4,7 @@ import {
   ListParticipantsQueryDto,
   ListScheduledVisitsQueryDto,
   RegisterAssessmentResultRequestDto,
+  RegisterWithdrawalRequestDto,
   UpdateScheduledVisitStatusRequestDto,
 } from '../swagger/api.models.js';
 
@@ -16,6 +17,54 @@ const validationPipe = new ValidationPipe({
 type InvalidDtoCase = [Record<string, unknown>, string];
 
 describe('DTOs de participantes e visitas agendadas', () => {
+  it('valida retirada e normaliza o motivo sem impor limite proposto', async () => {
+    const result = await validationPipe.transform(
+      {
+        withdrawalDate: '2026-11-20',
+        reason: '  Participante solicitou desligamento.  ',
+      },
+      { type: 'body', metatype: RegisterWithdrawalRequestDto },
+    );
+    expect(result).toMatchObject({
+      withdrawalDate: '2026-11-20',
+      reason: 'Participante solicitou desligamento.',
+    });
+
+    await expect(
+      validationPipe.transform(
+        {
+          withdrawalDate: '2026-11-20',
+          reason: 'r'.repeat(2001),
+        },
+        { type: 'body', metatype: RegisterWithdrawalRequestDto },
+      ),
+    ).resolves.toMatchObject({ reason: 'r'.repeat(2001) });
+  });
+
+  const invalidWithdrawalCases: InvalidDtoCase[] = [
+    [{ withdrawalDate: '2026-02-30' }, 'invalid calendar date'],
+    [{ withdrawalDate: '2026-11-20T00:00:00Z' }, 'date-time instead of date'],
+    [{ reason: undefined }, 'missing reason'],
+    [{ reason: '   ' }, 'blank reason'],
+    [{ extra: true }, 'unknown field'],
+  ];
+
+  it.each(invalidWithdrawalCases)(
+    'rejeita corpo E08 inválido (%s)',
+    async (partial, _caseName) => {
+      await expect(
+        validationPipe.transform(
+          {
+            withdrawalDate: '2026-11-20',
+            reason: 'Motivo da retirada.',
+            ...partial,
+          },
+          { type: 'body', metatype: RegisterWithdrawalRequestDto },
+        ),
+      ).rejects.toThrow(BadRequestException);
+    },
+  );
+
   it('valida o corpo E02 e normaliza a observação opcional', async () => {
     const result = await validationPipe.transform(
       {

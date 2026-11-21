@@ -47,6 +47,7 @@ import type {
   ListScheduledVisitsQuery,
   Participant,
   ParticipationStatus,
+  RegisterParticipantWithdrawalInput,
   ScheduledVisit,
   ScheduledVisitFinalStatus,
   ScheduledVisitStatus,
@@ -61,6 +62,12 @@ import type {
   ScheduledVisitActivityResult,
   ScheduledVisitResults,
 } from '../studies/assessment-results.types.js';
+import type {
+  ListMyVisitsQuery,
+  ParticipantStudyDetails,
+  ParticipantStudy,
+  ParticipantVisit,
+} from '../studies/participant-self-service.types.js';
 import { ArrayMinSize, IsArray, IsUUID, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -548,6 +555,34 @@ export class ParticipantResponseDto implements Participant {
   withdrawalReason!: string | null;
 }
 
+export class RegisterWithdrawalRequestDto
+  implements RegisterParticipantWithdrawalInput
+{
+  @ApiProperty({
+    type: 'string',
+    format: 'date',
+    example: '2026-11-20',
+    description:
+      'Data civil de retirada (America/Sao_Paulo), entre a inclusão e a data atual.',
+  })
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  @IsISO8601({ strict: true, strictSeparator: true })
+  withdrawalDate!: string;
+
+  @ApiProperty({
+    type: 'string',
+    example: 'Participante solicitou desligamento por motivos pessoais.',
+    description:
+      'Motivo obrigatório. Espaços externos são removidos e o conteúdo não pode ficar vazio.',
+  })
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @IsNotEmpty()
+  reason!: string;
+}
+
 export class CreateScheduledVisitRequestDto implements CreateScheduledVisitInput {
   @ApiProperty({ format: 'uuid' })
   @IsUUID()
@@ -797,6 +832,100 @@ export class HistoricalScheduledVisitResponseDto
 {
   @ApiProperty({ type: HistoricalAssessmentResultResponseDto, isArray: true })
   results!: HistoricalAssessmentResultResponseDto[];
+}
+
+export class EmptyParticipantStudiesQueryDto {}
+
+export class ListMyVisitsQueryDto implements ListMyVisitsQuery {
+  @ApiProperty({ enum: ['upcoming', 'history'], example: 'upcoming' })
+  @IsIn(['upcoming', 'history'])
+  scope!: 'upcoming' | 'history';
+
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'Filtra um estudo em que o usuário autenticado participa.',
+  })
+  @IsOptional()
+  @IsUUID()
+  studyId?: string;
+}
+
+export class ParticipantStudyDetailsResponseDto
+  implements ParticipantStudyDetails
+{
+  @ApiProperty({ format: 'uuid' })
+  id!: string;
+
+  @ApiProperty({ example: 'EST-001' })
+  code!: string;
+
+  @ApiProperty({ example: 'Qualidade do sono' })
+  title!: string;
+
+  @ApiProperty({ example: 'Investigar padrões fictícios de sono.' })
+  objective!: string;
+
+  @ApiProperty({ type: 'string', format: 'date', example: '2026-04-01' })
+  startDate!: string;
+
+  @ApiProperty({ type: 'string', format: 'date', example: '2026-11-28' })
+  endDate!: string;
+
+  @ApiProperty({ enum: Object.values(StudyStatus), example: StudyStatus.Execucao })
+  status!: StudyStatus;
+
+  @ApiProperty({ example: 'Marina Costa' })
+  researcher!: string;
+}
+
+export class ParticipantStudyResponseDto implements ParticipantStudy {
+  @ApiProperty({ format: 'uuid' })
+  participationId!: string;
+
+  @ApiProperty({ enum: ['Ativo', 'Retirado', 'Concluído'] })
+  participationStatus!: ParticipationStatus;
+
+  @ApiProperty({ type: 'string', format: 'date' })
+  includedAt!: string;
+
+  @ApiProperty({ type: 'string', format: 'date', nullable: true })
+  withdrawnAt!: string | null;
+
+  @ApiProperty({ type: ParticipantStudyDetailsResponseDto })
+  study!: ParticipantStudyDetailsResponseDto;
+}
+
+export class ParticipantVisitResponseDto implements ParticipantVisit {
+  @ApiProperty({ format: 'uuid' })
+  id!: string;
+
+  @ApiProperty({ format: 'uuid' })
+  participationId!: string;
+
+  @ApiProperty({ format: 'uuid' })
+  studyId!: string;
+
+  @ApiProperty({ example: 'Qualidade do sono' })
+  studyTitle!: string;
+
+  @ApiProperty({ example: 'Consulta inicial' })
+  plannedVisitName!: string;
+
+  @ApiProperty({ type: 'integer', example: 1 })
+  plannedVisitOrder!: number;
+
+  @ApiProperty({
+    type: 'string',
+    format: 'date-time',
+    example: '2026-11-24T12:00:00.000Z',
+  })
+  scheduledAt!: string;
+
+  @ApiProperty({ enum: ['Agendada', 'Realizada', 'Ausente', 'Cancelada'] })
+  status!: ScheduledVisitStatus;
+
+  @ApiProperty({ type: 'string', format: 'date-time', nullable: true })
+  realizedAt!: string | null;
 }
 
 export class ParticipantHistoryResponseDto implements ParticipantHistory {

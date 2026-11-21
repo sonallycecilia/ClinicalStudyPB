@@ -143,6 +143,27 @@ describe('Participantes e visitas agendadas (E2E)', () => {
       .send(body);
   }
 
+  function registerWithdrawalAs(
+    token: string,
+    studyId: string,
+    participationId: string,
+    body: Record<string, unknown>,
+  ) {
+    return request(api())
+      .post(`/studies/${studyId}/participants/${participationId}/withdrawal`)
+      .set('Authorization', bearer(token))
+      .send(body);
+  }
+
+  async function brazilToday(): Promise<string> {
+    const database = fixture.app.get(DatabaseService);
+    const result = await database.query<{ today: string }>(
+      `SELECT (CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo')::date::text
+                AS today`,
+    );
+    return result.rows[0]!.today;
+  }
+
   beforeAll(async () => {
     fixture = await databaseTestApp();
     const users = fixture.app.get(UsersService);
@@ -1663,5 +1684,434 @@ describe('Participantes e visitas agendadas (E2E)', () => {
       )
       .set('Authorization', bearer(coordinatorToken))
       .expect(200);
+  });
+
+  it('E08 retira participante com sucesso e preserva visitas, resultados e demais registros', async () => {
+    const study = await createStudy('E08 preservação do histórico');
+    const participant = await createParticipant(study.id, 'Participante E08');
+    const plannedVisit = await createPlannedVisit(study.id);
+    const activity = await createActivity(study.id, plannedVisit.id, 'Avaliação E08');
+    const scheduled = await schedule(
+      study.id,
+      participant.participationId,
+      plannedVisit.id,
+    ).expect(201);
+    await updateScheduledVisitAs(
+      researcherToken,
+      study.id,
+      scheduled.body.id,
+      { status: 'Realizada', realizedAt: '2025-03-16T13:40:00Z' },
+    ).expect(200);
+    await request(api())
+      .post(`/studies/${study.id}/scheduled-visits/${scheduled.body.id}/results`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ activityId: activity.id, value: 'resultado preservado' })
+      .expect(201);
+
+    const endpoint =
+      `/studies/${study.id}/participants/${participant.participationId}/history`;
+    const historyBefore = await request(api())
+      .get(endpoint)
+      .set('Authorization', bearer(researcherToken))
+      .expect(200);
+    const database = fixture.app.get(DatabaseService);
+    const stateBefore = await database.query<{
+      linked: number;
+      candidateStatus: string;
+      visitStatus: string;
+      scheduledAt: Date;
+      realizedAt: Date;
+      observation: string | null;
+    }>(
+      `SELECT e.participantes_vinculados AS linked,
+              c.status_recrutamento AS "candidateStatus",
+              v.status AS "visitStatus",
+              v.data_agendada AS "scheduledAt",
+              v.data_realizacao AS "realizedAt",
+              v.observacao AS observation
+       FROM estudos e
+       JOIN candidatos c ON c.id_estudo = e.id_estudo
+       JOIN participacoes_estudo p ON p.id_candidato = c.id_candidato
+       JOIN visitas v ON v.id_participacao = p.id_participacao
+       WHERE e.id_estudo = $1 AND p.id_participacao = $2 AND v.id_visita = $3`,
+      [study.id, participant.participationId, scheduled.body.id],
+    );
+
+    const withdrawalDate = await brazilToday();
+    const reason = '  Participante solicitou desligamento por motivos pessoais.  ';
+    const response = await registerWithdrawalAs(
+      researcherToken,
+      study.id,
+      participant.participationId,
+      { withdrawalDate, reason },
+    ).expect(201);
+    expect(response.body).toMatchObject({
+      participationId: participant.participationId,
+      candidateId: participant.candidateId,
+      studyId: study.id,
+      name: 'Participante E08',
+      participationStatus: 'Retirado',
+      includedAt: '2020-01-01',
+      withdrawnAt: withdrawalDate,
+      withdrawalReason: reason.trim(),
+    });
+
+    const stateAfter = await database.query<{
+      linked: number;
+      candidateStatus: string;
+      visitStatus: string;
+      scheduledAt: Date;
+      realizedAt: Date;
+      observation: string | null;
+      participationStatus: string;
+      withdrawalDate: string;
+      withdrawalReason: string;
+    }>(
+      `SELECT e.participantes_vinculados AS linked,
+              c.status_recrutamento AS "candidateStatus",
+              v.status AS "visitStatus",
+              v.data_agendada AS "scheduledAt",
+              v.data_realizacao AS "realizedAt",
+              v.observacao AS observation,
+              p.status AS "participationStatus",
+              p.data_retirada::text AS "withdrawalDate",
+              p.motivo_retirada AS "withdrawalReason"
+       FROM estudos e
+       JOIN candidatos c ON c.id_estudo = e.id_estudo
+       JOIN participacoes_estudo p ON p.id_candidato = c.id_candidato
+       JOIN visitas v ON v.id_participacao = p.id_participacao
+       WHERE e.id_estudo = $1 AND p.id_participacao = $2 AND v.id_visita = $3`,
+      [study.id, participant.participationId, scheduled.body.id],
+    );
+    expect(stateAfter.rows[0]).toMatchObject({
+      linked: stateBefore.rows[0]!.linked,
+      candidateStatus: stateBefore.rows[0]!.candidateStatus,
+      visitStatus: stateBefore.rows[0]!.visitStatus,
+      scheduledAt: stateBefore.rows[0]!.scheduledAt,
+      realizedAt: stateBefore.rows[0]!.realizedAt,
+      observation: stateBefore.rows[0]!.observation,
+      participationStatus: 'Retirado',
+      withdrawalDate,
+      withdrawalReason: reason.trim(),
+    });
+
+    const historyAfter = await request(api())
+      .get(endpoint)
+      .set('Authorization', bearer(researcherToken))
+      .expect(200);
+    expect(historyAfter.body.participant).toMatchObject({
+      participationStatus: 'Retirado',
+      withdrawnAt: withdrawalDate,
+      withdrawalReason: reason.trim(),
+    });
+    expect(historyAfter.body.visits).toEqual(historyBefore.body.visits);
+  });
+
+  it('E08 autoriza Coordenador ativo em estudo permitido e rejeita perfis não autorizados', async () => {
+    const study = await createStudy('E08 permissões');
+    const recruitmentParticipant = await createParticipant(
+      study.id,
+      'Participante retirado pelo Coordenador em recrutamento',
+    );
+    const executionParticipant = await createParticipant(
+      study.id,
+      'Participante retirado pelo Coordenador em execução',
+    );
+    const unauthorizedParticipant = await createParticipant(
+      study.id,
+      'Participante sem autorização',
+    );
+    const date = await brazilToday();
+
+    const coordinated = await registerWithdrawalAs(
+      coordinatorToken,
+      study.id,
+      recruitmentParticipant.participationId,
+      { withdrawalDate: date, reason: 'Retirada pelo Coordenador.' },
+    ).expect(201);
+    expect(coordinated.body.participationStatus).toBe('Retirado');
+
+    await request(api())
+      .patch(`/studies/${study.id}/status`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ status: 'execução' })
+      .expect(200);
+    await registerWithdrawalAs(
+      coordinatorToken,
+      study.id,
+      executionParticipant.participationId,
+      { withdrawalDate: date, reason: 'Retirada em execução.' },
+    ).expect(201);
+
+    const endpoint = `/studies/${study.id}/participants/${unauthorizedParticipant.participationId}/withdrawal`;
+    await request(api()).post(endpoint).send({
+      withdrawalDate: date,
+      reason: 'Sem autenticação.',
+    }).expect(401);
+    await registerWithdrawalAs(
+      otherResearcherToken,
+      study.id,
+      unauthorizedParticipant.participationId,
+      { withdrawalDate: date, reason: 'Pesquisador não proprietário.' },
+    ).expect(403);
+    await registerWithdrawalAs(
+      adminToken,
+      study.id,
+      unauthorizedParticipant.participationId,
+      { withdrawalDate: date, reason: 'Administrador.' },
+    ).expect(403);
+    await registerWithdrawalAs(
+      participantToken,
+      study.id,
+      unauthorizedParticipant.participationId,
+      { withdrawalDate: date, reason: 'Participante.' },
+    ).expect(403);
+
+    const database = fixture.app.get(DatabaseService);
+    await database.query(`UPDATE usuarios SET status = 'Inativo' WHERE id_usuario = $1`, [
+      coordinator.id,
+    ]);
+    try {
+      await registerWithdrawalAs(
+        coordinatorToken,
+        study.id,
+        unauthorizedParticipant.participationId,
+        { withdrawalDate: date, reason: 'Coordenador inativo.' },
+      ).expect(401);
+    } finally {
+      await database.query(`UPDATE usuarios SET status = 'Ativo' WHERE id_usuario = $1`, [
+        coordinator.id,
+      ]);
+    }
+
+    const planningStudy = await request(api())
+      .post('/studies')
+      .set('Authorization', bearer(researcherToken))
+      .send({ ...studyInput, title: 'E08 estudo em planejamento' })
+      .expect(201);
+    const planningParticipant = await createParticipant(
+      planningStudy.body.id,
+      'Participante em planejamento',
+    );
+    await registerWithdrawalAs(
+      coordinatorToken,
+      planningStudy.body.id,
+      planningParticipant.participationId,
+      { withdrawalDate: date, reason: 'Estado não permitido.' },
+    ).expect(403);
+    await registerWithdrawalAs(
+      researcherToken,
+      planningStudy.body.id,
+      planningParticipant.participationId,
+      {
+        withdrawalDate: '2020-01-01',
+        reason: 'Pesquisador proprietário na data de inclusão.',
+      },
+    ).expect(201);
+  });
+
+  it('E08 valida estudo, participação, estado, data e motivo', async () => {
+    const study = await createStudy('E08 validações');
+    const otherStudy = await createStudy('E08 outro estudo');
+    const active = await createParticipant(study.id, 'Participante ativo E08');
+    const withdrawn = await createParticipant(
+      study.id,
+      'Participante já retirado E08',
+      'Retirado',
+    );
+    const completed = await createParticipant(
+      study.id,
+      'Participante concluído E08',
+      'Concluído',
+    );
+    const foreign = await createParticipant(otherStudy.id, 'Participante externo E08');
+    const date = await brazilToday();
+
+    await registerWithdrawalAs(researcherToken, study.id, active.participationId, {
+      withdrawalDate: '2019-12-31',
+      reason: 'Data anterior à inclusão.',
+    })
+      .expect(400)
+      .then((response) =>
+        expect(response.body.code).toBe('WITHDRAWAL_DATE_INVALID'),
+      );
+    const database = fixture.app.get(DatabaseService);
+    const futureDate = await database.query<{ date: string }>(
+      `SELECT ((CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo')::date + 1)::text
+                AS date`,
+    );
+    const future = await registerWithdrawalAs(
+      researcherToken,
+      study.id,
+      active.participationId,
+      { withdrawalDate: futureDate.rows[0]!.date, reason: 'Data futura.' },
+    ).expect(400);
+    expect(future.body.code).toBe('WITHDRAWAL_DATE_INVALID');
+
+    const alreadyWithdrawn = await registerWithdrawalAs(
+      researcherToken,
+      study.id,
+      withdrawn.participationId,
+      { withdrawalDate: date, reason: 'Retirada repetida.' },
+    ).expect(400);
+    expect(alreadyWithdrawn.body.code).toBe('PARTICIPATION_NOT_ACTIVE');
+    const alreadyCompleted = await registerWithdrawalAs(
+      researcherToken,
+      study.id,
+      completed.participationId,
+      { withdrawalDate: date, reason: 'Participação concluída.' },
+    ).expect(400);
+    expect(alreadyCompleted.body.code).toBe('PARTICIPATION_NOT_ACTIVE');
+
+    await registerWithdrawalAs(
+      researcherToken,
+      study.id,
+      foreign.participationId,
+      { withdrawalDate: date, reason: 'Participação de outro estudo.' },
+    ).expect(404);
+    await registerWithdrawalAs(
+      researcherToken,
+      study.id,
+      '00000000-0000-4000-8000-000000000099',
+      { withdrawalDate: date, reason: 'Participação inexistente.' },
+    ).expect(404);
+    await request(api())
+      .post(`/studies/00000000-0000-4000-8000-000000000099/participants/${active.participationId}/withdrawal`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ withdrawalDate: date, reason: 'Estudo inexistente.' })
+      .expect(404);
+
+    const invalidBody = await registerWithdrawalAs(
+      researcherToken,
+      study.id,
+      active.participationId,
+      { withdrawalDate: '2026-02-30', reason: 'Data inválida.' },
+    ).expect(400);
+    expect(invalidBody.body.code).toBeUndefined();
+    await registerWithdrawalAs(
+      researcherToken,
+      study.id,
+      active.participationId,
+      { withdrawalDate: date },
+    ).expect(400);
+    await registerWithdrawalAs(
+      researcherToken,
+      study.id,
+      active.participationId,
+      { withdrawalDate: date, reason: '   ' },
+    ).expect(400);
+
+    const closedStudy = await createStudy('E08 estudo encerrado');
+    const closedParticipant = await createParticipant(
+      closedStudy.id,
+      'Participante em estudo encerrado E08',
+    );
+    await request(api())
+      .patch(`/studies/${closedStudy.id}/status`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ status: 'execução' })
+      .expect(200);
+    await request(api())
+      .patch(`/studies/${closedStudy.id}/status`)
+      .set('Authorization', bearer(researcherToken))
+      .send({ status: 'encerrado' })
+      .expect(200);
+    for (const token of [researcherToken, coordinatorToken]) {
+      const closed = await registerWithdrawalAs(
+        token,
+        closedStudy.id,
+        closedParticipant.participationId,
+        { withdrawalDate: date, reason: 'Estudo encerrado.' },
+      ).expect(400);
+      expect(closed.body.code).toBe('STUDY_CLOSED');
+    }
+  });
+
+  it('E08 serializa retiradas concorrentes e reverte falhas durante a transação', async () => {
+    const study = await createStudy('E08 concorrência e rollback');
+    const concurrentParticipant = await createParticipant(
+      study.id,
+      'Participante concorrente E08',
+    );
+    const date = await brazilToday();
+    const responses = await Promise.all([
+      registerWithdrawalAs(
+        researcherToken,
+        study.id,
+        concurrentParticipant.participationId,
+        { withdrawalDate: date, reason: 'Primeira tentativa.' },
+      ),
+      registerWithdrawalAs(
+        researcherToken,
+        study.id,
+        concurrentParticipant.participationId,
+        { withdrawalDate: date, reason: 'Segunda tentativa.' },
+      ),
+    ]);
+    expect(responses.map(({ status }) => status).sort((a, b) => a - b)).toEqual([
+      201,
+      400,
+    ]);
+    expect(
+      responses.find(({ status }) => status === 400)?.body.code,
+    ).toBe('PARTICIPATION_NOT_ACTIVE');
+
+    const rollbackParticipant = await createParticipant(
+      study.id,
+      'Participante rollback E08',
+    );
+    const database = fixture.app.get(DatabaseService);
+    const suffix = rollbackParticipant.participationId.replaceAll('-', '');
+    const functionName = `e2e_fail_withdrawal_${suffix}`;
+    const triggerName = `e2e_fail_withdrawal_trigger_${suffix}`;
+    await database.query(
+      `CREATE FUNCTION ${functionName}() RETURNS trigger
+       LANGUAGE plpgsql AS $$
+       BEGIN
+         RAISE EXCEPTION 'failure after withdrawal update';
+       END;
+       $$`,
+    );
+    await database.query(
+      `CREATE TRIGGER ${triggerName}
+       AFTER UPDATE ON participacoes_estudo
+       FOR EACH ROW
+       WHEN (NEW.id_participacao = '${rollbackParticipant.participationId}'::uuid
+             AND NEW.status = 'Retirado')
+       EXECUTE FUNCTION ${functionName}()`,
+    );
+
+    let responseStatus: number | undefined;
+    try {
+      const response = await registerWithdrawalAs(
+        researcherToken,
+        study.id,
+        rollbackParticipant.participationId,
+        { withdrawalDate: date, reason: 'Deve sofrer rollback.' },
+      );
+      responseStatus = response.status;
+    } finally {
+      await database.query(
+        `DROP TRIGGER ${triggerName} ON participacoes_estudo`,
+      );
+      await database.query(`DROP FUNCTION ${functionName}()`);
+    }
+    expect(responseStatus).toBe(500);
+    const state = await database.query<{
+      status: string;
+      withdrawalDate: string | null;
+      reason: string | null;
+    }>(
+      `SELECT status, data_retirada::text AS "withdrawalDate",
+              motivo_retirada AS reason
+       FROM participacoes_estudo
+       WHERE id_participacao = $1`,
+      [rollbackParticipant.participationId],
+    );
+    expect(state.rows[0]).toEqual({
+      status: 'Ativo',
+      withdrawalDate: null,
+      reason: null,
+    });
   });
 });
