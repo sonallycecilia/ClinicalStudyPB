@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   formatScheduledAt, localDateTimeToIso, saoPauloDay, scheduledVisitsApi, ScheduledVisitsApiError,
   SCHEDULE_CONNECTION_ERROR, SCHEDULE_INVALID_RESPONSE, SCHEDULE_UNEXPECTED_ERROR,
-  STATUS_DOMAIN_ERRORS, STATUS_UPDATE_INVALID_RESPONSE, STATUS_UPDATE_UNEXPECTED_ERROR,
+  STATUS_DOMAIN_ERRORS, STATUS_UPDATE_INVALID_RESPONSE, STATUS_UPDATE_UNEXPECTED_ERROR, RESULT_INVALID_RESPONSE,
   type CreateScheduledVisitInput, type IncludedParticipant, type ScheduledVisit,
 } from './scheduledVisitsApi';
 
@@ -206,6 +206,70 @@ describe('scheduledVisitsApi.updateStatus', () => {
       .mockResolvedValueOnce(reply(503, null));
     expect((await rejection(scheduledVisitsApi.updateStatus(request, created, { status: 'Ausente' }))).message).toBe('Visita agendada não encontrada neste estudo.');
     expect((await rejection(scheduledVisitsApi.updateStatus(request, created, { status: 'Ausente' }))).message).toBe(STATUS_UPDATE_UNEXPECTED_ERROR);
+  });
+});
+
+describe('scheduledVisitsApi resultados (E05/E06)', () => {
+  const realizedVisit: ScheduledVisit = { ...created, status: 'Realizada', realizedAt: '2026-11-24T12:40:00.000Z' };
+  const result = {
+    id: 'result-1', scheduledVisitId: 'scheduled-1', activityId: 'activity-1', value: '120/80', unit: 'mmHg',
+    observation: null, registeredAt: '2026-11-24T13:05:10.200Z', registrarId: 'researcher-1',
+  };
+  const results = {
+    scheduledVisitId: 'scheduled-1', plannedVisitId: 'planned-1', status: 'Realizada',
+    activities: [
+      { activityId: 'activity-1', name: 'Pressão arterial', type: 'Exame', description: null, result },
+      { activityId: 'activity-2', name: 'Questionário', type: 'Questionário', description: 'Sono', result: null },
+    ],
+  };
+
+  it('consulta E05 e valida atividades e resultados', async () => {
+    const request = vi.fn().mockResolvedValue(reply(200, results));
+    await expect(scheduledVisitsApi.getResults(request, realizedVisit)).resolves.toEqual(results);
+    expect(request).toHaveBeenCalledWith('/studies/study-1/scheduled-visits/scheduled-1/results', { signal: undefined });
+  });
+
+  it('recusa E05 de outra visita ou com resultado de outra atividade', async () => {
+    const other = vi.fn().mockResolvedValue(reply(200, { ...results, scheduledVisitId: 'outra' }));
+    const mismatch = vi.fn().mockResolvedValue(reply(200, { ...results, activities: [{ ...results.activities[0], result: { ...result, activityId: 'activity-9' } }] }));
+    expect((await rejection(scheduledVisitsApi.getResults(other, realizedVisit))).message).toMatch(/atividades inválidas/);
+    expect((await rejection(scheduledVisitsApi.getResults(mismatch, realizedVisit))).message).toMatch(/atividades inválidas/);
+  });
+
+  it('registra E06 com valores aparados e omite unidade e observação vazias', async () => {
+    const request = vi.fn().mockResolvedValue(reply(201, { ...result, unit: null }));
+    await scheduledVisitsApi.registerResult(request, realizedVisit, { activityId: 'activity-1', value: ' 120/80 ', unit: '  ', observation: '' });
+    const [path, init] = request.mock.calls[0] as [string, RequestInit];
+    expect(path).toBe('/studies/study-1/scheduled-visits/scheduled-1/results');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toEqual({ activityId: 'activity-1', value: '120/80' });
+  });
+
+  it('envia unidade e observação preenchidas e recusa resposta de outra atividade', async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce(reply(201, { ...result, observation: 'Fictício' }))
+      .mockResolvedValueOnce(reply(201, { ...result, activityId: 'activity-2' }));
+    await scheduledVisitsApi.registerResult(request, realizedVisit, { activityId: 'activity-1', value: '120/80', unit: 'mmHg', observation: ' Fictício ' });
+    expect(JSON.parse((request.mock.calls[0] as [string, RequestInit])[1].body as string)).toEqual({ activityId: 'activity-1', value: '120/80', unit: 'mmHg', observation: 'Fictício' });
+    expect((await rejection(scheduledVisitsApi.registerResult(request, realizedVisit, { activityId: 'activity-1', value: '1' }))).message).toBe(RESULT_INVALID_RESPONSE);
+  });
+
+  it.each([
+    [400, 'VISIT_NOT_REALIZED', 'Registre resultados somente em visitas realizadas.'],
+    [400, 'ACTIVITY_NOT_IN_VISIT', 'A atividade não pertence à visita prevista agendada.'],
+    [400, 'STUDY_CLOSED', 'Não é possível alterar um estudo encerrado.'],
+    [409, 'RESULT_ALREADY_REGISTERED', 'Já existe resultado registrado para esta atividade nesta visita.'],
+  ])('traduz %i %s', async (status, code, message) => {
+    const request = vi.fn().mockResolvedValue(reply(status, { statusCode: status, message: 'texto', code }));
+    expect(await rejection(scheduledVisitsApi.registerResult(request, realizedVisit, { activityId: 'activity-1', value: '1' }))).toMatchObject({ message, status, code });
+  });
+
+  it('aponta campos recusados pelo ValidationPipe e usa a mensagem do servidor em 403', async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce(reply(400, { statusCode: 400, message: ['unit must be shorter than or equal to 50 characters'] }))
+      .mockResolvedValueOnce(reply(403, { statusCode: 403, message: 'Seu perfil não tem permissão para este recurso.' }));
+    expect((await rejection(scheduledVisitsApi.registerResult(request, realizedVisit, { activityId: 'activity-1', value: '1' }))).fieldErrors).toEqual({ unit: 'O servidor recusou este valor. Revise o campo.' });
+    expect((await rejection(scheduledVisitsApi.registerResult(request, realizedVisit, { activityId: 'activity-1', value: '1' }))).message).toBe('Seu perfil não tem permissão para este recurso.');
   });
 });
 

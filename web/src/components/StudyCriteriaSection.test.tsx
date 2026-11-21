@@ -782,6 +782,7 @@ describe('edição de estudo com critérios', () => {
         return jsonResponse(row);
       }
       if (path.startsWith(`${studyPath}/visits`)) return jsonResponse([]);
+      if (path === `${studyPath}/scheduled-visits`) return jsonResponse([]);
       throw new Error(`Requisição inesperada: ${method} ${path}`);
     });
     return rows;

@@ -800,6 +800,27 @@ describe('CoordinatorVisitsPage', () => {
     expect(screen.getByRole('dialog', { name: 'Atualizar situação da visita' })).toBeTruthy();
   });
 
+  it('mostra as atividades e resultados de uma visita realizada somente para consulta', async () => {
+    mockRequest.mockImplementation(async (path: string) => {
+      if (path === '/studies/study-1/scheduled-visits') return json(200, agendaRows);
+      if (path === '/studies/study-1/scheduled-visits/scheduled-2/results') return json(200, {
+        scheduledVisitId: 'scheduled-2', plannedVisitId: 'planned-1', status: 'Realizada',
+        activities: [{ activityId: 'activity-1', name: 'Pressão arterial', type: 'Exame', description: null, result: {
+          id: 'result-1', scheduledVisitId: 'scheduled-2', activityId: 'activity-1', value: '120/80', unit: 'mmHg', observation: null,
+          registeredAt: '2026-11-24T13:05:00.000Z', registrarId: 'researcher-1',
+        } }],
+      });
+      return json(200, studyOptions);
+    });
+    renderCoordinator(<CoordinatorVisitsPage />);
+    const row = await screen.findByRole('row', { name: /Lucas Martins/ });
+    fireEvent.click(within(row).getByRole('button', { name: 'Detalhes' }));
+    const dialog = screen.getByRole('dialog', { name: 'Detalhes da visita' });
+    expect(await within(dialog).findByText('120/80')).toBeTruthy();
+    expect(within(dialog).getByText('O registro dos resultados é feito pelo Pesquisador responsável pelo estudo.')).toBeTruthy();
+    expect(within(dialog).queryByRole('button', { name: 'Registrar resultado' })).toBeNull();
+  });
+
   it('informa quando a consulta da agenda falha e permite tentar novamente', async () => {
     let calls = 0;
     mockRequest.mockImplementation(async (path: string) => {
