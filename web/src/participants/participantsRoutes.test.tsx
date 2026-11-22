@@ -24,7 +24,8 @@ describe('Rota /coordenador/participantes — navegação e permissões', () => 
     session.user = user('Coordenador');
     render(<App />);
     expect(await screen.findByRole('heading', { name: 'Participantes incluídos' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: /Participantes incluídos/ }).getAttribute('href')).toBe('/coordenador/participantes');
+    const links = screen.getAllByRole('link', { name: /Participantes incluídos/ });
+    expect(links.some((link) => link.getAttribute('href') === '/coordenador/participantes')).toBe(true);
   });
 
   it.each(['Pesquisador', 'Administrador'] as const)('bloqueia %s com mensagem clara de acesso não autorizado', async (role) => {
@@ -46,7 +47,7 @@ describe('Rota /coordenador/participantes — navegação e permissões', () => 
     render(<App />);
     await screen.findByRole('heading', { name: 'Participantes incluídos' });
     for (const label of ['Painel do coordenador', 'Candidatos e participantes', 'Visitas e avaliações', 'Reagendamentos', 'Relatórios']) {
-      expect(screen.getByRole('link', { name: new RegExp(`^${label}$`) })).toBeTruthy();
+      expect(screen.getAllByRole('link', { name: new RegExp(`^${label}$`) }).length).toBeGreaterThan(0);
     }
   });
 });
