@@ -1,4 +1,4 @@
-# Relatório de cobertura e qualidade dos testes automatizados — RF05 a RF11
+# Relatório de cobertura e qualidade dos testes automatizados — RF01 a RF11
 
 **Projeto:** ClinicalStudyPB  
 **Branch:** `test/sprint-2-qa-integration`  
@@ -47,7 +47,6 @@ Principais lacunas identificadas:
 
 Os controllers de autenticação, estudos, critérios, visitas e candidatos apresentam 100% de statements e functions, embora ainda existam branches não exercitados.
 
-A cobertura de funções está próxima de 100%, mas permanecem oportunidades de ampliar a cobertura de decisões condicionais e caminhos alternativos. Não é necessário criar testes artificiais apenas para elevar percentuais.
 
 ### Frontend
 
@@ -75,7 +74,71 @@ Outras oportunidades estão em `ProtectedRoute.tsx`, `CandidateFormPage.tsx`, `U
 
 `src/types.ts` permanece excluído por conter apenas declarações TypeScript, sem lógica executável.
 
-## 3. Cenários e regras — RF05 a RF11
+## 3. Cenários e regras — RF01 a RF11
+
+### Rastreabilidade dos testes Cypress
+
+A tabela relaciona cada caso Cypress ao requisito e resume o comportamento verificado. **OK** indica aprovação em uma execução comprovada; **Não verificado** significa que não há resultado de aprovação confirmado, e não deve ser interpretado como falha.
+
+
+No total, **53 dos 53 casos** têm aprovação registrada;
+
+| ID do teste | Requisito | O que faz | Resultado |
+|---|---|---|---|
+| `CYP-RF01-01` | RF01 — Cadastrar e gerenciar usuários | Cadastra, pesquisa, edita e exclui usuário como Administrador. | ✅ OK |
+| `CYP-RF02-01` | RF02 — Autenticar e encerrar sessão | Redireciona para o login quando não há sessão. | ✅ OK |
+| `CYP-RF02-02` | RF02 — Autenticar e encerrar sessão | Rejeita credenciais inválidas. | ✅ OK |
+| `CYP-RF02-03` | RF02 — Autenticar e encerrar sessão | Mantém a sessão após recarregar e a revoga ao sair. | ✅ OK |
+| `CYP-RF03-01` | RF03 — Restringir funcionalidades por perfil | Impede que Pesquisador acesse a administração de usuários. | ✅ OK |
+| `CYP-RF03-02` | RF03 — Restringir funcionalidades por perfil | Verifica menu do Coordenador e restrição de páginas de outros perfis. | ✅ OK |
+| `CYP-RF04-01` | RF04 — Cadastrar estudos | Cadastra estudo, consulta e confirma persistência após recarregar. | ✅ OK |
+| `CYP-RF04-02` | RF04 — Cadastrar estudos | Edita estudo e confirma persistência das alterações após recarregar. | ✅ OK |
+| `CYP-RF04-03` | RF04 — Cadastrar estudos | Rejeita data de término anterior à data de início. | ✅ OK |
+| `CYP-RF04-04` | RF04 — Cadastrar estudos | Rejeita participantes vinculados acima do limite do estudo. |✅ OK |
+| `CT-RF05-01` | RF05 — Gerenciar critérios de elegibilidade | Cadastra critérios de inclusão e exclusão vinculados ao estudo. | ✅ OK |
+| `CT-RF05-02` | RF05 — Gerenciar critérios de elegibilidade | Consulta critérios sem misturar os de outros estudos. | ✅ OK |
+| `CT-RF05-03` | RF05 — Gerenciar critérios de elegibilidade | Rejeita tipo ausente ou descrição vazia. | ✅ OK |
+| `CT-RF05-04` | RF05 — Gerenciar critérios de elegibilidade | Rejeita estudo inexistente e vínculo de critério incompatível. | ✅ OK |
+| `CT-RF05-05` | RF05 — Gerenciar critérios de elegibilidade | Bloqueia consulta/cadastro sem autenticação ou sem permissão. | ✅ OK |
+| `CYP-RF05-06-01` | RF05 — Gerenciar critérios de elegibilidade | Cadastra, edita e consulta critérios persistidos pelo fluxo web. |✅ OK |
+| `CT-RF06-01` | RF06 — Gerenciar visitas e atividades previstas | Cadastra visitas e atividades com vínculos corretos. | ✅ OK |
+| `CT-RF06-02` | RF06 — Gerenciar visitas e atividades previstas | Consulta visitas ordenadas e atividades associadas à visita correta. | ✅ OK |
+| `CT-RF06-03` | RF06 — Gerenciar visitas e atividades previstas | Rejeita visita ou atividade sem campos obrigatórios válidos. | ✅ OK |
+| `CT-RF06-04` | RF06 — Gerenciar visitas e atividades previstas | Rejeita vínculos com estudo/visita inexistente ou incompatível. | ✅ OK |
+| `CT-RF06-05` | RF06 — Gerenciar visitas e atividades previstas | Bloqueia consulta/cadastro sem autenticação ou sem permissão. | ✅ OK |
+| `CYP-RF06-07-01` | RF06 — Gerenciar visitas e atividades previstas | Persiste visitas e atividades, valida ordem e bloqueia alteração após encerramento. | ✅ OK |
+| `CT-RF07-01` | RF07 — Gerenciar estados do estudo | Cria estudo no estado inicial Planejamento. | ✅ OK |
+| `CT-RF07-02` | RF07 — Gerenciar estados do estudo | Permite a sequência de transições válidas. | ✅ OK |
+| `CT-RF07-03` | RF07 — Gerenciar estados do estudo | Rejeita transições inválidas sem alterar o estado anterior. | ✅ OK |
+| `CT-RF07-04` | RF07 — Gerenciar estados do estudo | Confirma consulta do estado persistido após cada transição. | ✅ OK |
+| `CT-RF07-05` | RF07 — Gerenciar estados do estudo | Bloqueia alteração de estudo inexistente, sem sessão ou sem permissão. | ✅ OK |
+| `CT-RF08-01` | RF08 — Cadastrar candidatos | Cadastra candidato válido vinculado ao estudo selecionado. | ✅ OK |
+| `CT-RF08-02` | RF08 — Cadastrar candidatos | Lista candidatos por estudo sem incluir candidatos de outro estudo. | ✅ OK |
+| `CT-RF08-03` | RF08 — Cadastrar candidatos | Rejeita cadastro sem nome ou com e-mail inválido. | ✅ OK |
+| `CT-RF08-04` | RF08 — Cadastrar candidatos | Rejeita cadastro associado a estudo inexistente. | ✅ OK |
+| `CT-RF08-05` | RF08 — Cadastrar candidatos | Bloqueia cadastro/consulta sem sessão ou sem permissão. | ✅ OK |
+| `CT-RF09-01` | RF09 — Avaliar elegibilidade | Considera elegível quem atende inclusão e não atende exclusão. | ✅ OK |
+| `CT-RF09-02` | RF09 — Avaliar elegibilidade | Considera inelegível quem falha inclusão ou atende exclusão. | ✅ OK |
+| `CT-RF09-03` | RF09 — Avaliar elegibilidade | Mantém candidato Em avaliação quando há respostas pendentes. | ✅ OK |
+| `CT-RF09-04` | RF09 — Avaliar elegibilidade | Consulta avaliação vazia e respostas persistidas do candidato. | ✅ OK |
+| `CT-RF09-05` | RF09 — Avaliar elegibilidade | Rejeita avaliações incompletas, duplicadas ou ligadas a critérios inválidos. | ✅ OK |
+| `CT-RF09-06` | RF09 — Avaliar elegibilidade | Bloqueia avaliação/consulta de candidato inexistente, sem sessão ou sem permissão. | ✅ OK |
+| `CT-RF10-01` | RF10 — Registrar consentimento simulado | Registra consentimento com vínculo e identidade do Pesquisador. | ✅ OK |
+| `CT-RF10-02` | RF10 — Registrar consentimento simulado | Consulta consentimento registrado ou indica ausência de registro. | ✅ OK |
+| `CT-RF10-03` | RF10 — Registrar consentimento simulado | Rejeita campos obrigatórios ausentes ou inválidos. | ✅ OK |
+| `CT-RF10-04` | RF10 — Registrar consentimento simulado | Impede registro para candidato inexistente ou sem autorização. | ✅ OK |
+| `CT-RF11-01` | RF11 — Incluir candidatos no estudo | Inclui candidato elegível, consentido e com vaga disponível. | ✅ OK |
+| `CT-RF11-02A` | RF11 — Incluir candidatos no estudo | Impede inclusão quando o candidato não atende critério de inclusão. | ✅ OK |
+| `CT-RF11-02B` | RF11 — Incluir candidatos no estudo | Impede inclusão quando o candidato atende critério de exclusão. | ✅ OK |
+| `CT-RF11-03` | RF11 — Incluir candidatos no estudo | Impede inclusão sem consentimento registrado. | ✅ OK |
+| `CT-RF11-04` | RF11 — Incluir candidatos no estudo | Impede inclusão quando o limite de participantes foi atingido. | ✅ OK |
+| `CT-RF11-05` | RF11 — Incluir candidatos no estudo | Rejeita candidato/estudo inexistente e perfil sem permissão. | ✅ OK |
+| `CT-RF11-06` | RF11 — Incluir candidatos no estudo | Confirma preservação do estado e contador quando a inclusão é recusada por falta de consentimento. | ✅ OK |
+| `CT-RF11-07` | RF11 — Incluir candidatos no estudo | Verifica que inclusões concorrentes não excedem a última vaga. | ✅ OK |
+| `CT-RF11-08` | RF11 — Incluir candidatos no estudo | Impede incluir o mesmo candidato duas vezes. | ✅ OK |
+| `CT-RF11-09A` | RF11 — Incluir candidatos no estudo | Valida permissão do Coordenador em estudo na fase de recrutamento. | ✅ OK |
+| `CT-RF11-09B` | RF11 — Incluir candidatos no estudo | Bloqueia Coordenador quando o estudo está fora da fase de recrutamento. | ✅ OK |
+
 
 Os testes abrangem os principais fluxos funcionais:
 

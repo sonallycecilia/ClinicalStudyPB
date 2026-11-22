@@ -46,7 +46,7 @@ function fillStudyForm(options: {
 describe('Task 3210 — fluxo de cadastro de estudo', () => {
   beforeEach(() => loginAsResearcher());
 
-  it('cadastra estudo no backend e mantém o registro após atualizar a página', () => {
+  it('CYP-RF04-01 — cadastra estudo e mantém o registro após atualizar a página', () => {
     const title = `Estudo Cypress ${Date.now()}`;
 
     cy.contains('button', 'Cadastrar estudo').click();
@@ -66,7 +66,7 @@ describe('Task 3210 — fluxo de cadastro de estudo', () => {
     cy.get('.study-card').should('have.length', 1).and('contain.text', title);
   });
 
-  it('edita um estudo no backend e mantém as alterações após atualizar a página', () => {
+  it('CYP-RF04-02 — edita estudo e mantém as alterações após atualizar a página', () => {
     const title = `Estudo Cypress para editar ${Date.now()}`;
     const updatedTitle = `${title} atualizado`;
     const updatedObjective = 'Acompanhar dados fictícios após a edição do protocolo.';
@@ -97,7 +97,7 @@ describe('Task 3210 — fluxo de cadastro de estudo', () => {
     cy.get('.study-card').should('have.length', 1).and('contain.text', updatedTitle);
   });
 
-  it('rejeita data de término anterior à data de início', () => {
+  it('CYP-RF04-03 — rejeita data de término anterior à data de início', () => {
     cy.contains('button', 'Cadastrar estudo').click();
     fillStudyForm({ title: `Estudo com datas inválidas ${Date.now()}`, startDate: '2099-02-10', endDate: '2099-02-01' });
     cy.get('[role="dialog"]').contains('button', 'Cadastrar estudo').click();
@@ -106,7 +106,7 @@ describe('Task 3210 — fluxo de cadastro de estudo', () => {
     cy.get('[role="dialog"]').should('contain.text', 'Informações do estudo');
   });
 
-  it('rejeita quantidade de participantes vinculados acima do limite', () => {
+  it('CYP-RF04-04 — rejeita quantidade vinculada acima do limite do estudo', () => {
     cy.contains('button', 'Cadastrar estudo').click();
     fillStudyForm({ title: `Estudo acima do limite ${Date.now()}`, limit: '10', linked: '11' });
     cy.get('[role="dialog"]').contains('button', 'Cadastrar estudo').click();
