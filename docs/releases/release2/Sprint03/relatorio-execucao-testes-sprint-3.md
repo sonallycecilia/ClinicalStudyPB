@@ -1,13 +1,13 @@
 # Relatório de execução e rastreabilidade de testes — Sprint 3
 
-> **Critério de registro:** este relatório reúne resultados informados para Backend e comandos executados para Web e Mobile neste ambiente. Os horários exatos das três rodadas de Backend não foram preservados; elas aparecem na ordem cronológica relatada. Onde a invocação literal do comando não está registrada, isso é indicado explicitamente.
+> **Critério de registro:** resultados das tasks S3-QA-02 a S3-QA-06 foram preservados. Esta atualização registra a integração com `main` e as execuções S3-QA-07 realizadas em 22/11/2026.
 
 ## 1. Identificação e Contexto da Execução
 
 - **Sprint:** 3.
 - **Branch executada:** `test/sprint-3-qa-leticia`.
-- **Baseline da `main`:** `f3a9132` (merge PR #32).
-- **HEAD da branch durante o registro:** `b801580` (`test(S3-QA-03): amplia testes de integração E2E para RF12–RF18`).
+- **Baseline da `main` integrada:** `84dce54`.
+- **Merge de `main`:** `6af58f6`; HEAD no início da S3-QA-07.
 - **Histórico local:** clone não raso; contém as mudanças Mobile dos PRs #27, #29 e #30.
 - **Ambiente-alvo:** Backend NestJS com PostgreSQL via Docker Compose; PostgreSQL publicado em `127.0.0.1:5433` (container `5432`), API em `127.0.0.1:3000`; Web em `127.0.0.1:5173`; Mobile React Native/Expo com Jest e React Native Testing Library. A primeira rodada E2E ocorreu com o PostgreSQL indisponível; ele foi iniciado para as rodadas seguintes.
 - **Rastreabilidade:** este relatório complementa o [plano de testes e massa de dados RF12–RF18](./plano-testes-massa-dados-rf12-rf18.md).
@@ -229,3 +229,45 @@ O novo [rf12-rf13-agendamento-situacao.cy.ts](../../../../web/cypress/e2e/rf12-r
 - Novo: [rf12-rf13-agendamento-situacao.cy.ts](../../../../web/cypress/e2e/rf12-rf13-agendamento-situacao.cy.ts).
 - Atualizado: este relatório, com a limitação Mobile herdada da S3-QA-05, resultados E2E, evidências e roteiro de revalidação.
 - O worktree também mantém a alteração prévia da S3-QA-05 em [HomeScreen.test.tsx](../../../../mobile/src/screens/__tests__/HomeScreen.test.tsx); ela não foi alterada pela S3-QA-06.
+
+## 9. S3-QA-07 — CI, regressão e cobertura — 2026-11-22
+
+### Merge com `main`
+
+- Integrado `origin/main` em `84dce54` na branch `test/sprint-3-qa-leticia`; merge concluído em `6af58f6`.
+- O único conflito foi [participantsRoutes.test.tsx](../../../../web/src/participants/participantsRoutes.test.tsx): os dois lados acrescentavam verificações sobrepostas de acesso negado à rota de visitas. A matriz parametrizada da resolução cobre Pesquisador e Administrador em visitas e reagendamentos, preservando a asserção de que nenhum endpoint da equipe é consultado. Nenhum código de produção ou regra de negócio foi alterado.
+- Os testes e registros anteriores S3-QA-02 a S3-QA-06 foram mantidos. `git diff --check` passou e não restaram caminhos não mesclados nem marcadores de conflito.
+
+### CI configurado para Pull Requests
+
+| Workflow | Jobs e verificações | Lacunas / observações |
+|---|---|---|
+| [backend-ci.yml](../../../../.github/workflows/backend-ci.yml) | PostgreSQL 17; `npm ci`; lint; build; `test:coverage:all` (unitários + E2E + relatório de cobertura). | Não há `coverageThreshold` nem publicação do relatório como artefato; portanto a meta de 80% não bloqueia o CI. |
+| [web-ci.yml](../../../../.github/workflows/web-ci.yml) | Vitest e build; Cypress E2E com PostgreSQL e API. | Não há step de lint nem cobertura Web. |
+| [mobile-ci.yml](../../../../.github/workflows/mobile-ci.yml) | Jest; lint; typecheck; export Expo. | O step de export falha neste projeto: a configuração Expo resolvida não declara plataformas (`platforms: []`), e `expo export --platform all` retorna “No platforms are configured to use the Metro bundler”. |
+
+Os workflows têm filtros por caminhos: backend cobre `backend/**`, Web cobre `web/**` e `backend/**`, e Mobile cobre `mobile/**`, além dos respectivos arquivos de workflow. Alterações fora desses escopos não acionam esses jobs.
+
+### Regressão executada após o merge
+
+| Camada | Execução | Resultado |
+|---|---|---|
+| Backend | Lint, build e `npm.cmd --prefix backend run test:coverage:all`, com PostgreSQL em `localhost:5433`. | **33/33 suítes e 348/348 testes passaram**; lint e build passaram. |
+| Web unitário/build | `npm.cmd --prefix web test` e `npm.cmd --prefix web run build`, com `VITE_API_URL=http://localhost:3000`. | **45/45 arquivos de teste e 755/755 testes passaram**; build passou. A primeira tentativa sem a variável de ambiente falhou; a repetição com a URL explícita passou. |
+| Web E2E | `npm.cmd --prefix web run cypress:run -- --browser electron`, contra Web, API e PostgreSQL local. | **11/11 specs e 54/54 testes passaram**; duração 16m43s. Cypress avisou que Electron 146 está depreciado. |
+| Mobile | Jest `--runInBand`, lint e typecheck. | **10/10 suítes e 72/72 testes passaram**; lint e typecheck passaram. O export Expo, também executado pelo CI, falhou pela configuração sem plataformas descrita acima. |
+
+### Evidência de cobertura de linhas do Backend
+
+O relatório Jest bruto inclui modelos Swagger/DTOs. Para a métrica de código de negócio abaixo, foram excluídos Swagger/DTOs, entidades, módulos/configuração, código gerado, `main.ts` e migrations. As declarações e enums `*.types.ts` foram mantidos no cálculo. O repositório não contém outra regra de exclusão de cobertura documentada.
+
+| Área | Linhas cobertas / linhas instrumentadas | Cobertura de linhas |
+|---|---:|---:|
+| Aplicação | 6/6 | 100,00% |
+| Autenticação | 78/81 | 96,30% |
+| Persistência | 24/27 | 88,89% |
+| Estudos | 643/685 | 93,87% |
+| Usuários | 85/86 | 98,84% |
+| **Código de negócio total** | **836/885** | **94,46%** |
+
+Nenhum arquivo de negócio ficou abaixo de 80%; o menor foi `database.service.ts`, com **88,89%**. `users.controller.ts` tinha 76,59% antes dos testes adicionais; foi criado [users.controller.spec.ts](../../../../backend/src/users/users.controller.spec.ts) com casos pontuais para os validadores de criação e atualização. Após a execução completa, o controller atingiu **100% de linhas**. A cobertura bruta Jest foi **95,60% de linhas** (incluindo os modelos Swagger/DTOs).
