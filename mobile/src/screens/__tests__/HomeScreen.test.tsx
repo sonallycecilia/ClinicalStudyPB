@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { useAuth } from '../../auth/AuthContext';
-import type { ParticipantStudy } from '../../studies/participantStudiesApi';
+import { ParticipantStudiesUnavailableError, type ParticipantStudy } from '../../studies/participantStudiesApi';
 import HomeScreen from '../HomeScreen';
 
 const mockListForAuthenticatedParticipant = jest.fn<() => Promise<ParticipantStudy[]>>();
@@ -9,6 +9,7 @@ let mockAuth: ReturnType<typeof useAuth>;
 
 jest.mock('../../auth/AuthContext', () => ({ useAuth: () => mockAuth }));
 jest.mock('../../studies/participantStudiesApi', () => ({
+  ...jest.requireActual<typeof import('../../studies/participantStudiesApi')>('../../studies/participantStudiesApi'),
   participantStudiesService: { listForAuthenticatedParticipant: () => mockListForAuthenticatedParticipant() },
 }));
 
@@ -64,11 +65,19 @@ describe('HomeScreen — estudos do participante', () => {
     expect(await screen.findByText('Qualidade do sono')).toBeTruthy();
   });
 
-  it('apresenta a mensagem de lista vazia quando não há estudos', async () => {
+  it('apresenta estado vazio quando o serviço retorna [] (inclui E09 sem vínculo P-01)', async () => {
     mockListForAuthenticatedParticipant.mockResolvedValueOnce([]);
     await render(<HomeScreen />);
 
     expect(await screen.findByText('Você ainda não participa de nenhum estudo.')).toBeTruthy();
+  });
+
+  it('expõe o placeholder real como indisponibilidade, sem apresentá-lo como lista vazia', async () => {
+    mockListForAuthenticatedParticipant.mockRejectedValueOnce(new ParticipantStudiesUnavailableError());
+    await render(<HomeScreen />);
+
+    expect(await screen.findByText(/A consulta dos estudos do participante ainda não está disponível/)).toBeTruthy();
+    expect(screen.queryByText('Você ainda não participa de nenhum estudo.')).toBeNull();
   });
 
   it('mostra erro e permite tentar novamente', async () => {
