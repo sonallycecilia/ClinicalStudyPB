@@ -7,10 +7,11 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 
 describe('participantsApi.listByStudy — contrato do backend', () => {
   it('consulta o estudo codificado na rota e adapta participationStatus para status', async () => {
-    const request = vi.fn().mockResolvedValue(json([{ ...raw, email: 'ana@x.test' }]));
+    // O id do estudo da resposta precisa ser o mesmo consultado; aqui contém "/" para provar a codificação da rota.
+    const request = vi.fn().mockResolvedValue(json([{ ...raw, studyId: 'a/b', email: 'ana@x.test' }]));
     const result = await participantsApi.listByStudy(request, 'a/b');
     expect(request).toHaveBeenCalledWith('/studies/a%2Fb/participants', undefined);
-    expect(result).toEqual([model]);
+    expect(result).toEqual([{ ...model, studyId: 'a/b' }]);
     expect(result[0]).not.toHaveProperty('email');
     expect(result[0]).not.toHaveProperty('participationStatus');
   });
