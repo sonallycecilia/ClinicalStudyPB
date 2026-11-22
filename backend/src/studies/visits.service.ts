@@ -48,8 +48,8 @@ export class VisitsService {
     private readonly studiesService: StudiesService,
   ) {}
 
-  async list(studyId: string, researcherId: string): Promise<PlannedVisit[]> {
-    await this.assertStudyAccess(studyId, researcherId);
+  async list(studyId: string, userId: string): Promise<PlannedVisit[]> {
+    await this.studiesService.assertTeamStudyReadAccess(studyId, userId, 'visitas previstas');
     const { rows } = await this.database.query<PlannedVisitRow>(
       `SELECT ${PLANNED_VISIT_COLUMNS}
        FROM visitas_previstas
@@ -100,14 +100,17 @@ export class VisitsService {
   async listActivities(
     studyId: string,
     visitId: string,
-    researcherId: string,
+    userId: string,
   ): Promise<VisitActivity[]> {
-    await this.find(studyId, visitId, researcherId);
+    await this.studiesService.assertTeamStudyReadAccess(studyId, userId, 'atividades de visitas previstas');
+    if (!await this.findForStudy(studyId, visitId)) {
+      throw new NotFoundException('Visita prevista não encontrada neste estudo.');
+    }
     const { rows } = await this.database.query<VisitActivityRow>(
       `SELECT ${VISIT_ACTIVITY_COLUMNS}
        FROM atividades_visita
        WHERE id_visita_prevista = $1
-       ORDER BY nome, id_atividade`,
+       ORDER BY ordem, id_atividade`,
       [visitId],
     );
     return rows;
@@ -120,17 +123,38 @@ export class VisitsService {
     researcherId: string,
   ): Promise<VisitActivity> {
     await this.studiesService.assertStudyCanBeModified(studyId, researcherId);
-    if (!await this.findForStudy(studyId, visitId)) {
-      throw new NotFoundException('Visita prevista não encontrada neste estudo.');
-    }
-    const { rows } = await this.database.query<VisitActivityRow>(
-      `INSERT INTO atividades_visita (id_visita_prevista, nome, descricao, tipo)
-       VALUES ($1, $2, $3, $4)
-       RETURNING ${VISIT_ACTIVITY_COLUMNS}`,
-      [visitId, input.name, input.description ?? null, input.type],
-    );
-    if (!rows[0]) throw new Error('O banco não retornou a atividade cadastrada.');
-    return rows[0];
+    return this.database.transaction(async (client) => {
+      const plannedVisit = await client.query<{ id: string }>(
+        `SELECT id_visita_prevista::text AS id
+         FROM visitas_previstas
+         WHERE id_estudo = $1 AND id_visita_prevista = $2
+         FOR UPDATE`,
+        [studyId, visitId],
+      );
+      if (!plannedVisit.rows[0]) {
+        throw new NotFoundException('Visita prevista não encontrada neste estudo.');
+      }
+
+      const nextOrder = await client.query<{ order: number }>(
+        `SELECT COALESCE(MAX(ordem), 0) + 1 AS "order"
+         FROM atividades_visita
+         WHERE id_visita_prevista = $1`,
+        [visitId],
+      );
+      const order = nextOrder.rows[0]?.order;
+      if (order === undefined) {
+        throw new Error('O banco não retornou a próxima ordem da atividade.');
+      }
+
+      const { rows } = await client.query<VisitActivityRow>(
+        `INSERT INTO atividades_visita (id_visita_prevista, ordem, nome, descricao, tipo)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING ${VISIT_ACTIVITY_COLUMNS}`,
+        [visitId, order, input.name, input.description ?? null, input.type],
+      );
+      if (!rows[0]) throw new Error('O banco não retornou a atividade cadastrada.');
+      return rows[0];
+    });
   }
 
   private async assertStudyAccess(studyId: string, researcherId: string): Promise<void> {
