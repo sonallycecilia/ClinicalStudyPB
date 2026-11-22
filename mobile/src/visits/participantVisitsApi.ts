@@ -48,8 +48,11 @@ export const participantVisitsService: ParticipantVisitsService = {
 };
 
 export function visitsForScope(visits: Visit[], scope: VisitScope): Visit[] {
-  // E10 includes overdue scheduled visits; attendance status defines the scope.
-  return visits.filter(visit => scope === 'upcoming' ? visit.status === 'Agendada' : visit.status !== 'Agendada')
+  // E10 compares the full instant, including its timezone, and excludes overdue appointments.
+  const now = Date.now();
+  return visits.filter(visit => scope === 'upcoming'
+    ? visit.status === 'Agendada' && Date.parse(visit.scheduledAt) > now
+    : ['Realizada', 'Ausente', 'Cancelada'].includes(visit.status))
     .sort((a, b) => (Date.parse(a.scheduledAt) - Date.parse(b.scheduledAt)) * (scope === 'upcoming' ? 1 : -1));
 }
 

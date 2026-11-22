@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
-import { beforeEach, expect, it, jest } from '@jest/globals';
+import { afterEach, beforeEach, expect, it, jest } from '@jest/globals';
 import { Pressable, Text } from 'react-native';
 import { useAuth } from '../../auth/AuthContext';
 import { VisitsProvider, useVisits } from '../VisitsContext';
@@ -25,9 +25,11 @@ function deferred() {
   return { promise, resolve };
 }
 beforeEach(() => {
+  jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-11-22T12:00:00Z'));
   mockAuth = { status: 'authenticated', user, client: { get: async () => [] }, message: null, login: async () => {}, logout: async () => {}, retry: async () => {} };
   mockList.mockReset();
 });
+afterEach(() => { jest.restoreAllMocks(); });
 
 it('descarta respostas de uma sessão anterior e oculta dados ao bloquear a sessão', async () => {
   const old = deferred();

@@ -19,12 +19,14 @@ Object.defineProperty(globalThis, 'fetch', { configurable: true, writable: true,
 const user = { id: 'participant', name: 'Bianca Oliveira', email: 'bianca.oliveira@clinicalstudypb.test', phone: '', role: 'Participante', status: 'Ativo', createdAt: '2026-11-01T00:00:00.000Z' };
 const previousUrl = process.env.EXPO_PUBLIC_API_URL;
 beforeEach(() => {
+  jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-11-22T12:00:00Z'));
   process.env.EXPO_PUBLIC_API_URL = 'http://localhost:3000';
   fetchMock.mockReset();
   listMock.mockReset().mockRejectedValue(new HttpError(404));
   jest.mocked(SecureStore.getItemAsync).mockReset().mockResolvedValue(null);
 });
 afterEach(() => {
+  jest.restoreAllMocks();
   if (previousUrl === undefined) delete process.env.EXPO_PUBLIC_API_URL;
   else process.env.EXPO_PUBLIC_API_URL = previousUrl;
 });

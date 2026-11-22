@@ -43,6 +43,26 @@ afterEach(() => {
 });
 
 describe('Consultas com a sessão real do AuthContext', () => {
+  it('consulta E09/E10 com o token restaurado e validado por /auth/me', async () => {
+    jest.mocked(SecureStore.getItemAsync).mockResolvedValueOnce('restored-token');
+    fetchMock.mockResolvedValueOnce(response(200, user));
+    const { result } = await renderHook(useAuth, { wrapper: AuthProvider });
+    expect(result.current.status).toBe('authenticated');
+    fetchMock.mockResolvedValueOnce(response(200, studies)).mockResolvedValueOnce(response(200, []));
+    await expect(participantStudiesService.listForAuthenticatedParticipant(result.current.client!)).resolves.toEqual(studies);
+    await expect(participantVisitsService.listForAuthenticatedParticipant('history', result.current.client!)).resolves.toEqual([]);
+    expect(fetchMock.mock.calls.map(call => call[0])).toEqual([
+      'https://api.example.test/base/auth/me',
+      'https://api.example.test/base/me/studies',
+      'https://api.example.test/base/me/visits?scope=history',
+    ]);
+    for (const [, options] of fetchMock.mock.calls) {
+      expect(options?.headers).toEqual(expect.objectContaining({ Authorization: 'Bearer restored-token' }));
+    }
+    expect(SecureStore.getItemAsync).toHaveBeenCalledTimes(1);
+    expect(SecureStore.setItemAsync).not.toHaveBeenCalled();
+  });
+
   it('envia o Bearer existente em E09/E10 e reutiliza a URL sem persistir ou reler o token', async () => {
     const { result } = await loggedIn();
     const client = result.current.client!;

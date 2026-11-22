@@ -8,7 +8,7 @@ No desenvolvimento, usa `localhost:3000` na web ou o host do Metro na porta 3000
 
 O backend permite a origem web `http://localhost:8081`. Para outro endereço no navegador, configure `MOBILE_WEB_ORIGIN` no backend e reinicie a API.
 
-Conta de participante: `bianca.oliveira@clinicalstudypb.test`, senha `Demo123!`. As contas precisam ter sido criadas pelo seed descrito no README principal. O Mobile permite somente contas ativas com perfil `Participante`; os demais perfis são recusados, com tentativa de revogação do token emitido. A tela de estudos e seus estados estão preparados, mas a consulta autenticada aguarda a S3-BE-07 e sua integração definitiva será feita na S3-MOB-05. Até lá, o aplicativo não exibe estudos simulados nem usa `GET /studies`.
+Conta de participante: `bianca.oliveira@clinicalstudypb.test`, senha `Demo123!`. As contas precisam ter sido criadas pelo seed descrito no README principal. O Mobile permite somente contas ativas com perfil `Participante`; os demais perfis são recusados, com tentativa de revogação do token emitido. Os endpoints estão implementados no backend. Os serviços Mobile consultam `GET /me/studies` e `GET /me/visits?scope=upcoming|history` com o Bearer da sessão autenticada. O aplicativo não exibe estudos ou visitas simulados nem usa rotas administrativas para essas consultas.
 
 O login usa `POST /auth/login`. Em Android/iOS, apenas o accessToken é persistido com `expo-secure-store`; senha e dados do usuário não são persistidos. Na web, o token fica somente em memória e recarregar a página exige novo login. Ao iniciar no dispositivo, o aplicativo consulta `GET /auth/me` com Bearer e só libera a tela inicial após validar a resposta, o perfil e a conta ativa. Não usa os dados decodificados do JWT como autorização.
 
