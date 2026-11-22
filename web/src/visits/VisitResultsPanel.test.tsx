@@ -152,6 +152,17 @@ describe('VisitResultsPanel', () => {
     expect(props.onRegister).not.toHaveBeenCalled();
   });
 
+  it('valida o limite de caracteres da observação antes de registrar', async () => {
+    const props = setup();
+    await screen.findByText('Pressão arterial');
+    const form = pressureForm();
+    fireEvent.change(within(form).getByLabelText('Resultado fictício'), { target: { value: '120/80' } });
+    fireEvent.change(within(form).getByLabelText('Observação (opcional)'), { target: { value: 'x'.repeat(2001) } });
+    await act(async () => { fireEvent.click(within(form).getByRole('button', { name: 'Registrar resultado' })); });
+    expect(within(form).getByText('A observação deve ter até 2000 caracteres.')).toBeTruthy();
+    expect(props.onRegister).not.toHaveBeenCalled();
+  });
+
   it('não oferece registro em visita que não foi realizada', async () => {
     setup({ visit: { ...visit, status: 'Agendada', realizedAt: null }, loadResults: vi.fn(async () => ({ ...results, status: 'Agendada' as const })) });
     expect(await screen.findByText('Os resultados só podem ser registrados depois que a visita for marcada como Realizada.')).toBeTruthy();

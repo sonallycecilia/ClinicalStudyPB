@@ -914,6 +914,44 @@ describe('CoordinatorVisitsPage', () => {
     expect(within(timeline).getByText('Ainda não realizada')).toBeTruthy();
   });
 
+  it('registra a retirada pela API e mantém os registros existentes no histórico', async () => {
+    const participantRow = { participationId: 'participation-1', candidateId: 'candidate-1', studyId: 'study-1', name: 'Bianca Oliveira', participationStatus: 'Ativo', includedAt: '2026-11-06', withdrawnAt: null, withdrawalReason: null };
+    const historicalVisit = { ...agendaRows[0], status: 'Realizada', realizedAt: '2026-11-24T12:30:00.000Z', results: [] };
+    mockRequest.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === '/studies/study-1/scheduled-visits') return json(200, agendaRows);
+      if (path === '/studies/study-1/participants') return json(200, [participantRow]);
+      if (path === '/studies/study-1/participants/participation-1/history') return json(200, { participant: participantRow, visits: [historicalVisit] });
+      if (path === '/studies/study-1/participants/participation-1/withdrawal' && init?.method === 'POST') {
+        const body = JSON.parse(init.body as string) as { withdrawalDate: string; reason: string };
+        return json(201, { ...participantRow, participationStatus: 'Retirado', withdrawnAt: body.withdrawalDate, withdrawalReason: body.reason });
+      }
+      return json(200, studyOptions);
+    });
+    renderCoordinator(<CoordinatorVisitsPage />);
+    const panel = screen.getByRole('region', { name: 'Histórico por participante' });
+    const select = within(panel).getByLabelText('Participante') as HTMLSelectElement;
+    await waitFor(() => expect(select.disabled).toBe(false));
+    fireEvent.change(select, { target: { value: 'participation-1' } });
+    const timeline = await within(panel).findByRole('list', { name: 'Histórico de visitas de Bianca Oliveira' });
+    fireEvent.click(within(panel).getByRole('button', { name: 'Registrar retirada' }));
+
+    const form = within(panel).getByRole('form', { name: 'Retirada de Bianca Oliveira' });
+    const date = within(form).getByLabelText('Data da retirada') as HTMLInputElement;
+    fireEvent.change(date, { target: { value: date.max } });
+    fireEvent.change(within(form).getByLabelText('Motivo da retirada'), { target: { value: '  Solicitou desligamento  ' } });
+    fireEvent.click(within(form).getByRole('button', { name: 'Registrar retirada' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Confirmar retirada' }));
+
+    expect(await within(panel).findByText('Retirada de Bianca Oliveira registrada com sucesso. A participação agora está como Retirado.')).toBeTruthy();
+    expect(mockRequest).toHaveBeenCalledWith('/studies/study-1/participants/participation-1/withdrawal', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ withdrawalDate: date.max, reason: 'Solicitou desligamento' }),
+    }));
+    expect(within(panel).getByText('Retirado')).toBeTruthy();
+    expect(within(timeline).getByText('Visita 1 — Consulta inicial')).toBeTruthy();
+    expect(within(panel).getByText('Participante retirado do estudo. As visitas e os resultados abaixo foram preservados.')).toBeTruthy();
+  });
+
   it('informa quando a consulta da agenda falha e permite tentar novamente', async () => {
     let calls = 0;
     mockRequest.mockImplementation(async (path: string) => {

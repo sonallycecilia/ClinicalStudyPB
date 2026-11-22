@@ -37,6 +37,16 @@ describe('Rota /coordenador/participantes — navegação e permissões', () => 
     expect(mockRequest).not.toHaveBeenCalledWith(expect.stringContaining('/participants'), expect.anything());
   });
 
+  it('bloqueia Administrador na rota de visitas antes de consultar endpoints da equipe', async () => {
+    const role = 'Administrador';
+    session.user = user(role);
+    window.history.replaceState({}, '', '/coordenador/visitas');
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: 'Acesso não permitido' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Visitas e avaliações' })).toBeNull();
+    expect(mockRequest).not.toHaveBeenCalled();
+  });
+
   it('redireciona para login sem sessão', async () => {
     render(<App />);
     expect(await screen.findByRole('heading', { name: 'Acesse sua conta' })).toBeTruthy();

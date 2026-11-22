@@ -83,9 +83,9 @@ Os totais unitários de Backend são globais (**76 testes**) e não foram partic
 
 ### Web — RF12–RF16 / E01–E08
 
-- [ ] Aguardar substituição dos dados locais/demonstrativos das telas Web por integração real.
-- [ ] Revalidar fluxos E01–E08 por RF, incluindo autorização, validações e estados descritos no plano.
-- [ ] Registrar separadamente falhas de interface, serviço e ambiente; não contar os testes de Backend aprovados como evidência de integração Web.
+- [x] Executar a validação Web S3-QA-04 com componentes e endpoints presentes nesta branch; os resultados e limites estão detalhados na seção 6.
+- [x] Separar as evidências Web das aprovações de Backend.
+- [ ] Integrar estudos em execução ao seletor de agendamento do Coordenador; integrar relatórios e montar a seção de histórico do Pesquisador que ainda não está conectada à página.
 
 ### Backend — E01–E10 / RF12–RF18
 
@@ -105,3 +105,39 @@ Os totais unitários de Backend são globais (**76 testes**) e não foram partic
 - Falhas/Bloqueios:
 - Ação tomada:
 ```
+
+## 6. Rodada S3-QA-04 — Validação Web RF12–RF16 — 2026-11-22
+
+- **Branch / HEAD:** `test/sprint-3-qa-leticia` / `08e11ff`.
+- **Referências:** [plano de testes RF12–RF18](./plano-testes-massa-dados-rf12-rf18.md), [contratos da API RF12–RF18](./contratos-api-rf12-rf18.md) e [matriz de acesso](./matriz-acesso-e-identificacao-participante-rf12-rf18.md).
+- **Histórico que já estava em `origin/main`:** merge do PR #34 (`fa7390b`, 22/11), precedido pelo PR #31 (`8cc1717`). Entre os commits incorporados estão `a1fc9c7` (cliente de visitas), `b99e620` (seleção e histórico), `c42290c` (fluxos de participantes/agendamento), `230d35e` (histórico completo) e `80a3777` (simplificação da página do Coordenador). A integração descrita abaixo já existia antes desta rodada de QA.
+
+### Mapeamento de componentes e integração
+
+| RF | Páginas/componentes e serviços | Estado verificado |
+|---|---|---|
+| **RF12 — Agendamento** | `/coordenador/visitas` em [coordenatorPage.tsx](../../../../web/src/pages/coordenatorPage.tsx); `ScheduleVisitForm`; `useRecruitmentStudies`; `visitsApi.list` (X02) e `scheduledVisitsApi.listActiveParticipants` (E01), `schedule` (E02), `listScheduledVisits` (E03). | Formulário e agenda usam `request` autenticado, selecionam participante ativo/visita prevista, persistem e recarregam a agenda. Os testes cobrem validação, carregamento, vazio, sucesso, erros HTTP e rede. **Limite:** a escolha de estudos usa `/studies/disponiveis-recrutamento`; estudos em execução, embora aceitos pelo contrato para a equipe, ainda não são oferecidos nessa tela. X03 não é chamado nessa tela. |
+| **RF13 — Situação** | `VisitStatusModal` + `VisitStatusForm` na mesma página; `scheduledVisitsApi.updateStatus` (E04) e atualização/reconsulta de E03. | Atualiza situação apenas após resposta do servidor; valida data futura/vazia para “Realizada”; estados finais ficam somente para consulta. Erros de transição/estudo encerrado são preservados e reportados. |
+| **RF14 — Resultados** | [StudiesPage.tsx](../../../../web/src/pages/StudiesPage.tsx) monta `StudyScheduledVisitsSection`; `VisitResultsPanel` chama `getResults` (E05) e `registerResult` (E06). Na página do Coordenador, `VisitStatusModal` oferece apenas E05 e `readOnlyNotice`, sem E06. | **Implementado para Pesquisador** em visita realizada e estudo não encerrado; resultado atualiza a atividade somente após retorno da API. O Coordenador consulta, mas não registra, conforme D-04. Estudos encerrados são somente leitura. A consulta de atividades usa E05; X03 não é necessário no formulário de resultados. |
+| **RF15 — Histórico** | `/coordenador/visitas` inclui `ParticipantHistoryPanel`; `scheduledVisitsApi.listParticipants` (E01) e `getHistory` (E07). | Histórico cronológico, retirados, lista sem participantes, histórico sem visitas, resultado indisponível e erro/repetição estão cobertos. `StudyParticipantHistorySection.tsx` também existe, mas não está montado em `StudiesPage` nesta versão. `/coordenador/relatorios` continua com métricas e linhas locais demonstrativas; não é fonte do histórico RF15. |
+| **RF16 — Retirada** | A seção de histórico na página do Coordenador usa `WithdrawalForm` + `scheduledVisitsApi.registerWithdrawal` (E08). A rota `/coordenador/participantes` também dispõe de `WithdrawalPanel` com `participantsApi.registerWithdrawal`. | Motivo obrigatório (trim), data dentro da janela, confirmação, loading, sucesso e erros do serviço estão cobertos. A retirada atualiza situação/data/motivo e preserva visitas/resultados. Não foi imposto limite de caracteres ao motivo: o contrato não define um máximo. |
+
+### Suítes e cobertura executada
+
+- Componentes/formulários: [ScheduleVisitForm.test.tsx](../../../../web/src/visits/ScheduleVisitForm.test.tsx), [VisitStatusForm.test.tsx](../../../../web/src/visits/VisitStatusForm.test.tsx), [VisitResultsPanel.test.tsx](../../../../web/src/visits/VisitResultsPanel.test.tsx), [ParticipantHistoryPanel.test.tsx](../../../../web/src/visits/ParticipantHistoryPanel.test.tsx) e [WithdrawalForm.test.tsx](../../../../web/src/visits/WithdrawalForm.test.tsx).
+- Integração visual/API: [coordenatorPage.test.tsx](../../../../web/src/pages/coordenatorPage.test.tsx), [StudyScheduledVisitsSection.test.tsx](../../../../web/src/visits/StudyScheduledVisitsSection.test.tsx), [scheduledVisitsApi.test.ts](../../../../web/src/visits/scheduledVisitsApi.test.ts) e [participantsRoutes.test.tsx](../../../../web/src/participants/participantsRoutes.test.tsx). O cliente de visitas verifica caminhos/payloads E01–E08, códigos 400/401/403/404/409/500 e falha de rede.
+- Complementos desta rodada: limites de 2.000 caracteres para observações em RF12/RF13/RF14; sucesso E08 via página, payload aparado e preservação do histórico; Administrador bloqueado na rota de visitas antes de chamadas à API. O perfil Participante não integra o tipo de usuário Web e é recusado no login; os testes de `AuthContext` cobrem essa recusa.
+
+### Comandos e resultados
+
+| Execução | Resultado |
+|---|---|
+| Baseline sem override: `npm.cmd --prefix web test` | **44 arquivos: 42 passaram, 2 falharam; 718/728 testes passaram.** As 10 falhas estavam em `AuthContext.test.tsx` e `webFlows.integration.test.tsx`. |
+| Diagnóstico de ambiente | O `web/.env` local, ignorado pelo Git e não alterado nesta task, contém `VITE_API_URL=VITE_API_URL=http://localhost:3000`. O prefixo duplicado tornava as URLs inválidas; reproduziu erros de URL e assertions de integração. |
+| Suíte final: `$env:VITE_API_URL='http://localhost:3000'; npm.cmd --prefix web test -- --reporter=dot` | **44/44 arquivos, 733/733 testes passaram.** O override valeu somente para o processo; o arquivo local não foi modificado. |
+| Direcionado RF12–RF16 | **9 suítes, 170 testes passaram** após a complementação. |
+| Tipo/build: `npm.cmd --prefix web run build` | **Passou:** `tsc --noEmit` e `vite build`. |
+| Lint: `npm.cmd --prefix web run lint` | **Não disponível:** o `web/package.json` não declara script `lint` e não há configuração ESLint no Web. Nenhuma regra foi criada/alterada. |
+| Diff: `git diff --check` | Passou, sem problemas de whitespace. |
+
+Os testes ainda emitem avisos React `act(...)` em casos já existentes do histórico e de reagendamentos; não causaram falhas. A suíte final e o typecheck/build passaram sem mudança na lógica de negócio.
