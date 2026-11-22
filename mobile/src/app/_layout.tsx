@@ -19,6 +19,7 @@ function RouteStack({ status, participant = false }: { status: AuthStatus; parti
       </Stack.Protected>
       <Stack.Protected guard={status === 'authenticated' && participant}>
         <Stack.Screen name="index" />
+        <Stack.Screen name="estudos/[id]" />
         <Stack.Screen name="visitas" />
         <Stack.Screen name="perfil" />
       </Stack.Protected>

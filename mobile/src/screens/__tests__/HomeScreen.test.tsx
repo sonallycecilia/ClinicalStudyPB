@@ -45,6 +45,10 @@ describe('HomeScreen — estudos do participante', () => {
     expect(screen.getByText('Investigar padrões de sono dos participantes.')).toBeTruthy();
     expect(screen.getByText('Em execução')).toBeTruthy();
     expect(screen.getByText('Participação: Ativo')).toBeTruthy();
+    expect(screen.getByText('01 Abr 2026')).toBeTruthy();
+    expect(screen.getByText('28 Nov 2026')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Ver detalhes de Qualidade do sono' })).toBeTruthy();
+    expect(screen.getByLabelText('1 estudo')).toBeTruthy();
     expect(screen.getByText('Meus Estudos Clínicos')).toBeTruthy();
     expect(mockListForAuthenticatedParticipant).toHaveBeenCalledTimes(1);
   });
@@ -71,6 +75,7 @@ describe('HomeScreen — estudos do participante', () => {
     await render(<HomeScreen />);
     expect(await screen.findByText('Participação: Retirado')).toBeTruthy();
     expect(screen.getByText('Em execução')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Solicitar retirada do estudo' })).toBeNull();
   });
 
   it('ignora dados antigos mesmo quando a nova sessão reutiliza o mesmo objeto de usuário', async () => {
