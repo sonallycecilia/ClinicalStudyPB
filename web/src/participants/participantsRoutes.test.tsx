@@ -37,6 +37,20 @@ describe('Rota /coordenador/participantes — navegação e permissões', () => 
     expect(mockRequest).not.toHaveBeenCalledWith(expect.stringContaining('/participants'), expect.anything());
   });
 
+  it.each([
+    ['/coordenador/visitas', 'Pesquisador'],
+    ['/coordenador/visitas', 'Administrador'],
+    ['/coordenador/reagendamentos', 'Pesquisador'],
+    ['/coordenador/reagendamentos', 'Administrador'],
+  ] as const)('bloqueia %s para o perfil %s', async (path, role) => {
+    session.user = user(role);
+    window.history.replaceState({}, '', path);
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: 'Acesso não permitido' })).toBeTruthy();
+    expect(screen.getByText('Seu perfil não tem permissão para acessar esta página.')).toBeTruthy();
+    expect(mockRequest).not.toHaveBeenCalled();
+  });
+
   it('redireciona para login sem sessão', async () => {
     render(<App />);
     expect(await screen.findByRole('heading', { name: 'Acesse sua conta' })).toBeTruthy();
