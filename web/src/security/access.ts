@@ -1,5 +1,5 @@
 import type { UserRole } from '../types';
-import { UsersRound, FlaskConical, LayoutDashboard, Users, CalendarCheck, CalendarClock, FileText, } from 'lucide-react';
+import { UsersRound, FlaskConical, LayoutDashboard, Users, UserCheck, CalendarCheck, CalendarClock, FileText, } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 export interface MenuItem {
@@ -15,6 +15,7 @@ export const MENU_ITEMS: MenuItem[] = [
   { label: 'Estudos clínicos', path: '/estudos', icon: FlaskConical, roles: ['Pesquisador'] },
   { label: 'Painel do coordenador', path: '/coordenador/painel', icon: LayoutDashboard, roles: ['Coordenador'] },
   { label: 'Candidatos e participantes', path: '/coordenador/candidatos', icon: Users, roles: ['Coordenador'] },
+  { label: 'Participantes incluídos', path: '/coordenador/participantes', icon: UserCheck, roles: ['Coordenador'] },
   { label: 'Visitas e avaliações', path: '/coordenador/visitas', icon: CalendarCheck, roles: ['Coordenador'] },
   { label: 'Reagendamentos', path: '/coordenador/reagendamentos', icon: CalendarClock, roles: ['Coordenador'] },
   { label: 'Relatórios', path: '/coordenador/relatorios', icon: FileText, roles: ['Coordenador'] },
@@ -26,6 +27,7 @@ const ROUTE_ACCESS: Record<string, UserRole[]> = {
   '/coordenador/painel': ['Coordenador'],
   '/coordenador/candidatos': ['Coordenador'],
   '/coordenador/candidatos/novo': ['Coordenador'],
+  '/coordenador/participantes': ['Coordenador'],
   '/coordenador/visitas': ['Coordenador'],
   '/coordenador/reagendamentos': ['Coordenador'],
   '/coordenador/relatorios': ['Coordenador'],

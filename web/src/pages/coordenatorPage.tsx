@@ -10,6 +10,7 @@ import { useCandidateEligibilityCriteria } from '../candidates/useCandidateEligi
 import { useRecruitmentStudies } from '../candidates/useRecruitmentStudies';
 import { candidatesApi, CANDIDATE_STATUSES, type Candidate, type CandidateConsent, type CandidateEligibilityAssessment, type CandidateInclusion, type CandidateStatus } from '../candidates/candidatesApi';
 import { useAuth } from '../auth/AuthContext';
+import { ParticipantFlowSelector, useParticipantFlow } from '../participants/ParticipantFlowSelector';
 import { useStudyCandidates, type StudyCandidatesState } from '../candidates/useStudyCandidates';
 import { useCandidateListStudies } from '../candidates/useCandidateListStudies';
 import { visitsApi } from '../studies/visitsApi';
@@ -42,6 +43,8 @@ interface RequestRow {
   requestedDate: string;
   reason: string;
   status: RequestStatus;
+  studyId?: string;
+  participationId?: string;
 }
 
 /** Linhas demonstrativas do relatório de visitas (tela de Relatórios, fora do escopo de RF12–RF16). */
@@ -546,15 +549,17 @@ export function CoordinatorReschedulesPage() {
   const [studyVisit, setStudyVisit] = useState('Qualidade do sono · Visita 03');
   const [requestedDate, setRequestedDate] = useState('2026-10-29T09:00');
   const [reason, setReason] = useState('Indisponibilidade');
-  const visible = requests.filter((request) => request.participant.toLowerCase().includes(search.toLowerCase()) && (statusFilter === 'Todas as situações' || request.status === statusFilter));
+  const flow = useParticipantFlow();
+  const selected = flow.context.participant;
+  const visible = requests.filter((request) => (!selected || request.participationId === selected.participationId) && request.participant.toLowerCase().includes(search.toLowerCase()) && (statusFilter === 'Todas as situações' || request.status === statusFilter));
 
   function addRequest(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const name = participant.trim();
+    const name = (selected?.name ?? participant).trim();
     if (!name) return;
     const date = new Date(requestedDate);
     const dateLabel = `${date.toLocaleDateString('pt-BR', { timeZone: 'UTC' })} · ${requestedDate.slice(11, 16)}`;
-    setRequests((current) => [{ id: Date.now(), participant: name, initials: initialsFormName(name), studyVisit, requestedDate: dateLabel, reason, status: 'Pendente' }, ...current]);
+    setRequests((current) => [{ id: Date.now(), participant: name, initials: initialsFormName(name), studyVisit: selected ? `${flow.context.studyTitle} · Nova visita` : studyVisit, requestedDate: dateLabel, reason, status: 'Pendente', ...(selected ? { studyId: selected.studyId, participationId: selected.participationId } : {}) }, ...current]);
     setParticipant('');
     setShowNew(false);
   }
@@ -572,6 +577,7 @@ export function CoordinatorReschedulesPage() {
   return <div className="coord-page coord-reschedules-page">
     <PageHeader title="Reagendamentos" action="Registrar solicitação" onAction={() => setShowNew(true)} />
     <div className="page-content-offset">
+    <ParticipantFlowSelector flow={flow} />
     <StatCards items={[{ title: 'Solicitações pendentes', value: String(pending).padStart(2, '0') }, { title: 'Aprovadas este mês', value: String(approved + 6).padStart(2, '0') }, { title: 'Recusadas este mês', value: String(rejected).padStart(2, '0') }]} />
     <section className="table-card coord-panel coord-list-panel">
       <div className="study-list-heading coord-panel-heading"><h2>Solicitações de reagendamento</h2><div className="study-list-tools coord-table-tools"><SearchField value={search} onChange={setSearch} placeholder="Buscar participante..." /><FilterSelect value={statusFilter} onChange={setStatusFilter} label="Filtrar situação" options={['Todas as situações', 'Pendente', 'Aprovada', 'Recusada']} /></div></div>
@@ -580,7 +586,7 @@ export function CoordinatorReschedulesPage() {
       </tbody></table></div>
     </section>
     </div>
-    {showNew && <Modal title="Registrar solicitação" description="Registre uma solicitação de reagendamento para análise." onClose={() => setShowNew(false)}><form className="coord-form" onSubmit={addRequest}><Field label="Participante" wide><input required value={participant} onChange={(event) => setParticipant(event.target.value)} placeholder="Nome do participante" /></Field><Field label="Estudo / visita" wide><select value={studyVisit} onChange={(event) => setStudyVisit(event.target.value)}><option>Qualidade do sono · Visita 03</option><option>Qualidade do sono · Visita 04</option><option>Pressão arterial · Avaliação inicial</option><option>Atividade física · Visita 02</option></select></Field><Field label="Nova data e horário" wide><input type="datetime-local" required value={requestedDate} onChange={(event) => setRequestedDate(event.target.value)} /></Field><Field label="Motivo" wide><select value={reason} onChange={(event) => setReason(event.target.value)}><option>Indisponibilidade</option><option>Conflito de horário</option><option>Solicitação do participante</option><option>Ajuste de agenda</option><option>Compromisso pessoal</option></select></Field><div className="modal-actions coord-modal-actions"><button type="button" className="button button-outline coord-secondary-button" onClick={() => setShowNew(false)}>Cancelar</button><button className="button button-primary coord-primary-button" type="submit"><Plus size={13} /> Registrar solicitação</button></div></form></Modal>}
+    {showNew && <Modal title="Registrar solicitação" description="Registre uma solicitação de reagendamento para análise." onClose={() => setShowNew(false)}><form className="coord-form" onSubmit={addRequest}><Field label="Participante" wide><input required value={selected?.name ?? participant} readOnly={Boolean(selected)} onChange={(event) => setParticipant(event.target.value)} placeholder="Nome do participante" /></Field><Field label="Estudo / visita" wide><select value={selected ? flow.context.studyTitle : studyVisit} disabled={Boolean(selected)} onChange={(event) => setStudyVisit(event.target.value)}>{selected && <option>{flow.context.studyTitle}</option>}<option>Qualidade do sono · Visita 03</option><option>Qualidade do sono · Visita 04</option><option>Pressão arterial · Avaliação inicial</option><option>Atividade física · Visita 02</option></select></Field><Field label="Nova data e horário" wide><input type="datetime-local" required value={requestedDate} onChange={(event) => setRequestedDate(event.target.value)} /></Field><Field label="Motivo" wide><select value={reason} onChange={(event) => setReason(event.target.value)}><option>Indisponibilidade</option><option>Conflito de horário</option><option>Solicitação do participante</option><option>Ajuste de agenda</option><option>Compromisso pessoal</option></select></Field><div className="modal-actions coord-modal-actions"><button type="button" className="button button-outline coord-secondary-button" onClick={() => setShowNew(false)}>Cancelar</button><button className="button button-primary coord-primary-button" type="submit"><Plus size={13} /> Registrar solicitação</button></div></form></Modal>}
     {active && <Modal title="Analisar reagendamento" description={`${active.participant} · ${active.studyVisit}`} onClose={() => setActive(null)}><div className="coord-detail-list"><div><span>Data solicitada</span><strong>{active.requestedDate}</strong></div><div><span>Motivo</span><strong>{active.reason}</strong></div><div><span>Situação atual</span><StatusBadge status={active.status} /></div></div><p className="coord-help-copy">A decisão será refletida na situação desta solicitação.</p><div className="modal-actions coord-modal-actions coord-wrap-actions"><button type="button" className="button coord-danger-button" onClick={() => setRequestStatus('Recusada')}>Recusar</button><button type="button" className="button button-primary coord-primary-button" onClick={() => setRequestStatus('Aprovada')}><Check size={13} /> Aprovar solicitação</button></div></Modal>}
   </div>;
 }
