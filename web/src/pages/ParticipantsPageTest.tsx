@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { ParticipantsPage } from './ParticipantsPage';
-import { CoordinatorVisitsPage } from './coordenatorPage';
 
 const { request } = vi.hoisted(() => ({ request: vi.fn() }));
 vi.mock('../auth/AuthContext', () => ({ useAuth: () => ({ request }) }));
@@ -220,54 +219,5 @@ describe('Retirada do participante', () => {
     onlyParticipants('/coordenador/participantes?studyId=s2&participationId=p2');
     await screen.findByRole('button', { name: 'Participante selecionado: Bruno Lima' });
     expect(screen.queryByRole('button', { name: 'Registrar retirada' })).toBeNull();
-  });
-});
-
-describe('Agendamento com participante selecionado (API real)', () => {
-  const visitsPage = (path: string) => render(<MemoryRouter initialEntries={[path]}><CoordinatorVisitsPage /><Location /></MemoryRouter>);
-
-  it('agenda a visita prevista para a participação escolhida, com offset de São Paulo', async () => {
-    visitsPage('/coordenador/visitas?studyId=s1&participationId=p1');
-    await screen.findByText('Nenhuma visita agendada para este participante.');
-    expect(screen.queryByText('Bianca Oliveira')).toBeNull(); // sem dados fixos no modo real
-    fireEvent.click(screen.getByRole('button', { name: 'Agendar visita' }));
-    const form = await screen.findByRole('form', { name: 'Agendar visita do participante' });
-    await within(form).findByRole('option', { name: '1. Consulta inicial' });
-    fireEvent.change(within(form).getByLabelText('Visita prevista'), { target: { value: 'pv1' } });
-    fireEvent.change(within(form).getByLabelText('Data e horário'), { target: { value: '2026-11-24T09:00' } });
-    fireEvent.submit(form);
-    const table = await screen.findByRole('table', { name: 'Visitas agendadas do participante' });
-    expect(within(table).getByText('Consulta inicial')).toBeTruthy();
-    const post = request.mock.calls.find(([, options]) => options?.method === 'POST')!;
-    expect(post[0]).toBe('/studies/s1/scheduled-visits');
-    expect(JSON.parse(post[1].body)).toEqual({ participationId: 'p1', plannedVisitId: 'pv1', scheduledAt: '2026-11-24T09:00:00-03:00' });
-  });
-
-  it('mostra a recusa de negócio do servidor (visita já agendada)', async () => {
-    const original = request.getMockImplementation()!;
-    request.mockImplementation(async (path: string, options?: RequestInit) => options?.method === 'POST'
-      ? json({ message: 'Esta visita prevista já está agendada ou realizada para o participante.', code: 'VISIT_ALREADY_SCHEDULED' }, 409) : original(path, options));
-    visitsPage('/coordenador/visitas?studyId=s1&participationId=p1');
-    await screen.findByText('Nenhuma visita agendada para este participante.');
-    fireEvent.click(screen.getByRole('button', { name: 'Agendar visita' }));
-    const form = await screen.findByRole('form', { name: 'Agendar visita do participante' });
-    await within(form).findByRole('option', { name: '1. Consulta inicial' });
-    fireEvent.change(within(form).getByLabelText('Visita prevista'), { target: { value: 'pv1' } });
-    fireEvent.change(within(form).getByLabelText('Data e horário'), { target: { value: '2026-11-24T09:00' } });
-    fireEvent.submit(form);
-    expect((await within(form).findByRole('alert')).textContent).toMatch(/já está agendada/);
-  });
-
-  it('bloqueia agendamento em estudo encerrado', async () => {
-    visitsPage('/coordenador/visitas?studyId=s3&participationId=p3');
-    expect(await screen.findByText('Estudo encerrado: agendamentos e atualizações estão indisponíveis.')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Agendar visita' }));
-    expect(screen.queryByRole('form', { name: 'Agendar visita do participante' })).toBeNull();
-  });
-
-  it('descarta participationId inexistente e volta ao fluxo sem participante', async () => {
-    visitsPage('/coordenador/visitas?studyId=s1&participationId=nao-existe');
-    await waitFor(() => expect(url()).not.toContain('participationId'));
-    expect(screen.getByText('Bianca Oliveira')).toBeTruthy();
   });
 });

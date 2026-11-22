@@ -11,7 +11,6 @@ import { useRecruitmentStudies } from '../candidates/useRecruitmentStudies';
 import { candidatesApi, CANDIDATE_STATUSES, type Candidate, type CandidateConsent, type CandidateEligibilityAssessment, type CandidateInclusion, type CandidateStatus } from '../candidates/candidatesApi';
 import { useAuth } from '../auth/AuthContext';
 import { ParticipantFlowSelector, useParticipantFlow } from '../participants/ParticipantFlowSelector';
-import { ParticipantSchedulePanel } from '../participants/ParticipantSchedulePanel';
 import { useStudyCandidates, type StudyCandidatesState } from '../candidates/useStudyCandidates';
 import { useCandidateListStudies } from '../candidates/useCandidateListStudies';
 import { visitsApi } from '../studies/visitsApi';
@@ -35,19 +34,6 @@ import {
 } from 'lucide-react';
 
 type RequestStatus = 'Pendente' | 'Aprovada' | 'Recusada';
-
-interface VisitRow {
-  id: number;
-  participant: string;
-  initials: string;
-  study: string;
-  visit: string;
-  dateTime: string;
-  status: VisitStatus;
-  /** Presentes quando o registro nasce de um participante incluído selecionado. */
-  studyId?: string;
-  participationId?: string;
-}
 
 interface RequestRow {
   id: number;
@@ -488,13 +474,6 @@ export function CoordinatorVisitsPage() {
   // A visita aberta fica guardada à parte: recarregar a agenda não fecha o formulário nem apaga o erro exibido.
   const [active, setActive] = useState<ScheduledVisit | null>(null);
   const [showNew, setShowNew] = useState(false);
-  const [participant, setParticipant] = useState('');
-  const [study, setStudy] = useState('Qualidade do sono');
-  const [dateTime, setDateTime] = useState('2026-10-29T09:00');
-  const flow = useParticipantFlow();
-  const selected = flow.context.participant;
-  const [scheduleOpen, setScheduleOpen] = useState(false);
-  const visible = visits.filter((visit) => visit.participant.toLowerCase().includes(search.toLowerCase()));
   const [notice, setNotice] = useState<string | null>(null);
   const closeSchedule = useCallback(() => setShowNew(false), []);
   const visits = agenda.state.status === 'ready' ? agenda.state.visits : [];
@@ -516,12 +495,6 @@ export function CoordinatorVisitsPage() {
   else feedback = <span role="status">{visits.length ? 'Nenhuma visita encontrada para os filtros selecionados.' : 'Nenhuma visita agendada neste estudo.'}</span>;
 
   return <div className="coord-page coord-visits-page">
-
-    <PageHeader title="Visitas e avaliações" action="Agendar visita" onAction={() => (selected ? setScheduleOpen(true) : setShowNew(true))} />
-    <div className="page-content-offset">
-    <ParticipantFlowSelector flow={flow} />
-    {selected ? <ParticipantSchedulePanel key={selected.participationId} participant={selected} writable={flow.context.writable} formOpen={scheduleOpen} onFormClose={() => setScheduleOpen(false)} /> : <>
-    <StatCards items={[{ title: 'Visitas agendadas', value: '12', note: 'esta semana' }, { title: 'Aguardando confirmação', value: '03' }, { title: 'Avaliações concluídas', value: '26' }]} />
     <PageHeader title="Visitas e avaliações" action="Agendar visita" onAction={() => { setNotice(null); setShowNew(true); }} />
     {notice && <div role="status" className="notice"><span>{notice}</span><button type="button" aria-label="Fechar notificação" onClick={() => setNotice(null)}><X size={15} aria-hidden="true" /></button></div>}
     <div className="page-content-offset">
@@ -546,11 +519,6 @@ export function CoordinatorVisitsPage() {
         </tr>) : <EmptyRow columns={5} message={feedback} />}
       </tbody></table></div>
     </section>
-
-    </>}
-    </div>
-    {showNew && !selected && <Modal title="Agendar visita" description="Informe os dados básicos para criar um agendamento." onClose={() => setShowNew(false)}><form className="coord-form" onSubmit={addVisit}><Field label="Participante"><input required value={participant} onChange={(event) => setParticipant(event.target.value)} placeholder="Nome do participante" /></Field><Field label="Estudo"><select value={study} onChange={(event) => setStudy(event.target.value)}><option>Qualidade do sono</option><option>Pressão arterial</option><option>Atividade física</option></select></Field><Field label="Data e horário" wide><input required type="datetime-local" value={dateTime} onChange={(event) => setDateTime(event.target.value)} /></Field><div className="modal-actions coord-modal-actions"><button type="button" className="button button-outline coord-secondary-button" onClick={() => setShowNew(false)}>Cancelar</button><button className="button button-primary coord-primary-button" type="submit"><CalendarDays size={13} /> Agendar visita</button></div></form></Modal>}
-    {active && <Modal title="Atualizar visita" description={`${active.participant} · ${active.visit}`} onClose={() => setActive(null)}><div className="coord-detail-list"><div><span>Estudo</span><strong>{active.study}</strong></div><div><span>Data / horário</span><strong>{active.dateTime}</strong></div><div><span>Situação</span><StatusBadge status={active.status} /></div></div><div className="modal-actions coord-modal-actions coord-wrap-actions"><button className="button button-outline coord-secondary-button" type="button" onClick={() => update('Aguardando')}>Aguardando</button><button className="button button-outline coord-secondary-button" type="button" onClick={() => update('Reagendamento')}>Reagendar</button><button className="button button-outline coord-secondary-button" type="button" onClick={() => update('Concluída')}>Concluir</button><button className="button button-primary coord-primary-button" type="button" onClick={() => update('Confirmada')}><Check size={13} /> Confirmar</button></div></Modal>}
     <section className="table-card coord-panel coord-list-panel coord-history-panel" aria-labelledby="coord-history-title">
       <div className="study-list-heading coord-panel-heading"><h2 id="coord-history-title">Histórico por participante</h2></div>
       <p className="coord-help-copy">Visitas, datas, situações e resultados registrados do participante no estudo selecionado acima, em ordem cronológica. Participantes ativos podem ter a retirada registrada aqui.</p>
