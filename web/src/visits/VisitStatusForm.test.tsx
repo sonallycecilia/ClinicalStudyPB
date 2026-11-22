@@ -36,6 +36,24 @@ const choose = (status: string) => fireEvent.click(screen.getByRole('radio', { n
 
 afterEach(cleanup);
 
+describe('VisitStatusForm — autorização e carregamento', () => {
+  it('mostra o envio em andamento e a recusa de permissão, sem alterar a visita nem recarregar a agenda', async () => {
+    let reject!: (reason: unknown) => void;
+    const onUpdate = vi.fn(() => new Promise<ScheduledVisit>((_resolve, fail) => { reject = fail; }));
+    const props = setup({ onUpdate });
+    choose('Ausente');
+    await act(async () => { fireEvent.click(confirmButton()); });
+    expect(screen.getByText('Atualizando situação…')).toBeTruthy();
+    expect(confirmButton().disabled).toBe(true);
+    await act(async () => { reject(new ScheduledVisitsApiError('Você não tem permissão para atualizar visitas neste estudo.', 403)); });
+    expect(screen.getByRole('alert').textContent).toContain('Você não tem permissão para atualizar visitas neste estudo.');
+    expect((screen.getByRole('radio', { name: /^Ausente/ }) as HTMLInputElement).checked).toBe(true);
+    expect(confirmButton().disabled).toBe(false);
+    expect(props.onUpdated).not.toHaveBeenCalled();
+    expect(props.onStale).not.toHaveBeenCalled();
+  });
+});
+
 describe('VisitStatusForm', () => {
   it('exibe a situação atual e exige a escolha da nova situação', async () => {
     const props = setup();

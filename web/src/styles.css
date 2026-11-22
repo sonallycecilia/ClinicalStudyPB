@@ -870,6 +870,29 @@ body:has(.modal-backdrop), body:has(.study-dialog-backdrop) { overflow: hidden; 
 .history-results th { padding: 6px 8px; color: #6b8791; font-size: 9px; font-weight: 600; text-align: left; text-transform: uppercase; border-bottom: 1px solid #edf2f3; }
 .history-results td { padding: 8px; color: #27454e; border-bottom: 1px solid #f0f5f6; vertical-align: top; overflow-wrap: anywhere; }
 .history-results td small { display: block; color: #6b8791; font-size: 10px; }
+.participant-history-panel .notice { margin: 0; }
+.coord-cell-note { display: block; margin-top: 2px; color: #6b8791; font-size: 10px; }
+.history-preserved { margin: 0; }
+
+/* Retirada da participação (RF16). */
+.participation-badge { display: inline-flex; align-items: center; min-height: 20px; padding: 2px 9px; border-radius: 20px; font-size: 10px; font-weight: 600; }
+.participation-badge-active { color: #1a7659; background: #e4f6ec; }
+.participation-badge-withdrawn { color: #b2353a; background: #ffeded; }
+.participation-badge-done { color: #4b6670; background: #edf2f4; }
+.history-withdraw { justify-self: start; }
+.withdrawal-form { display: grid; gap: 12px; padding: 14px; border: 1px solid #f0d7da; border-radius: 10px; background: #fffafa; }
+.withdrawal-form h4 { margin: 0; color: #173843; font-size: 13px; }
+.withdrawal-form .coord-help-copy, .withdrawal-form .candidate-inclusion-error { margin: 0; }
+.withdrawal-form .study-field { max-width: 520px; }
+.withdrawal-form .study-field.coord-field-wide { max-width: none; }
+.withdrawal-form input, .withdrawal-form textarea { width: 100%; min-width: 0; padding: 9px 11px; border: 1px solid #dce8eb; border-radius: 8px; color: #193943; background: #fff; font: inherit; font-size: 11px; }
+.withdrawal-form input { max-width: 220px; }
+.withdrawal-form textarea { display: block; resize: vertical; }
+.withdrawal-form :is(input, textarea):focus { border-color: #83c7c4; outline: 0; box-shadow: 0 0 0 3px #e2f4f3; }
+.withdrawal-form :is(input, textarea)[aria-invalid='true'] { border-color: #c8393d; }
+.withdrawal-confirm { display: grid; gap: 10px; padding: 12px; border-radius: 8px; color: #5a2a2d; background: #fff0f0; font-size: 12px; line-height: 1.5; }
+.withdrawal-confirm p { margin: 0; }
+.withdrawal-form .modal-actions { margin: 0; }
 .coord-visits-filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .schedule-visit-form .form-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .coord-modal-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px; padding-top: 16px; margin-top: 4px; border-top: 1px solid #edf2f3; }

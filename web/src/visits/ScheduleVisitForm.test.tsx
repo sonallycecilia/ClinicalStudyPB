@@ -57,6 +57,28 @@ async function fillValid() {
 
 afterEach(cleanup);
 
+describe('ScheduleVisitForm — autorização', () => {
+  it('mostra a recusa de permissão da API, mantém os dados e libera o formulário', async () => {
+    const onSchedule = vi.fn().mockRejectedValue(new ScheduledVisitsApiError('Você não tem permissão para agendar visitas neste estudo.', 403));
+    const props = setup({ onSchedule });
+    await fillValid();
+    await act(async () => { fireEvent.click(submitButton()); });
+    expect(screen.getByRole('alert').textContent).toContain('Você não tem permissão para agendar visitas neste estudo.');
+    expect(field('Participante').value).toBe('participation-1');
+    expect(field('Visita prevista').value).toBe('planned-1');
+    expect(submitButton().disabled).toBe(false);
+    expect(props.onScheduled).not.toHaveBeenCalled();
+    expect(props.onBusyChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('mostra a recusa de acesso ao carregar os dados do estudo', async () => {
+    setup({ loadParticipants: vi.fn().mockRejectedValue(new ScheduledVisitsApiError('Você não tem permissão para consultar os participantes deste estudo.', 403)) });
+    fireEvent.change(field('Estudo'), { target: { value: 'study-1' } });
+    expect(await screen.findByText('Você não tem permissão para consultar os participantes deste estudo.')).toBeTruthy();
+    expect((field('Participante') as HTMLSelectElement).disabled).toBe(true);
+  });
+});
+
 describe('ScheduleVisitForm', () => {
   it('valida os campos obrigatórios sem chamar a API e foca o primeiro campo inválido', async () => {
     const props = setup();

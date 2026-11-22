@@ -61,6 +61,26 @@ describe('StudyScheduledVisitsSection', () => {
     expect(screen.queryByRole('form')).toBeNull();
   });
 
+  it('mostra o carregamento e a recusa de acesso da agenda, permitindo tentar novamente', async () => {
+    let denied = true;
+    let release!: () => void;
+    mockRequest.mockImplementation(async (path: string) => {
+      if (path !== '/studies/study-1/scheduled-visits') throw new Error(`Requisição inesperada: ${path}`);
+      await new Promise<void>((done) => { release = done; });
+      return denied ? json(403, { statusCode: 403, message: 'Você não tem permissão para acessar este estudo.' }) : json(200, agenda);
+    });
+    render(<StudyScheduledVisitsSection studyId="study-1" />);
+    expect(screen.getByText('Carregando visitas agendadas...')).toBeTruthy();
+    await act(async () => { release(); });
+    expect(await screen.findByText('Você não tem permissão para acessar este estudo.')).toBeTruthy();
+    expect(screen.queryByRole('article')).toBeNull();
+
+    denied = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
+    await act(async () => { release(); });
+    expect(await screen.findByRole('article', { name: /Consulta inicial/ })).toBeTruthy();
+  });
+
   it('informa estudo sem visitas agendadas', async () => {
     mockRequest.mockImplementation(async () => json(200, []));
     render(<StudyScheduledVisitsSection studyId="study-1" />);

@@ -568,7 +568,7 @@ export function StudiesPage() {
           <StudyCriteriaSection key={`${selectedStudy.id}-${criteriaVersions[selectedStudy.id] ?? 0}`} studyId={selectedStudy.id} />
           <StudyVisitsSection key={selectedStudy.id} studyId={selectedStudy.id} readOnly={selectedStudy.status === 'encerrado'} />
           <StudyScheduledVisitsSection key={`scheduled-${selectedStudy.id}`} studyId={selectedStudy.id} readOnly={selectedStudy.status === 'encerrado'} />
-          <StudyParticipantHistorySection key={`history-${selectedStudy.id}`} studyId={selectedStudy.id} />
+          <StudyParticipantHistorySection key={`history-${selectedStudy.id}`} studyId={selectedStudy.id} readOnly={selectedStudy.status === 'encerrado'} />
         </section>
         {dialogMode === 'edit' && renderStudyForm(true)}
         {dialogMode === 'criteria-recovery' && renderCriteriaRecoveryDialog()}

@@ -69,6 +69,8 @@ const scheduledResponse = {
 function mockScheduleApi(postResponse: () => Response, agenda: () => unknown[] = () => [], patchResponse?: (body: { status: string }) => Response) {
   mockRequest.mockImplementation(async (path: string, init?: RequestInit) => {
     if (path === '/studies/study-1/scheduled-visits' && !init?.method) return json(200, agenda());
+    // Próximas visitas do Painel do coordenador (E03 com filtros).
+    if (path.startsWith('/studies/study-1/scheduled-visits?') && !init?.method) return json(200, agenda());
     if (path === '/studies/study-1/participants') return json(200, []);
     if (path.startsWith('/studies/study-1/scheduled-visits/') && init?.method === 'PATCH' && patchResponse) return patchResponse(JSON.parse(init.body as string));
     if (path === '/studies/study-1/participants?status=Ativo') return json(200, [{
@@ -97,37 +99,109 @@ async function fillSchedule(trigger = 'Agendar visita') {
 }
 
 describe('CoordinatorDashboardPage', () => {
-  it('pesquisa e filtra visitas, mostrando estado vazio sem resultados', () => {
-    renderCoordinator(<CoordinatorDashboardPage />);
-    expect(screen.getByRole('heading', { name: 'Coordenar Estudos Clínicos' })).toBeTruthy();
-    const visitsPanel = screen.getByRole('heading', { name: 'Próximas visitas' }).closest('section') as HTMLElement;
-    expect(within(visitsPanel).getAllByText('Bianca Oliveira')).toHaveLength(2);
+  const inHours = (hours: number) => new Date(Date.now() + hours * 3_600_000).toISOString();
+  const dashboardStudies = [{ id: 'study-1', title: 'Estudo em recrutamento' }, { id: 'study-2', title: 'Outro estudo' }];
+  const activeParticipant = (id: string, studyId: string) => ({
+    participationId: id, candidateId: `candidate-${id}`, studyId, name: 'Pessoa', participationStatus: 'Ativo', includedAt: '2026-11-01', withdrawnAt: null, withdrawalReason: null,
+  });
+  const upcomingVisit = (id: string, studyId: string, participantName: string, scheduledAt: string) => ({ ...scheduledResponse, id, studyId, participantName, scheduledAt });
+  const agendas: Record<string, unknown[]> = {
+    'study-1': [
+      upcomingVisit('past', 'study-1', 'Visita de hoje já passada', inHours(-1)),
+      upcomingVisit('later', 'study-1', 'Bianca Oliveira', inHours(24 * 10)),
+      upcomingVisit('soon', 'study-1', 'Lucas Martins', inHours(24)),
+    ],
+    'study-2': [upcomingVisit('other', 'study-2', 'Mariana Alves', inHours(48))],
+  };
 
-    fireEvent.change(screen.getByPlaceholderText('Buscar participante...'), {
-      target: { value: 'nome inexistente' },
+  function mockDashboardApi(overrides: (path: string, init?: RequestInit) => Response | undefined = () => undefined) {
+    mockRequest.mockImplementation(async (path: string, init?: RequestInit) => {
+      const custom = overrides(path, init);
+      if (custom) return custom;
+      const agenda = /^\/studies\/(study-\d)\/scheduled-visits\?/.exec(path);
+      if (agenda) return json(200, agendas[agenda[1]]);
+      if (path === '/studies/study-1/participants?status=Ativo') return json(200, [activeParticipant('p1', 'study-1'), activeParticipant('p2', 'study-1')]);
+      if (path === '/studies/study-2/participants?status=Ativo') return json(200, [activeParticipant('p3', 'study-2')]);
+      if (path === '/studies/disponiveis-recrutamento') return json(200, dashboardStudies);
+      throw new Error(`Requisição inesperada: ${path}`);
     });
+  }
+
+  const upcomingTable = () => screen.getByRole('table', { name: 'Próximas visitas' });
+  const indicator = (title: string) => (screen.getByText(title).closest('article') as HTMLElement).querySelector('strong')!.textContent;
+
+  it('consulta as próximas visitas e os participantes ativos na API, sem dados fixos', async () => {
+    mockDashboardApi();
+    renderCoordinator(<CoordinatorDashboardPage />);
+    expect(screen.getByText('Consultando próximas visitas…')).toBeTruthy();
+    await screen.findByText('Lucas Martins');
+
+    const today = mockRequest.mock.calls.map(([path]) => path as string).find((path) => path.startsWith('/studies/study-1/scheduled-visits?'))!;
+    expect(new URLSearchParams(today.split('?')[1]).get('status')).toBe('Agendada');
+    expect(new URLSearchParams(today.split('?')[1]).get('from')).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const names = within(upcomingTable()).getAllByRole('row').slice(1).map((row) => within(row).getAllByRole('cell')[0].textContent);
+    expect(names).toEqual(['LMLucas Martins', 'MAMariana Alves', 'BOBianca Oliveira']);
+    expect(screen.queryByText('Visita de hoje já passada')).toBeNull();
+    expect(within(upcomingTable()).getByText('Outro estudo')).toBeTruthy();
+    expect(indicator('Participantes ativos')).toBe('03');
+    expect(indicator('Visitas nos próximos 7 dias')).toBe('02');
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filtrar por estudo' }), { target: { value: 'study-2' } });
+    expect(within(upcomingTable()).getAllByRole('row')).toHaveLength(2);
+    fireEvent.change(screen.getByPlaceholderText('Buscar participante...'), { target: { value: 'nome inexistente' } });
     expect(screen.getByText('Nenhuma visita encontrada para os filtros selecionados.')).toBeTruthy();
   });
 
-  it('agenda visita pela API a partir de "Novo registro" e confirma com os dados persistidos', async () => {
+  it('atualiza a situação pela API a partir do painel e consulta as próximas visitas de novo', async () => {
+    mockDashboardApi((path, init) => path === '/studies/study-1/scheduled-visits/soon/status' && init?.method === 'PATCH'
+      ? json(200, { ...agendas['study-1'][2] as object, status: 'Cancelada' }) : undefined);
+    renderCoordinator(<CoordinatorDashboardPage />);
+    const row = (await screen.findByText('Lucas Martins')).closest('tr') as HTMLElement;
+    fireEvent.click(within(row).getByRole('button', { name: 'Atualizar situação' }));
+    const dialog = screen.getByRole('dialog', { name: 'Atualizar situação da visita' });
+    fireEvent.click(within(dialog).getByRole('radio', { name: /^Cancelada/ }));
+    await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: 'Confirmar situação' })); });
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByText('Situação atualizada para “Cancelada”: Lucas Martins · Consulta inicial.')).toBeTruthy();
+    await waitFor(() => expect(mockRequest.mock.calls.filter(([path]) => (path as string).startsWith('/studies/study-1/scheduled-visits?'))).toHaveLength(2));
+  });
+
+  it('agenda visita pela API a partir de "Novo registro", confirma e recarrega o painel', async () => {
     mockScheduleApi(() => json(201, scheduledResponse));
     renderCoordinator(<CoordinatorDashboardPage />);
     const dialog = await fillSchedule('Novo registro');
     await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: 'Agendar visita' })); });
     expect(mockRequest).toHaveBeenCalledWith('/studies/study-1/scheduled-visits', expect.objectContaining({ method: 'POST' }));
     expect(screen.queryByRole('dialog')).toBeNull();
-    expect(screen.getByRole('status').textContent).toContain('Visita agendada com sucesso! Bianca Oliveira · Consulta inicial · 24/11/2026 · 09:00');
+    expect(screen.getAllByRole('status').some((item) => item.textContent?.includes('Visita agendada com sucesso! Bianca Oliveira · Consulta inicial · 24/11/2026 · 09:00'))).toBe(true);
+    await waitFor(() => expect(mockRequest.mock.calls.filter(([path]) => (path as string).startsWith('/studies/study-1/scheduled-visits?'))).toHaveLength(2));
   });
 
-  it('atualiza o status de uma visita existente', () => {
+  it('mostra a recusa de acesso e a falha da consulta sem dados fictícios, permitindo tentar novamente', async () => {
+    let denied = true;
+    mockDashboardApi((path) => path.startsWith('/studies/study-2/scheduled-visits?') && denied
+      ? json(403, { statusCode: 403, message: 'Você não tem permissão para acessar este estudo.' }) : undefined);
     renderCoordinator(<CoordinatorDashboardPage />);
-    const visitsPanel = screen.getByRole('heading', { name: 'Próximas visitas' }).closest('section') as HTMLElement;
-    const row = within(visitsPanel).getAllByRole('row').find((item) =>
-      item.textContent?.includes('Bianca Oliveira') && item.textContent.includes('24/10/2026 · 09:00'),
-    )!;
-    fireEvent.click(within(row).getByRole('button', { name: 'Editar' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Reagendar' }));
-    expect(within(row).getByText('Reagendamento')).toBeTruthy();
+    expect(await screen.findByText('Você não tem permissão para acessar este estudo.')).toBeTruthy();
+    expect(screen.queryByText('Lucas Martins')).toBeNull();
+    expect(indicator('Participantes ativos')).toBe('—');
+    expect(indicator('Visitas nos próximos 7 dias')).toBe('—');
+
+    denied = false;
+    fireEvent.click(screen.getByRole('button', { name: 'Tentar novamente' }));
+    expect(await screen.findByText('Lucas Martins')).toBeTruthy();
+  });
+
+  it('informa quando não há estudos em recrutamento nem visitas futuras', async () => {
+    mockRequest.mockImplementation(async (path: string) => path === '/studies/disponiveis-recrutamento' ? json(200, []) : json(200, []));
+    const { unmount } = renderCoordinator(<CoordinatorDashboardPage />);
+    expect(await screen.findByText('Nenhum estudo em recrutamento disponível para consultar visitas.')).toBeTruthy();
+    unmount();
+    mockRequest.mockImplementation(async (path: string) => path === '/studies/disponiveis-recrutamento' ? json(200, studyOptions) : json(200, []));
+    renderCoordinator(<CoordinatorDashboardPage />);
+    expect(await screen.findByText('Nenhuma visita agendada a partir de agora.')).toBeTruthy();
+    expect(indicator('Participantes ativos')).toBe('00');
   });
 });
 

@@ -92,6 +92,15 @@ export interface RegisterResultInput {
 
 export type ResultField = keyof RegisterResultInput;
 
+/** E08 — retirada da participação (RF16). */
+export interface RegisterWithdrawalInput {
+  /** Data civil YYYY-MM-DD, entre a inclusão e o dia atual em America/Sao_Paulo. */
+  withdrawalDate: string;
+  reason: string;
+}
+
+export type WithdrawalField = keyof RegisterWithdrawalInput;
+
 /** Resultado no histórico (E07), com o nome e o tipo da atividade. */
 export interface HistoricalResult extends AssessmentResult {
   activityName: string;
@@ -156,13 +165,25 @@ export const RESULT_DOMAIN_ERRORS: Record<string, { message: string; field?: Res
 
 const RESULT_FIELDS: readonly ResultField[] = ['activityId', 'value', 'unit', 'observation'];
 
+export const WITHDRAWAL_UNEXPECTED_ERROR = 'Não foi possível registrar a retirada. Tente novamente em alguns instantes.';
+export const WITHDRAWAL_INVALID_RESPONSE = 'O servidor retornou uma participação inválida. Atualize o histórico antes de tentar novamente.';
+
+/** Recusas de domínio de E08. */
+export const WITHDRAWAL_DOMAIN_ERRORS: Record<string, { message: string; field?: WithdrawalField }> = {
+  PARTICIPATION_NOT_ACTIVE: { message: 'Somente participantes ativos podem ser retirados do estudo.' },
+  WITHDRAWAL_DATE_INVALID: { message: 'A data de retirada deve estar entre a inclusão e a data atual.', field: 'withdrawalDate' },
+  STUDY_CLOSED: { message: 'Não é possível alterar um estudo encerrado.' },
+};
+
+const WITHDRAWAL_FIELDS: readonly WithdrawalField[] = ['withdrawalDate', 'reason'];
+
 export class ScheduledVisitsApiError extends Error {
   constructor(
     message: string,
     readonly status?: number,
     readonly code?: string,
     /** Campos do formulário apontados pela recusa do servidor. */
-    readonly fieldErrors: Partial<Record<ScheduleField | StatusField | ResultField, string>> = {},
+    readonly fieldErrors: Partial<Record<ScheduleField | StatusField | ResultField | WithdrawalField, string>> = {},
   ) {
     super(message);
     this.name = 'ScheduledVisitsApiError';
@@ -258,6 +279,27 @@ function resultError(status: number, body: ErrorBody | null): ScheduledVisitsApi
     409: RESULT_DOMAIN_ERRORS.RESULT_ALREADY_REGISTERED.message,
   };
   const message = (status === 403 || status === 404) && detail ? detail : fallbacks[status] ?? RESULT_UNEXPECTED_ERROR;
+  return new ScheduledVisitsApiError(message, status, code);
+}
+
+function withdrawalError(status: number, body: ErrorBody | null): ScheduledVisitsApiError {
+  const code = typeof body?.code === 'string' ? body.code : undefined;
+  const domain = code && Object.hasOwn(WITHDRAWAL_DOMAIN_ERRORS, code) ? WITHDRAWAL_DOMAIN_ERRORS[code] : undefined;
+  if (domain && (status === 400 || status === 409)) {
+    return new ScheduledVisitsApiError(domain.message, status, code, domain.field ? { [domain.field]: domain.message } : {});
+  }
+  const detail = textOf(body?.message);
+  if (status === 400) {
+    const invalid = 'A retirada foi recusada. Revise os campos e tente novamente.';
+    if (Array.isArray(body?.message)) return new ScheduledVisitsApiError(invalid, status, code, rejectedFields(body.message, WITHDRAWAL_FIELDS));
+    return new ScheduledVisitsApiError(detail && !detail.startsWith('Validation failed') ? detail : invalid, status, code);
+  }
+  const fallbacks: Record<number, string> = {
+    401: SESSION_EXPIRED,
+    403: 'Você não tem permissão para registrar a retirada neste estudo.',
+    404: 'Participante não encontrado neste estudo. Atualize a lista de participantes.',
+  };
+  const message = (status === 403 || status === 404) && detail ? detail : fallbacks[status] ?? WITHDRAWAL_UNEXPECTED_ERROR;
   return new ScheduledVisitsApiError(message, status, code);
 }
 
@@ -397,13 +439,22 @@ async function schedule(request: AuthenticatedRequest, studyId: string, input: C
   return body;
 }
 
+/** Filtros opcionais de E03; `from` e `to` são datas civis em America/Sao_Paulo. */
+export interface ScheduledVisitsFilter {
+  status?: ScheduledVisitStatus;
+  from?: string;
+  to?: string;
+}
+
 /** E03 — visitas agendadas do estudo, em ordem crescente de data. */
-async function listScheduledVisits(request: AuthenticatedRequest, studyId: string, signal?: AbortSignal): Promise<ScheduledVisit[]> {
-  const body = await send(request, `${studyPath(studyId)}/scheduled-visits`, { signal }, scheduledVisitsError, SCHEDULE_CONNECTION_ERROR);
+async function listScheduledVisits(request: AuthenticatedRequest, studyId: string, signal?: AbortSignal, filter: ScheduledVisitsFilter = {}): Promise<ScheduledVisit[]> {
+  const query = new URLSearchParams(Object.entries(filter).filter((entry): entry is [string, string] => Boolean(entry[1]))).toString();
+  const body = await send(request, `${studyPath(studyId)}/scheduled-visits${query ? `?${query}` : ''}`, { signal }, scheduledVisitsError, SCHEDULE_CONNECTION_ERROR);
   if (!Array.isArray(body) || !body.every((item) => isScheduledVisitRecord(item, studyId))) {
     throw new ScheduledVisitsApiError('O servidor retornou uma agenda inválida. Tente novamente.');
   }
-  return body;
+  // Defesa contra um servidor que ignore o filtro de situação.
+  return filter.status ? body.filter((visit) => visit.status === filter.status) : body;
 }
 
 /** E04 — `realizedAt` vai somente com `Realizada`; o backend recusa o campo nas demais situações. */
@@ -465,7 +516,26 @@ async function getHistory(request: AuthenticatedRequest, studyId: string, partic
   return { ...body, visits: [...body.visits].sort(chronological) };
 }
 
-export const scheduledVisitsApi = { listActiveParticipants, listParticipants, schedule, listScheduledVisits, updateStatus, getResults, registerResult, getHistory };
+/** Confere se a resposta de E08 é a mesma participação, já retirada com a data e o motivo enviados. */
+export function isWithdrawnParticipant(value: unknown, participant: Pick<IncludedParticipant, 'studyId' | 'participationId'>, input: RegisterWithdrawalInput): value is IncludedParticipant {
+  return isIncludedParticipant(value) && value.studyId === participant.studyId && value.participationId === participant.participationId
+    && value.participationStatus === 'Retirado' && value.withdrawnAt === input.withdrawalDate
+    && (value.withdrawalReason ?? '').trim() === input.reason.trim();
+}
+
+/** E08 — a retirada altera somente a participação; visitas e resultados são preservados (D-07). */
+async function registerWithdrawal(request: AuthenticatedRequest, participant: Pick<IncludedParticipant, 'studyId' | 'participationId'>, input: RegisterWithdrawalInput, signal?: AbortSignal): Promise<IncludedParticipant> {
+  const body = await send(request, `${studyPath(participant.studyId)}/participants/${encodeURIComponent(participant.participationId)}/withdrawal`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    signal,
+    body: JSON.stringify({ withdrawalDate: input.withdrawalDate, reason: input.reason.trim() }),
+  }, withdrawalError, SCHEDULE_CONNECTION_ERROR);
+  if (!isWithdrawnParticipant(body, participant, input)) throw new ScheduledVisitsApiError(WITHDRAWAL_INVALID_RESPONSE);
+  return body;
+}
+
+export const scheduledVisitsApi = { listActiveParticipants, listParticipants, schedule, listScheduledVisits, updateStatus, getResults, registerResult, getHistory, registerWithdrawal };
 
 const SAO_PAULO_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' });
 const SAO_PAULO_DATE_TIME = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -480,6 +550,11 @@ export function localDateTimeToIso(value: string): string | null {
 /** Dia civil em America/Sao_Paulo (YYYY-MM-DD), a referência das regras por data (D-13). */
 export function saoPauloDay(instant: string): string {
   return SAO_PAULO_DAY.format(new Date(instant));
+}
+
+/** Dia atual em America/Sao_Paulo (YYYY-MM-DD), limite superior das datas civis do backend. */
+export function saoPauloToday(now: Date = new Date()): string {
+  return SAO_PAULO_DAY.format(now);
 }
 
 /** Data e hora para exibição, no fuso de referência do estudo. */

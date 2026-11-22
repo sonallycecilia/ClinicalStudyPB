@@ -116,6 +116,44 @@ describe('ParticipantHistoryPanel', () => {
     expect(select().disabled).toBe(true);
   });
 
+  it('registra a retirada, exibe o status Retirado e preserva o histórico', async () => {
+    const updated: IncludedParticipant = { ...active, participationStatus: 'Retirado', withdrawnAt: '2026-11-22', withdrawalReason: 'Mudança de cidade' };
+    const onWithdraw = vi.fn(async () => updated);
+    const { props } = setup({ onWithdraw });
+    await choose();
+    await screen.findByRole('list', { name: /Histórico de visitas/ });
+    expect(screen.getByText('Ativo')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar retirada' }));
+    const form = screen.getByRole('form', { name: 'Retirada de Participante Teste' });
+    fireEvent.change(within(form).getByLabelText('Data da retirada'), { target: { value: '2026-11-22' } });
+    fireEvent.change(within(form).getByLabelText('Motivo da retirada'), { target: { value: 'Mudança de cidade' } });
+    fireEvent.click(within(form).getByRole('button', { name: 'Registrar retirada' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Confirmar retirada' }));
+
+    expect(await screen.findByText('Retirada de Participante Teste registrada com sucesso. A participação agora está como Retirado.')).toBeTruthy();
+    expect(onWithdraw).toHaveBeenCalledWith(active, { withdrawalDate: '2026-11-22', reason: 'Mudança de cidade' }, expect.any(AbortSignal));
+    expect(screen.getByText('Retirado').className).toContain('participation-badge-withdrawn');
+    expect(screen.getByText('22/11/2026')).toBeTruthy();
+    expect(screen.getByText(/· Mudança de cidade/)).toBeTruthy();
+    expect(screen.getByText('Participante retirado do estudo. As visitas e os resultados abaixo foram preservados.')).toBeTruthy();
+    expect(within(screen.getByRole('list', { name: /Histórico de visitas/ })).getAllByRole('listitem')).toHaveLength(4);
+    expect(screen.queryByRole('button', { name: 'Registrar retirada' })).toBeNull();
+    expect(within(select()).getByRole('option', { name: 'Participante Teste (retirado)' })).toBeTruthy();
+    expect(props.loadHistory).toHaveBeenCalledTimes(1);
+  });
+
+  it('não oferece a retirada sem a operação nem para participante já retirado', async () => {
+    const { view } = setup();
+    await choose();
+    await screen.findByRole('list', { name: /Histórico de visitas/ });
+    expect(screen.queryByRole('button', { name: 'Registrar retirada' })).toBeNull();
+    view.unmount();
+    setup({ onWithdraw: vi.fn(), loadHistory: vi.fn(async () => ({ participant: withdrawn, visits: [] })) });
+    await choose('participation-2');
+    await screen.findByText('Nenhuma visita registrada para este participante.');
+    expect(screen.queryByRole('button', { name: 'Registrar retirada' })).toBeNull();
+  });
+
   it('mostra o carregamento e não consulta sem estudo selecionado', async () => {
     const { props, view } = setup({ studyId: '' });
     expect(screen.getByText('Selecione um estudo para consultar o histórico.')).toBeTruthy();

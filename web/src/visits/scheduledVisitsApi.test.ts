@@ -3,6 +3,7 @@ import {
   formatScheduledAt, localDateTimeToIso, saoPauloDay, scheduledVisitsApi, ScheduledVisitsApiError,
   SCHEDULE_CONNECTION_ERROR, SCHEDULE_INVALID_RESPONSE, SCHEDULE_UNEXPECTED_ERROR,
   STATUS_DOMAIN_ERRORS, STATUS_UPDATE_INVALID_RESPONSE, STATUS_UPDATE_UNEXPECTED_ERROR, RESULT_INVALID_RESPONSE,
+  saoPauloToday, WITHDRAWAL_DOMAIN_ERRORS, WITHDRAWAL_INVALID_RESPONSE, WITHDRAWAL_UNEXPECTED_ERROR,
   type CreateScheduledVisitInput, type IncludedParticipant, type ScheduledVisit,
 } from './scheduledVisitsApi';
 
@@ -315,6 +316,71 @@ describe('scheduledVisitsApi histórico (E01/E07)', () => {
       .mockResolvedValueOnce(reply(500, null));
     expect((await rejection(scheduledVisitsApi.getHistory(request, studyId, 'participation-1'))).message).toBe('Participante não encontrado neste estudo.');
     expect((await rejection(scheduledVisitsApi.getHistory(request, studyId, 'participation-1'))).message).toBe('Não foi possível carregar o histórico do participante. Tente novamente.');
+  });
+});
+
+describe('scheduledVisitsApi.listScheduledVisits com filtros (E03)', () => {
+  it('envia situação e período como query e descarta situações diferentes da pedida', async () => {
+    const request = vi.fn().mockResolvedValue(reply(200, [created, { ...created, id: 'scheduled-2', status: 'Cancelada' }]));
+    await expect(scheduledVisitsApi.listScheduledVisits(request, studyId, undefined, { status: 'Agendada', from: '2026-11-22', to: '2026-11-29' }))
+      .resolves.toEqual([created]);
+    expect(request).toHaveBeenCalledWith('/studies/study-1/scheduled-visits?status=Agendada&from=2026-11-22&to=2026-11-29', { signal: undefined });
+  });
+
+  it('omite a query sem filtros', async () => {
+    const request = vi.fn().mockResolvedValue(reply(200, []));
+    await scheduledVisitsApi.listScheduledVisits(request, studyId);
+    expect(request).toHaveBeenCalledWith('/studies/study-1/scheduled-visits', { signal: undefined });
+  });
+});
+
+describe('scheduledVisitsApi retirada (E08)', () => {
+  const withdrawalInput = { withdrawalDate: '2026-11-20', reason: '  Mudança de cidade  ' };
+  const withdrawnParticipant: IncludedParticipant = { ...participant, participationStatus: 'Retirado', withdrawnAt: '2026-11-20', withdrawalReason: 'Mudança de cidade' };
+
+  it('envia somente data e motivo aparado e devolve a participação retirada', async () => {
+    const request = vi.fn().mockResolvedValue(reply(201, withdrawnParticipant));
+    const signal = new AbortController().signal;
+    await expect(scheduledVisitsApi.registerWithdrawal(request, participant, withdrawalInput, signal)).resolves.toEqual(withdrawnParticipant);
+    expect(request).toHaveBeenCalledWith('/studies/study-1/participants/participation-1/withdrawal', expect.objectContaining({ method: 'POST', signal }));
+    expect(JSON.parse(request.mock.calls[0][1].body)).toEqual({ withdrawalDate: '2026-11-20', reason: 'Mudança de cidade' });
+  });
+
+  it('recusa resposta que não confirma a retirada pedida', async () => {
+    for (const body of [participant, { ...withdrawnParticipant, withdrawnAt: '2026-11-21' }, { ...withdrawnParticipant, participationId: 'other' }]) {
+      const request = vi.fn().mockResolvedValue(reply(201, body));
+      expect((await rejection(scheduledVisitsApi.registerWithdrawal(request, participant, withdrawalInput))).message).toBe(WITHDRAWAL_INVALID_RESPONSE);
+    }
+  });
+
+  it('traduz as recusas de domínio, apontando o campo da data', async () => {
+    const dateError = await rejection(scheduledVisitsApi.registerWithdrawal(
+      vi.fn().mockResolvedValue(reply(400, { statusCode: 400, code: 'WITHDRAWAL_DATE_INVALID', message: 'x' })), participant, withdrawalInput));
+    expect(dateError.message).toBe(WITHDRAWAL_DOMAIN_ERRORS.WITHDRAWAL_DATE_INVALID.message);
+    expect(dateError.fieldErrors).toEqual({ withdrawalDate: WITHDRAWAL_DOMAIN_ERRORS.WITHDRAWAL_DATE_INVALID.message });
+    const inactive = await rejection(scheduledVisitsApi.registerWithdrawal(
+      vi.fn().mockResolvedValue(reply(400, { code: 'PARTICIPATION_NOT_ACTIVE', message: 'x' })), participant, withdrawalInput));
+    expect(inactive.message).toBe('Somente participantes ativos podem ser retirados do estudo.');
+    expect(inactive.code).toBe('PARTICIPATION_NOT_ACTIVE');
+    const closed = await rejection(scheduledVisitsApi.registerWithdrawal(
+      vi.fn().mockResolvedValue(reply(400, { code: 'STUDY_CLOSED', message: 'x' })), participant, withdrawalInput));
+    expect(closed.message).toBe('Não é possível alterar um estudo encerrado.');
+  });
+
+  it('aponta campos recusados pela validação e trata sessão, permissão, ausência e conexão', async () => {
+    const invalid = await rejection(scheduledVisitsApi.registerWithdrawal(
+      vi.fn().mockResolvedValue(reply(400, { message: ['reason should not be empty'] })), participant, withdrawalInput));
+    expect(Object.keys(invalid.fieldErrors)).toEqual(['reason']);
+    expect((await rejection(scheduledVisitsApi.registerWithdrawal(vi.fn().mockResolvedValue(reply(401, {})), participant, withdrawalInput))).message).toMatch(/sessão expirou/);
+    expect((await rejection(scheduledVisitsApi.registerWithdrawal(vi.fn().mockResolvedValue(reply(403, {})), participant, withdrawalInput))).message).toBe('Você não tem permissão para registrar a retirada neste estudo.');
+    expect((await rejection(scheduledVisitsApi.registerWithdrawal(vi.fn().mockResolvedValue(reply(404, { message: 'Participante não encontrado neste estudo.' })), participant, withdrawalInput))).message).toBe('Participante não encontrado neste estudo.');
+    expect((await rejection(scheduledVisitsApi.registerWithdrawal(vi.fn().mockRejectedValue(new TypeError('fetch')), participant, withdrawalInput))).message).toBe(SCHEDULE_CONNECTION_ERROR);
+    expect((await rejection(scheduledVisitsApi.registerWithdrawal(vi.fn().mockResolvedValue(reply(500, {})), participant, withdrawalInput))).message).toBe(WITHDRAWAL_UNEXPECTED_ERROR);
+  });
+
+  it('calcula o dia atual em America/Sao_Paulo', () => {
+    expect(saoPauloToday(new Date('2026-11-23T02:30:00.000Z'))).toBe('2026-11-22');
+    expect(saoPauloToday(new Date('2026-11-23T03:30:00.000Z'))).toBe('2026-11-23');
   });
 });
 

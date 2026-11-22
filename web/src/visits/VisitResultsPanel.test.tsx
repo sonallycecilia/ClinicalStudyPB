@@ -38,6 +38,30 @@ const pressureForm = () => screen.getByRole('form', { name: 'Resultado de Press�
 
 afterEach(cleanup);
 
+describe('VisitResultsPanel — autorização e carregamento', () => {
+  it('mostra o carregamento das atividades e a recusa de acesso na consulta', async () => {
+    const loadResults = vi.fn()
+      .mockImplementationOnce(() => new Promise(() => {}));
+    const { unmount } = render(<VisitResultsPanel visit={visit} loadResults={loadResults} />);
+    expect(screen.getByText('Carregando atividades da visita…')).toBeTruthy();
+    unmount();
+    setup({ loadResults: vi.fn().mockRejectedValue(new ScheduledVisitsApiError('Você não tem permissão para consultar os resultados das visitas deste estudo.', 403)) });
+    expect(await screen.findByText('Você não tem permissão para consultar os resultados das visitas deste estudo.')).toBeTruthy();
+    expect(screen.queryByRole('form')).toBeNull();
+  });
+
+  it('mostra a recusa de permissão no registro e mantém o resultado preenchido', async () => {
+    const props = setup({ onRegister: vi.fn().mockRejectedValue(new ScheduledVisitsApiError('Você não tem permissão para registrar resultados neste estudo.', 403)) });
+    await screen.findByText('Pressão arterial');
+    fireEvent.change(within(pressureForm()).getByLabelText('Resultado fictício'), { target: { value: '120/80' } });
+    await act(async () => { fireEvent.click(within(pressureForm()).getByRole('button', { name: 'Registrar resultado' })); });
+    expect(within(pressureForm()).getByRole('alert').textContent).toContain('Você não tem permissão para registrar resultados neste estudo.');
+    expect((within(pressureForm()).getByLabelText('Resultado fictício') as HTMLInputElement).value).toBe('120/80');
+    expect(screen.getByText('1 de 2 com resultado')).toBeTruthy();
+    expect(props.onBusyChange).toHaveBeenLastCalledWith(false);
+  });
+});
+
 describe('VisitResultsPanel', () => {
   it('exibe as atividades previstas com o resultado já registrado e formulário só nas pendentes', async () => {
     setup();
