@@ -14,8 +14,15 @@ import { ParticipantFlowSelector, useParticipantFlow } from '../participants/Par
 import { ParticipantSchedulePanel } from '../participants/ParticipantSchedulePanel';
 import { useStudyCandidates, type StudyCandidatesState } from '../candidates/useStudyCandidates';
 import { useCandidateListStudies } from '../candidates/useCandidateListStudies';
+import { visitsApi } from '../studies/visitsApi';
+import { ScheduleVisitForm } from '../visits/ScheduleVisitForm';
+import { formatScheduledAt, SCHEDULED_VISIT_STATUSES, scheduledVisitsApi, type IncludedParticipant, type RegisterWithdrawalInput, type ScheduledVisit, type ScheduledVisitStatus } from '../visits/scheduledVisitsApi';
+import { useScheduledVisits } from '../visits/useScheduledVisits';
+import { useUpcomingVisits, type UpcomingVisit } from '../visits/useUpcomingVisits';
+import { VisitStatusForm } from '../visits/VisitStatusForm';
+import { VisitResultsPanel } from '../visits/VisitResultsPanel';
+import { ParticipantHistoryPanel } from '../visits/ParticipantHistoryPanel';
 import {
-  CalendarDays,
   Check,
   ChevronDown,
   Download,
@@ -27,7 +34,6 @@ import {
   X,
 } from 'lucide-react';
 
-type VisitStatus = 'Confirmada' | 'Aguardando' | 'Reagendamento' | 'Concluída';
 type RequestStatus = 'Pendente' | 'Aprovada' | 'Recusada';
 
 interface VisitRow {
@@ -55,11 +61,12 @@ interface RequestRow {
   participationId?: string;
 }
 
-const initialVisits: VisitRow[] = [
-  { id: 1, participant: 'Bianca Oliveira', initials: 'BO', study: 'Qualidade do sono', visit: 'Visita 03', dateTime: '24/10/2026 · 09:00', status: 'Confirmada' },
-  { id: 2, participant: 'Rafael Lima', initials: 'RL', study: 'Pressão arterial', visit: 'Avaliação inicial', dateTime: '24/10/2026 · 10:30', status: 'Aguardando' },
-  { id: 3, participant: 'Ana Maria', initials: 'AS', study: 'Atividade física', visit: 'Visita 02', dateTime: '25/10/2026 · 14:00', status: 'Confirmada' },
-  { id: 4, participant: 'Bianca Oliveira', initials: 'BO', study: 'Qualidade do sono', visit: 'Visita 03', dateTime: '26/10/2026 · 08:30', status: 'Reagendamento' },
+/** Linhas demonstrativas do relatório de visitas (tela de Relatórios, fora do escopo de RF12–RF16). */
+const reportVisitRows: string[][] = [
+  ['Bianca Oliveira', 'Qualidade do sono', '24/10/2026 · 09:00', 'Confirmada'],
+  ['Rafael Lima', 'Pressão arterial', '24/10/2026 · 10:30', 'Aguardando'],
+  ['Ana Maria', 'Atividade física', '25/10/2026 · 14:00', 'Confirmada'],
+  ['Bianca Oliveira', 'Qualidade do sono', '26/10/2026 · 08:30', 'Reagendamento'],
 ];
 
 const initialRequests: RequestRow[] = [
@@ -75,16 +82,14 @@ function initials(name: string) {
   return name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]?.toLocaleUpperCase() ?? '').join('');
 }
 
-function StatusBadge({ status }: { status: VisitStatus | CandidateStatus | RequestStatus }) {
-  const tone = status === 'Confirmada' || status === 'Incluído' || status === 'Elegível' || status === 'Aprovada'
+function StatusBadge({ status }: { status: CandidateStatus | RequestStatus | ScheduledVisitStatus }) {
+  const tone = status === 'Incluído' || status === 'Elegível' || status === 'Aprovada' || status === 'Realizada'
     ? 'success'
-    : status === 'Aguardando' || status === 'Novo' || status === 'Em avaliação' || status === 'Pendente'
+    : status === 'Novo' || status === 'Em avaliação' || status === 'Pendente' || status === 'Agendada'
       ? 'warning'
-      : status === 'Reagendamento'
-        ? 'purple'
-        : status === 'Recusada' || status === 'Inelegível'
-          ? 'danger'
-          : 'muted';
+      : status === 'Recusada' || status === 'Inelegível' || status === 'Ausente'
+        ? 'danger'
+        : 'muted';
   return <span className={`status-pill coord-status coord-status-${tone}`}><span />{status}</span>;
 }
 
@@ -246,49 +251,73 @@ function CandidateDetailsModal({ candidate, onClose, onRegistered, onIncluded }:
   </Modal>;
 }
 
+const ALL_STUDIES = '';
+
 export function CoordinatorDashboardPage() {
-  const [visits, setVisits] = useState(initialVisits);
+  const studies = useRecruitmentStudies();
+  const options = studies.status === 'ready' ? studies.options : null;
+  const upcoming = useUpcomingVisits(options);
   const [search, setSearch] = useState('');
-  const [studyFilter, setStudyFilter] = useState('Todos os estudos');
-  const [activeVisit, setActiveVisit] = useState<VisitRow | null>(null);
+  const [studyFilter, setStudyFilter] = useState(ALL_STUDIES);
+  // A visita aberta fica guardada à parte: recarregar o painel não fecha o formulário nem apaga o erro exibido.
+  const [activeVisit, setActiveVisit] = useState<UpcomingVisit | null>(null);
   const [showNew, setShowNew] = useState(false);
-  const [newParticipant, setNewParticipant] = useState('');
-  const [newStudy, setNewStudy] = useState('Qualidade do sono');
-  const [newDateTime, setNewDateTime] = useState('2026-10-29T09:00');
+  const [lastScheduled, setLastScheduled] = useState<ScheduledVisit | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const closeSchedule = useCallback(() => setShowNew(false), []);
   const navigate = useNavigate();
-  const visibleVisits = visits.filter((visit) => visit.participant.toLowerCase().includes(search.toLowerCase()) && (studyFilter === 'Todos os estudos' || visit.study === studyFilter));
+  const ready = upcoming.state.status === 'ready' ? upcoming.state : null;
+  const visibleVisits = (ready?.visits ?? []).filter((visit) => visit.participantName.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())
+    && (studyFilter === ALL_STUDIES || visit.studyId === studyFilter));
+  const count = (value: number | undefined) => value === undefined ? '—' : String(value).padStart(2, '0');
 
-  function addVisit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const participant = newParticipant.trim();
-    if (!participant) return;
-    const date = new Date(newDateTime);
-    const dateTime = `${date.toLocaleDateString('pt-BR', { timeZone: 'UTC' })} · ${newDateTime.slice(11, 16)}`;
-    setVisits((current) => [...current, { id: Date.now(), participant, initials: initialsFormName(participant), study: newStudy, visit: 'Nova visita', dateTime, status: 'Aguardando' }]);
-    setNewParticipant('');
-    setShowNew(false);
-  }
-
-  function updateVisit(status: VisitStatus) {
-    if (!activeVisit) return;
-    setVisits((current) => current.map((visit) => visit.id === activeVisit.id ? { ...visit, status } : visit));
-    setActiveVisit(null);
-  }
+  let feedback: ReactNode;
+  if (studies.status === 'loading' || upcoming.state.status === 'loading' || upcoming.state.status === 'idle' && studies.status === 'ready') feedback = <span role="status">Consultando próximas visitas…</span>;
+  else if (studies.status === 'error') feedback = <span role="alert">Não foi possível carregar os estudos. Recarregue a página para tentar novamente.</span>;
+  else if (studies.status === 'unavailable') feedback = <span role="alert">{studies.message}</span>;
+  else if (options?.length === 0) feedback = <span role="status">Nenhum estudo em recrutamento disponível para consultar visitas.</span>;
+  else if (upcoming.state.status === 'error') feedback = <div role="alert"><p>{upcoming.state.message}</p><button type="button" className="button button-outline coord-secondary-button" onClick={upcoming.reload}>Tentar novamente</button></div>;
+  else feedback = <span role="status">{ready?.visits.length ? 'Nenhuma visita encontrada para os filtros selecionados.' : 'Nenhuma visita agendada a partir de agora.'}</span>;
 
   return <div className="coord-page coord-dashboard-page">
-    <PageHeader title="Coordenar Estudos Clínicos" action="Novo registro" onAction={() => setShowNew(true)} />
+    <PageHeader title="Coordenar Estudos Clínicos" action="Novo registro" onAction={() => { setLastScheduled(null); setNotice(null); setShowNew(true); }} />
+    {lastScheduled && <ScheduledVisitNotice visit={lastScheduled} onClose={() => setLastScheduled(null)} />}
+    {notice && <div role="status" className="notice"><span>{notice}</span><button type="button" aria-label="Fechar notificação" onClick={() => setNotice(null)}><X size={15} aria-hidden="true" /></button></div>}
     <div className="page-content-offset">
-    <StatCards items={[{ title: 'Candidatos pendentes', value: '—', note: 'Consulta indisponível' }, { title: 'Participantes ativos', value: '18' }, { title: 'Visitas esta semana', value: '12' }, { title: 'Reagendamentos', value: '03 pendentes' }]} />
+    <StatCards items={[
+      { title: 'Candidatos pendentes', value: '—', note: 'Consulta indisponível' },
+      { title: 'Participantes ativos', value: count(ready?.activeParticipants) },
+      { title: 'Visitas nos próximos 7 dias', value: count(ready?.nextSevenDays) },
+      { title: 'Reagendamentos', value: '03 pendentes' },
+    ]} />
     <section className="table-card coord-panel coord-upcoming-panel">
-      <div className="study-list-heading coord-panel-heading"><h2>Próximas visitas</h2><div className="study-list-tools coord-table-tools"><SearchField value={search} onChange={setSearch} placeholder="Buscar participante..." /><FilterSelect value={studyFilter} onChange={setStudyFilter} label="Filtrar por estudo" options={['Todos os estudos', 'Qualidade do sono', 'Pressão arterial', 'Atividade física']} /></div></div>
-      <div className="table-scroll coord-table-scroll"><table className="users-table coord-table coord-dashboard-table"><thead><tr><th>Participante</th><th>Estudo</th><th>Data / horário</th><th>Situação</th><th className="coord-th-actions">Ações</th></tr></thead><tbody>
-        {visibleVisits.length ? visibleVisits.map((visit) => <tr key={visit.id}><td><PersonCell name={visit.participant} initials={visit.initials} /></td><td>{visit.study}</td><td>{visit.dateTime}</td><td><StatusBadge status={visit.status} /></td><td><div className="coord-row-actions"><button type="button" className="coord-text-action" onClick={() => setActiveVisit(visit)}>Editar</button><MoreButton onClick={() => setActiveVisit(visit)} /></div></td></tr>) : <EmptyRow columns={5} message="Nenhuma visita encontrada para os filtros selecionados." />}
+      <div className="study-list-heading coord-panel-heading"><h2>Próximas visitas</h2><div className="study-list-tools coord-table-tools">
+        <SearchField value={search} onChange={setSearch} placeholder="Buscar participante..." />
+        <FilterSelect value={studyFilter} onChange={setStudyFilter} label="Filtrar por estudo" disabled={!options?.length} describedBy="dashboard-study-help"
+          options={[{ value: ALL_STUDIES, label: 'Todos os estudos' }, ...(options ?? []).map((study) => ({ value: study.id, label: study.title }))]} />
+        <button type="button" className="icon-button coord-refresh-button" aria-label="Atualizar próximas visitas" title="Atualizar próximas visitas" disabled={!options?.length || upcoming.state.status === 'loading'} onClick={upcoming.reload}><RefreshCw className="coord-refresh-icon" size={16} aria-hidden="true" /></button>
+      </div></div>
+      <p id="dashboard-study-help" className="coord-help-copy">Visitas agendadas a partir de agora nos estudos em recrutamento. A consulta dos estudos em execução ainda não está disponível para o coordenador.</p>
+      <div className="table-scroll coord-table-scroll"><table className="users-table coord-table coord-dashboard-table" aria-label="Próximas visitas" aria-busy={upcoming.state.status === 'loading'}><thead><tr><th>Participante</th><th>Estudo</th><th>Data / horário</th><th>Situação</th><th className="coord-th-actions">Ações</th></tr></thead><tbody>
+        {visibleVisits.length ? visibleVisits.map((visit) => <tr key={visit.id}>
+          <td><PersonCell name={visit.participantName} initials={initials(visit.participantName)} /></td>
+          <td>{visit.studyTitle}<small className="coord-cell-note">{`${visit.plannedVisitOrder}. ${visit.plannedVisitName}`}</small></td>
+          <td><time dateTime={visit.scheduledAt}>{formatScheduledAt(visit.scheduledAt)}</time></td>
+          <td><StatusBadge status={visit.status} /></td>
+          <td><div className="coord-row-actions"><button type="button" className="coord-text-action" onClick={() => { setNotice(null); setActiveVisit(visit); }}>Atualizar situação</button></div></td>
+        </tr>) : <EmptyRow columns={5} message={feedback} />}
       </tbody></table></div>
     </section>
     <section className="table-card coord-panel coord-requests-preview"><h2>Solicitações de reagendamento</h2><div className="table-scroll coord-table-scroll"><table className="users-table coord-table"><tbody><tr><td><PersonCell name="Bianca Oliveira" initials="BO" /></td><td>Visita 03</td><td>26/10/2026 · 08:30</td><td><StatusBadge status="Pendente" /></td><td><div className="coord-row-actions"><button type="button" className="coord-text-action" onClick={() => navigate('/coordenador/reagendamentos')}>Analisar</button><MoreButton onClick={() => navigate('/coordenador/reagendamentos')} /></div></td></tr></tbody></table></div></section>
     </div>
-    {showNew && <Modal title="Novo registro de visita" description="Adicione uma visita à agenda do coordenador." onClose={() => setShowNew(false)}><form className="coord-form" onSubmit={addVisit}><Field label="Participante"><input required value={newParticipant} onChange={(event) => setNewParticipant(event.target.value)} placeholder="Nome do participante" /></Field><Field label="Estudo"><select value={newStudy} onChange={(event) => setNewStudy(event.target.value)}><option>Qualidade do sono</option><option>Pressão arterial</option><option>Atividade física</option></select></Field><Field label="Data e horário" wide><input required type="datetime-local" value={newDateTime} onChange={(event) => setNewDateTime(event.target.value)} /></Field><div className="modal-actions coord-modal-actions"><button type="button" className="button button-outline coord-secondary-button" onClick={() => setShowNew(false)}>Cancelar</button><button className="button button-primary coord-primary-button" type="submit"><Plus size={13} /> Registrar visita</button></div></form></Modal>}
-    {activeVisit && <Modal title="Editar visita" description={`${activeVisit.participant} · ${activeVisit.study}`} onClose={() => setActiveVisit(null)}><div className="coord-detail-list"><div><span>Visita</span><strong>{activeVisit.visit}</strong></div><div><span>Data / horário</span><strong>{activeVisit.dateTime}</strong></div><div><span>Situação atual</span><StatusBadge status={activeVisit.status} /></div></div><p className="coord-help-copy">Atualize a situação da visita para refletir o acompanhamento.</p><div className="modal-actions coord-modal-actions coord-wrap-actions"><button type="button" className="button button-outline coord-secondary-button" onClick={() => updateVisit('Aguardando')}>Aguardando</button><button type="button" className="button button-outline coord-secondary-button" onClick={() => updateVisit('Reagendamento')}>Reagendar</button><button type="button" className="button button-primary coord-primary-button" onClick={() => updateVisit('Confirmada')}><Check size={13} /> Confirmar</button></div></Modal>}
+    {showNew && <ScheduleVisitModal onClose={closeSchedule} onScheduled={(visit) => { setShowNew(false); setLastScheduled(visit); upcoming.reload(); }} />}
+    {activeVisit && <VisitStatusModal key={activeVisit.id} visit={activeVisit} onClose={() => setActiveVisit(null)} onStale={upcoming.reload} onUpdated={(visit) => {
+      setActiveVisit(null);
+      setLastScheduled(null);
+      setNotice(`Situação atualizada para “${visit.status}”: ${visit.participantName} · ${visit.plannedVisitName}.`);
+      // A visita deixa de ser "próxima" ao sair de Agendada; o painel é consultado de novo na API.
+      upcoming.reload();
+    }} />}
   </div>;
 }
 
@@ -400,18 +429,64 @@ export function CoordinatorCandidatesPage() {
   </div>;
 }
 
+const SCHEDULE_STUDY_HINT = 'São exibidos apenas estudos em recrutamento. A consulta dos estudos em execução ainda não está disponível para o coordenador.';
+
+function ScheduleVisitModal({ onClose, onScheduled }: { onClose: () => void; onScheduled: (visit: ScheduledVisit) => void }) {
+  const studies = useRecruitmentStudies();
+  const { request } = useAuth();
+  const busy = useRef(false);
+  const close = () => { if (!busy.current) onClose(); };
+  const loadParticipants = useCallback((studyId: string, signal: AbortSignal) => scheduledVisitsApi.listActiveParticipants(request, studyId, signal), [request]);
+  const loadPlannedVisits = useCallback((studyId: string, signal: AbortSignal) => visitsApi.list(request, studyId, signal), [request]);
+
+  return <Modal title="Agendar visita" description="Selecione o participante incluído, a visita prevista e a data do agendamento." onClose={close} wide>
+    <ScheduleVisitForm studies={studies} studyHint={SCHEDULE_STUDY_HINT}
+      loadParticipants={loadParticipants} loadPlannedVisits={loadPlannedVisits}
+      onSchedule={(studyId, input, signal) => scheduledVisitsApi.schedule(request, studyId, input, signal)}
+      onScheduled={onScheduled} onCancel={close} onBusyChange={(value) => { busy.current = value; }} />
+  </Modal>;
+}
+
+function ScheduledVisitNotice({ visit, onClose }: { visit: ScheduledVisit; onClose: () => void }) {
+  return <div role="status" className="notice">
+    <span>Visita agendada com sucesso! {visit.participantName} · {visit.plannedVisitName} · {formatScheduledAt(visit.scheduledAt)}</span>
+    <button type="button" aria-label="Fechar confirmação de agendamento" onClick={onClose}><X size={15} aria-hidden="true" /></button>
+  </div>;
+}
+
+function VisitStatusModal({ visit, onClose, onUpdated, onStale }: { visit: ScheduledVisit; onClose: () => void; onUpdated: (visit: ScheduledVisit) => void; onStale: () => void }) {
+  const { request } = useAuth();
+  const busy = useRef(false);
+  const close = () => { if (!busy.current) onClose(); };
+  const loadResults = useCallback((current: ScheduledVisit, signal: AbortSignal) => scheduledVisitsApi.getResults(request, current, signal), [request]);
+  return <Modal title={visit.status === 'Agendada' ? 'Atualizar situação da visita' : 'Detalhes da visita'} description={`${visit.participantName} · ${visit.plannedVisitName}`} onClose={close} wide>
+    <VisitStatusForm visit={visit} renderStatus={(status) => <StatusBadge status={status} />}
+      onUpdate={(current, input, signal) => scheduledVisitsApi.updateStatus(request, current, input, signal)}
+      onUpdated={onUpdated} onStale={onStale} onCancel={close} onBusyChange={(value) => { busy.current = value; }} />
+    {/* O Coordenador consulta os resultados (E05); o registro (E06) é exclusivo do Pesquisador proprietário (D-04). */}
+    {visit.status !== 'Agendada' && <VisitResultsPanel visit={visit} loadResults={loadResults}
+      readOnlyNotice="O registro dos resultados é feito pelo Pesquisador responsável pelo estudo." />}
+  </Modal>;
+}
+
+const ALL_VISIT_STATUSES = 'Todas as situações';
+
 export function CoordinatorVisitsPage() {
-  const [visits, setVisits] = useState<VisitRow[]>([
-    { id: 11, participant: 'Bianca Oliveira', initials: 'BO', study: 'Qualidade do sono', visit: 'Visita 03', dateTime: '24/10/2026 · 09:00', status: 'Confirmada' },
-    { id: 12, participant: 'Lucas Martins', initials: 'LM', study: 'Pressão arterial', visit: 'Avaliação inicial', dateTime: '24/10/2026 · 10:30', status: 'Aguardando' },
-    { id: 13, participant: 'Carla Mendes', initials: 'CM', study: 'Atividade física', visit: 'Visita 02', dateTime: '25/10/2026 · 14:00', status: 'Confirmada' },
-    { id: 14, participant: 'João Pedro', initials: 'JP', study: 'Qualidade do sono', visit: 'Visita 04', dateTime: '26/10/2026 · 08:30', status: 'Reagendamento' },
-    { id: 15, participant: 'Mariana Alves', initials: 'MA', study: 'Pressão arterial', visit: 'Avaliação inicial', dateTime: '27/10/2026 · 11:00', status: 'Aguardando' },
-    { id: 16, participant: 'Ana Maria', initials: 'AS', study: 'Atividade física', visit: 'Visita 05', dateTime: '28/10/2026 · 15:30', status: 'Concluída' },
-  ]);
+  const [params, setParams] = useSearchParams();
+  const studies = useRecruitmentStudies();
+  const options = studies.status === 'ready' ? studies.options : [];
+  const requestedStudyId = params.get('studyId') ?? '';
+  const studyId = options.some((study) => study.id === requestedStudyId) ? requestedStudyId : options[0]?.id ?? '';
+  const agenda = useScheduledVisits(studyId);
+  const { request } = useAuth();
+  const loadAllParticipants = useCallback((id: string, signal: AbortSignal) => scheduledVisitsApi.listParticipants(request, id, signal), [request]);
+  const loadHistory = useCallback((id: string, participationId: string, signal: AbortSignal) => scheduledVisitsApi.getHistory(request, id, participationId, signal), [request]);
+  const withdraw = useCallback((participant: IncludedParticipant, input: RegisterWithdrawalInput, signal: AbortSignal) =>
+    scheduledVisitsApi.registerWithdrawal(request, participant, input, signal), [request]);
   const [search, setSearch] = useState('');
-  const [range, setRange] = useState('Próximos 30 dias');
-  const [active, setActive] = useState<VisitRow | null>(null);
+  const [statusFilter, setStatusFilter] = useState(ALL_VISIT_STATUSES);
+  // A visita aberta fica guardada à parte: recarregar a agenda não fecha o formulário nem apaga o erro exibido.
+  const [active, setActive] = useState<ScheduledVisit | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [participant, setParticipant] = useState('');
   const [study, setStudy] = useState('Qualidade do sono');
@@ -420,40 +495,79 @@ export function CoordinatorVisitsPage() {
   const selected = flow.context.participant;
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const visible = visits.filter((visit) => visit.participant.toLowerCase().includes(search.toLowerCase()));
+  const [notice, setNotice] = useState<string | null>(null);
+  const closeSchedule = useCallback(() => setShowNew(false), []);
+  const visits = agenda.state.status === 'ready' ? agenda.state.visits : [];
+  const visible = visits.filter((visit) => visit.participantName.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase())
+    && (statusFilter === ALL_VISIT_STATUSES || visit.status === statusFilter));
+  const count = (status: ScheduledVisitStatus) => agenda.state.status === 'ready' ? String(visits.filter((visit) => visit.status === status).length).padStart(2, '0') : '—';
 
-  function addVisit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const participantName = participant.trim();
-    if (!participantName) return;
-    const value = new Date(dateTime);
-    const formatted = `${value.toLocaleDateString('pt-BR', { timeZone: 'UTC' })} · ${dateTime.slice(11, 16)}`;
-    setVisits((current) => [...current, { id: Date.now(), participant: participantName, initials: initialsFormName(participantName), study, visit: 'Nova visita', dateTime: formatted, status: 'Aguardando' }]);
-    setParticipant('');
-    setShowNew(false);
-  }
-
-  function update(status: VisitStatus) {
-    if (!active) return;
-    setVisits((current) => current.map((visit) => visit.id === active.id ? { ...visit, status } : visit));
+  function selectStudy(id: string) {
     setActive(null);
+    setParams((current) => { const next = new URLSearchParams(current); next.set('studyId', id); return next; }, { replace: true });
   }
+
+  let feedback: ReactNode;
+  if (studies.status === 'loading') feedback = <span role="status">Carregando estudos…</span>;
+  else if (studies.status === 'error') feedback = <span role="alert">Não foi possível carregar os estudos. Recarregue a página para tentar novamente.</span>;
+  else if (!studyId) feedback = <span role="status">Nenhum estudo em recrutamento disponível para consultar a agenda.</span>;
+  else if (agenda.state.status === 'loading') feedback = <span role="status">Consultando visitas agendadas…</span>;
+  else if (agenda.state.status === 'error') feedback = <div role="alert"><p>{agenda.state.message}</p><button type="button" className="button button-outline coord-secondary-button" onClick={agenda.reload}>Tentar novamente</button></div>;
+  else feedback = <span role="status">{visits.length ? 'Nenhuma visita encontrada para os filtros selecionados.' : 'Nenhuma visita agendada neste estudo.'}</span>;
 
   return <div className="coord-page coord-visits-page">
+
     <PageHeader title="Visitas e avaliações" action="Agendar visita" onAction={() => (selected ? setScheduleOpen(true) : setShowNew(true))} />
     <div className="page-content-offset">
     <ParticipantFlowSelector flow={flow} />
     {selected ? <ParticipantSchedulePanel key={selected.participationId} participant={selected} writable={flow.context.writable} formOpen={scheduleOpen} onFormClose={() => setScheduleOpen(false)} /> : <>
     <StatCards items={[{ title: 'Visitas agendadas', value: '12', note: 'esta semana' }, { title: 'Aguardando confirmação', value: '03' }, { title: 'Avaliações concluídas', value: '26' }]} />
+    <PageHeader title="Visitas e avaliações" action="Agendar visita" onAction={() => { setNotice(null); setShowNew(true); }} />
+    {notice && <div role="status" className="notice"><span>{notice}</span><button type="button" aria-label="Fechar notificação" onClick={() => setNotice(null)}><X size={15} aria-hidden="true" /></button></div>}
+    <div className="page-content-offset">
+    <StatCards items={[{ title: 'Visitas agendadas', value: count('Agendada') }, { title: 'Visitas realizadas', value: count('Realizada') }, { title: 'Ausências e cancelamentos', value: agenda.state.status === 'ready' ? String(visits.filter((visit) => visit.status === 'Ausente' || visit.status === 'Cancelada').length).padStart(2, '0') : '—' }]} />
     <section className="table-card coord-panel coord-list-panel">
-      <div className="study-list-heading coord-panel-heading"><h2>Agenda de visitas</h2><div className="study-list-tools coord-table-tools"><SearchField value={search} onChange={setSearch} placeholder="Buscar participante..." /><FilterSelect value={range} onChange={setRange} label="Período" options={['Próximos 30 dias', 'Esta semana', 'Todas as visitas']} /></div></div>
-      <div className="table-scroll coord-table-scroll"><table className="users-table coord-table coord-visits-table"><thead><tr><th>Participante</th><th>Estudo</th><th>Visita</th><th>Data / horário</th><th>Situação</th><th className="coord-th-actions">Ações</th></tr></thead><tbody>
-        {visible.length ? visible.map((visit) => <tr key={visit.id}><td><PersonCell name={visit.participant} initials={visit.initials} /></td><td>{visit.study}</td><td>{visit.visit}</td><td>{visit.dateTime}</td><td><StatusBadge status={visit.status} /></td><td><div className="coord-row-actions"><button type="button" className="coord-text-action" onClick={() => setActive(visit)}>Editar</button><MoreButton onClick={() => setActive(visit)} /></div></td></tr>) : <EmptyRow columns={6} message="Nenhuma visita encontrada." />}
+      <div className="study-list-heading coord-panel-heading"><h2>Agenda de visitas</h2><div className="study-list-tools coord-table-tools">
+        <SearchField value={search} onChange={setSearch} placeholder="Buscar participante..." />
+        <FilterSelect value={studyId} onChange={selectStudy} label="Filtrar por estudo" disabled={options.length === 0} describedBy="visits-study-help" options={options.length
+          ? options.map((study) => ({ value: study.id, label: options.some((other) => other.id !== study.id && other.title === study.title) ? `${study.title} (${study.id})` : study.title }))
+          : [{ value: '', label: studies.status === 'loading' ? 'Carregando estudos…' : 'Nenhum estudo disponível' }]} />
+        <FilterSelect value={statusFilter} onChange={setStatusFilter} label="Filtrar por situação" options={[ALL_VISIT_STATUSES, ...SCHEDULED_VISIT_STATUSES]} />
+        <button type="button" className="icon-button coord-refresh-button" aria-label="Atualizar agenda" title="Atualizar agenda" disabled={!studyId || agenda.state.status === 'loading'} onClick={agenda.reload}><RefreshCw className="coord-refresh-icon" size={16} aria-hidden="true" /></button>
+      </div></div>
+      <p id="visits-study-help" className="coord-help-copy">{SCHEDULE_STUDY_HINT}</p>
+      <div className="table-scroll coord-table-scroll"><table className="users-table coord-table coord-visits-table" aria-label="Agenda de visitas" aria-busy={agenda.state.status === 'loading'}><thead><tr><th>Participante</th><th>Visita prevista</th><th>Data / horário</th><th>Situação</th><th className="coord-th-actions">Ações</th></tr></thead><tbody>
+        {visible.length ? visible.map((visit) => <tr key={visit.id}>
+          <td><PersonCell name={visit.participantName} initials={initials(visit.participantName)} /></td>
+          <td>{`${visit.plannedVisitOrder}. ${visit.plannedVisitName}`}</td>
+          <td><time dateTime={visit.scheduledAt}>{formatScheduledAt(visit.scheduledAt)}</time></td>
+          <td><StatusBadge status={visit.status} /></td>
+          <td><div className="coord-row-actions"><button type="button" className="coord-text-action" onClick={() => setActive(visit)}>{visit.status === 'Agendada' ? 'Atualizar situação' : 'Detalhes'}</button></div></td>
+        </tr>) : <EmptyRow columns={5} message={feedback} />}
       </tbody></table></div>
     </section>
+
     </>}
     </div>
     {showNew && !selected && <Modal title="Agendar visita" description="Informe os dados básicos para criar um agendamento." onClose={() => setShowNew(false)}><form className="coord-form" onSubmit={addVisit}><Field label="Participante"><input required value={participant} onChange={(event) => setParticipant(event.target.value)} placeholder="Nome do participante" /></Field><Field label="Estudo"><select value={study} onChange={(event) => setStudy(event.target.value)}><option>Qualidade do sono</option><option>Pressão arterial</option><option>Atividade física</option></select></Field><Field label="Data e horário" wide><input required type="datetime-local" value={dateTime} onChange={(event) => setDateTime(event.target.value)} /></Field><div className="modal-actions coord-modal-actions"><button type="button" className="button button-outline coord-secondary-button" onClick={() => setShowNew(false)}>Cancelar</button><button className="button button-primary coord-primary-button" type="submit"><CalendarDays size={13} /> Agendar visita</button></div></form></Modal>}
     {active && <Modal title="Atualizar visita" description={`${active.participant} · ${active.visit}`} onClose={() => setActive(null)}><div className="coord-detail-list"><div><span>Estudo</span><strong>{active.study}</strong></div><div><span>Data / horário</span><strong>{active.dateTime}</strong></div><div><span>Situação</span><StatusBadge status={active.status} /></div></div><div className="modal-actions coord-modal-actions coord-wrap-actions"><button className="button button-outline coord-secondary-button" type="button" onClick={() => update('Aguardando')}>Aguardando</button><button className="button button-outline coord-secondary-button" type="button" onClick={() => update('Reagendamento')}>Reagendar</button><button className="button button-outline coord-secondary-button" type="button" onClick={() => update('Concluída')}>Concluir</button><button className="button button-primary coord-primary-button" type="button" onClick={() => update('Confirmada')}><Check size={13} /> Confirmar</button></div></Modal>}
+    <section className="table-card coord-panel coord-list-panel coord-history-panel" aria-labelledby="coord-history-title">
+      <div className="study-list-heading coord-panel-heading"><h2 id="coord-history-title">Histórico por participante</h2></div>
+      <p className="coord-help-copy">Visitas, datas, situações e resultados registrados do participante no estudo selecionado acima, em ordem cronológica. Participantes ativos podem ter a retirada registrada aqui.</p>
+      <ParticipantHistoryPanel studyId={studyId} loadParticipants={loadAllParticipants} loadHistory={loadHistory} onWithdraw={withdraw} renderStatus={(status) => <StatusBadge status={status} />} />
+    </section>
+    </div>
+    {showNew && <ScheduleVisitModal onClose={closeSchedule} onScheduled={(visit) => {
+      setShowNew(false);
+      setNotice(`Visita agendada com sucesso! ${visit.participantName} · ${visit.plannedVisitName} · ${formatScheduledAt(visit.scheduledAt)}`);
+      // Mostra o estudo do novo agendamento, já com a agenda consultada de novo na API.
+      if (visit.studyId === studyId) agenda.reload(); else selectStudy(visit.studyId);
+    }} />}
+    {active && <VisitStatusModal key={active.id} visit={active} onClose={() => setActive(null)} onStale={agenda.reload} onUpdated={(visit) => {
+      agenda.replace(visit);
+      setActive(null);
+      setNotice(`Situação atualizada para “${visit.status}”: ${visit.participantName} · ${visit.plannedVisitName}.`);
+    }} />}
   </div>;
 }
 
@@ -550,12 +664,7 @@ export function CoordinatorReportsPage() {
       description: 'Visitas realizadas, pendentes, canceladas e reagendadas.',
       rows: [
         ['Participante', 'Estudo', 'Data', 'Situação'],
-        ...initialVisits.map((visit) => [
-          visit.participant,
-          visit.study,
-          visit.dateTime,
-          visit.status,
-        ]),
+        ...reportVisitRows,
       ],
     },
     {
