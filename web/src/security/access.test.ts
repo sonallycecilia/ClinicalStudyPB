@@ -52,4 +52,11 @@ describe('permissões por perfil — tasks 3078, 3081 e 3094', () => {
     expect(menuForRole('Pesquisador').map((item) => item.path)).not.toContain(path);
     expect(menuForRole('Administrador').map((item) => item.path)).not.toContain(path);
   });
+
+  it.each(['/coordenador/visitas', '/coordenador/reagendamentos'] as const)('restringe %s ao Coordenador', (path) => {
+    expect(canAccessRoute('Coordenador', path)).toBe(true);
+    expect(canAccessRoute('Pesquisador', path)).toBe(false);
+    expect(canAccessRoute('Administrador', path)).toBe(false);
+    expect(canAccessRoute(undefined, path)).toBe(false);
+  });
 });

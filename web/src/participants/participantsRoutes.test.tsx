@@ -37,13 +37,17 @@ describe('Rota /coordenador/participantes — navegação e permissões', () => 
     expect(mockRequest).not.toHaveBeenCalledWith(expect.stringContaining('/participants'), expect.anything());
   });
 
-  it('bloqueia Administrador na rota de visitas antes de consultar endpoints da equipe', async () => {
-    const role = 'Administrador';
+  it.each([
+    ['/coordenador/visitas', 'Pesquisador'],
+    ['/coordenador/visitas', 'Administrador'],
+    ['/coordenador/reagendamentos', 'Pesquisador'],
+    ['/coordenador/reagendamentos', 'Administrador'],
+  ] as const)('bloqueia %s para o perfil %s', async (path, role) => {
     session.user = user(role);
-    window.history.replaceState({}, '', '/coordenador/visitas');
+    window.history.replaceState({}, '', path);
     render(<App />);
     expect(await screen.findByRole('heading', { name: 'Acesso não permitido' })).toBeTruthy();
-    expect(screen.queryByRole('heading', { name: 'Visitas e avaliações' })).toBeNull();
+    expect(screen.getByText('Seu perfil não tem permissão para acessar esta página.')).toBeTruthy();
     expect(mockRequest).not.toHaveBeenCalled();
   });
 

@@ -150,9 +150,19 @@ describe('Histórico do participante selecionado', () => {
     expect(request).toHaveBeenCalledWith('/studies/s1/participants/p1/history', expect.anything());
   });
 
-  it('indica histórico vazio e falha com nova tentativa', async () => {
+  it('mostra falha do histórico e permite tentar novamente', async () => {
+    const original = request.getMockImplementation()!;
+    let fail = true;
+    request.mockImplementation(async (path: string, options?: RequestInit) => {
+      if (String(path).endsWith('/history') && fail) { fail = false; return json({}, 500); }
+      return original(path, options);
+    });
     onlyParticipants('/coordenador/participantes?studyId=s1&participationId=p1');
-    expect(await screen.findByText('Nenhuma visita registrada para este participante.')).toBeTruthy();
+    const panel = await screen.findByRole('region', { name: 'Histórico de visitas' });
+    expect(await within(panel).findByRole('alert')).toBeTruthy();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Tentar novamente' }));
+    expect(await within(panel).findByText('Nenhuma visita registrada para este participante.')).toBeTruthy();
+    expect(request.mock.calls.filter(([path]) => String(path).endsWith('/history'))).toHaveLength(2);
   });
 
   it('mostra falha do histórico', async () => {
