@@ -99,8 +99,13 @@ describe('Visitas — navegação autenticada', () => {
     expect(await screen.findByText('Ausente')).toBeTruthy();
     expect(screen.getByText('Cancelada')).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Ver detalhes de Visita D' }));
+    await waitFor(() => expect(app.getPathname()).toBe('/visitas/4'));
     expect(screen.queryByRole('button', { name: 'Confirmar presença' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Solicitar reagendamento' })).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Voltar para visitas' }));
+    await waitFor(() => expect(app.getPathname()).toBe('/visitas'));
+    expect(screen.getByRole('tab', { name: 'Histórico' }).props.accessibilityState.selected).toBe(true);
+    expect(screen.getByRole('button', { name: 'Ver detalhes de Visita D' })).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(String(fetchMock.mock.calls[0][0])).toContain("/auth/me");
   });

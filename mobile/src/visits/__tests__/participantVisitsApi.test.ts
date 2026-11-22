@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { participantVisitsService, visitsForScope } from '../participantVisitsApi';
+import { participantVisitsService, visitDateLabels, visitsForScope } from '../participantVisitsApi';
 import { visits } from '../../../tests/fixtures/visits';
 import { calendarCells, localDateKey } from '../../components/VisitDatePicker';
 
@@ -43,6 +43,12 @@ describe('RF18 — contrato e isolamento', () => {
     const history = visitsForScope(visits, 'history');
     expect(history.map(visit => visit.id)).toEqual(['3', '5', '4']);
     expect(history.map(visit => visit.status)).toEqual(['Realizada', 'Cancelada', 'Ausente']);
+  });
+  it.each([
+    { instant: new Date(2026, 10, 22, 0, 5), expected: { date: '22 Nov 2026', day: 'Domingo', time: '00:05' } },
+    { instant: new Date(2026, 11, 31, 23, 55), expected: { date: '31 Dez 2026', day: 'Quinta-feira', time: '23:55' } },
+  ])('apresenta o instante UTC no dia e horário locais: $expected.date $expected.time', ({ instant, expected }) => {
+    expect(visitDateLabels(instant.toISOString())).toEqual(expected);
   });
 });
 
