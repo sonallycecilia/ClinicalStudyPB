@@ -1,6 +1,6 @@
 # Relatório de execução e rastreabilidade de testes — Sprint 3
 
-> **Critério de registro:** este relatório reúne os resultados informados para as rodadas de Backend e os comandos executados para Mobile neste ambiente. Os horários exatos das três rodadas de Backend não foram preservados; elas aparecem na ordem cronológica relatada. Onde a invocação literal do comando não está registrada, isso é indicado explicitamente.
+> **Critério de registro:** este relatório reúne resultados informados para Backend e comandos executados para Web e Mobile neste ambiente. Os horários exatos das três rodadas de Backend não foram preservados; elas aparecem na ordem cronológica relatada. Onde a invocação literal do comando não está registrada, isso é indicado explicitamente.
 
 ## 1. Identificação e Contexto da Execução
 
@@ -22,7 +22,10 @@
 | **S3-QA-03 — Backend E2E E01–E10 / RF12–RF18** | Script `test:e2e` de `backend/package.json`; argumentos literais não registrados. Também foi informado `git diff --check`. | **2/2 suítes**, **29 testes** | **29/29** na rodada final | Rodada 1 bloqueada por `ECONNREFUSED`; rodada 2 com **28/29** e colisão de massa. | **Passou após correção e reexecução**. |
 | **S3-QA-03 — Web RF12–RF16** | Nenhum comando de integração Web foi registrado para esta execução. | N/A | N/A | Integração real continua pendente; as telas usam dados locais/demonstrativos conforme o plano. | **Bloqueado / não executado** para integração real. |
 | **S3-QA-05 — Mobile UI e regressão de login** | `npm.cmd --prefix mobile test -- --runInBand`; `npm.cmd --prefix mobile run typecheck`; `npm.cmd --prefix mobile run lint`. | **10 suítes**, **71 testes** | **10/10**, **71/71**; typecheck e lint aprovados | Primeira tentativa do Jest não iniciou porque `jest` não era reconhecido; após instalar dependências travadas, a suíte executou. | **Passou** para os componentes e a regressão existentes. |
+| **S3-QA-05 — Mobile revalidação nesta branch (22/11)** | Mesmos comandos Mobile, após teste de apresentação do placeholder E09. | **10 suítes**, **72 testes** | **10/10**, **72/72**; typecheck e lint aprovados | Nenhuma falha nesta rodada. | **Passou** para o comportamento atualmente implementado; integração E09/E10 continua bloqueada. |
 | **S3-QA-05 — Mobile integrado E09/E10** | Não executável contra os serviços Mobile atuais. | N/A | N/A | `participantStudiesApi.ts` e `participantVisitsApi.ts` são placeholders e não consomem E09/E10. | **Bloqueado** até a integração real. |
+| **S3-QA-06 — E2E Web RF12→RF13** | `npm.cmd --prefix web run cypress:run`. | **11 specs**, **54 testes** | **11/11**, **54/54** | Primeira execução completa: 51/54; Backend Compose desatualizado sem `atividades_visita.ordem`. Após rebuild, RF06 direcionado 7/7 e suíte completa 54/54. | **Passou após ajuste do ambiente**; E2E usa Web, API e PostgreSQL reais. |
+| **S3-QA-06 — E2E Mobile RF17→RF18** | Não executado como E2E. | N/A | N/A | Sem ferramenta E2E Mobile configurada; E09/E10 não estão integrados no HEAD testado; P-01 pendente. | **Bloqueado**, sem substituir integração real por mocks. |
 
 ## 3. Histórico Cronológico de Execuções — Falhas, Correções e Reexecuções
 
@@ -79,12 +82,15 @@ Os totais unitários de Backend são globais (**76 testes**) e não foram partic
 - [ ] Revalidar RF18 em `upcoming` e `history`, com visitas próprias e sem visitas no escopo; verificar estados/ordenação conforme o contrato e que resultados de avaliação/`observation` não sejam expostos.
 - [ ] Simular falha de rede e repetir a consulta; confirmar o comportamento implementado, sem estabelecer mensagens/estados que não estejam no código ou contrato.
 - [ ] Revalidar expiração de sessão (`401`): descarte do token e retorno ao fluxo de login, além da regressão já coberta pelo `AuthContext`.
+- [x] Reexecutar Jest, `typecheck` e lint na branch atual; resultados da rodada de 22/11 registrados na seção 7.
 - [ ] Executar novamente Jest, `typecheck` e lint após a integração.
+- [ ] Após merge de `origin/feature/visitas-historico` (E09/E10) na `main` e na branch de QA, e resolução de P-01, automatizar e executar o E2E Mobile real `login → E09 → E10`, incluindo conta sem vínculo, scopes vazios e tratamento de sessão expirada. Até lá, não tratar testes com mocks como E2E integrado.
 
 ### Web — RF12–RF16 / E01–E08
 
 - [x] Executar a validação Web S3-QA-04 com componentes e endpoints presentes nesta branch; os resultados e limites estão detalhados na seção 6.
 - [x] Separar as evidências Web das aprovações de Backend.
+- [x] Executar Cypress ponta a ponta RF12→RF13 com Backend/PostgreSQL reais; evidências na seção 8.
 - [ ] Integrar estudos em execução ao seletor de agendamento do Coordenador; integrar relatórios e montar a seção de histórico do Pesquisador que ainda não está conectada à página.
 
 ### Backend — E01–E10 / RF12–RF18
@@ -141,3 +147,85 @@ Os totais unitários de Backend são globais (**76 testes**) e não foram partic
 | Diff: `git diff --check` | Passou, sem problemas de whitespace. |
 
 Os testes ainda emitem avisos React `act(...)` em casos já existentes do histórico e de reagendamentos; não causaram falhas. A suíte final e o typecheck/build passaram sem mudança na lógica de negócio.
+
+## 7. Revalidação S3-QA-05 — Mobile RF17/RF18 e login — 2026-11-22
+
+- **Branch / HEAD:** `test/sprint-3-qa-leticia` / `093d51d`.
+- **Referências:** [plano de testes RF12–RF18](./plano-testes-massa-dados-rf12-rf18.md), [contratos da API RF12–RF18](./contratos-api-rf12-rf18.md) e [matriz de acesso](./matriz-acesso-e-identificacao-participante-rf12-rf18.md).
+
+### Histórico e estado presente na branch
+
+| Data | Commit(s) | Alterações Mobile e situação no HEAD testado |
+|---|---|---|
+| 16/11 | Merge PR #27 (`43da786`); `36c30ff` | Login, sessão/armazenamento seguro e validação por `/auth/me`; preparação da `HomeScreen` e do serviço de estudos RF17. Presentes na branch. |
+| 18/11 | Merge PR #29 (`e2d83d2`); merge PR #30 (`12c7f0f`), incluindo `c9bd886` | Tela de estudos; abas e navegação de visitas/histórico, `VisitsContext`, componentes e testes. Presentes na branch. |
+| 19/11 | `ec0f30d` | Encontrado em `origin/feature/visitas-historico`, mas não foi mergeado na `main` nem é ancestral do HEAD testado. Inclui `mobile/src/api/http.ts`, validação e testes de consultas autenticadas; esses arquivos não existem no HEAD desta branch e não foram considerados integração disponível. |
+
+No HEAD testado, login, validação/restauração de sessão e logout usam `/auth/login`, `/auth/me` e `/auth/logout` com token no SecureStore. As rotas protegidas são limitadas a Participante ativo. Em contraste, `participantStudiesService.listForAuthenticatedParticipant()` e `participantVisitsService.listForAuthenticatedParticipant()` ainda lançam erros explícitos de indisponibilidade, sem consumir E09/E10 nem recorrer a dados de RF06 ou fixtures.
+
+### Cobertura observada e limites
+
+- **RF17 / estudos:** lista e situação com dados de teste, loading, resposta vazia, erro/repetição e proteção contra sessão ausente/trocada ou resposta antiga. Foi acrescentado um teste para garantir que o placeholder E09 apareça como indisponibilidade, e não como lista vazia. A resposta `[]` também é coberta na UI como estado vazio; isso **não valida** que uma conta real sem vínculo receba `[]`.
+- **RF18 / visitas:** abas `upcoming`/`history`, listas vazias por escopo, loading, erro/repetição, ordenação e descarte de resposta antiga após mudança de escopo/conta. O placeholder E10 não faz requisições reais; portanto, os erros de rede e listas nos testes de tela/contexto são simulados.
+- **Vínculo P-01:** continua pendente. Sem E09/E10 conectados ao cadastro real, não é possível validar participante sem vínculo em `candidatos.id_usuario`, nem distinguir ausência de participação de ausência desse vínculo. Não há associação por nome/e-mail no Mobile.
+- **Acesso e sessão:** testes verificam recusa de Administrador/Coordenador/Pesquisador e conta inativa no login, bloqueio de rotas, sessão `/auth/me` com 401 levando ao login, limpeza de token e falha de rede com nova tentativa. Não há chamadas E09/E10 no HEAD para testar 401/403 desses endpoints.
+- **Privacidade:** os testes de troca de participante e sessão bloqueada confirmam descarte/ocultação de dados anteriores. O tipo E10 não inclui observação nem resultados; a exposição em respostas reais só poderá ser verificada quando E10 estiver integrado.
+- **Login/logout:** validação de campos obrigatórios e e-mail, credenciais inválidas (401), falha de rede, sucesso, persistência segura e logout, incluindo falha de logout remoto.
+
+### Limitação herdada da S3-QA-05 e impacto na S3-QA-06
+
+- No HEAD `093d51d`, `participantStudiesService.listForAuthenticatedParticipant()` e `participantVisitsService.listForAuthenticatedParticipant()` ainda são placeholders que lançam erros explícitos; não consomem os endpoints reais E09 e E10.
+- `ec0f30d` foi localizado em `origin/feature/visitas-historico`, mas não foi mergeado na `main` nem é ancestral do HEAD testado. A integração desse commit não está presente na branch de QA.
+- P-01 (`candidatos.id_usuario`) continua pendente. Assim, conta real sem vínculo e respostas 401/403 de E09/E10 não podem ser validadas pelo Mobile nesta branch.
+- Para a S3-QA-06, o fluxo Web RF12→RF13 pode ser executado ponta a ponta contra Cypress, Backend e PostgreSQL. O fluxo Mobile RF17→RF18 fica bloqueado até merge da integração E09/E10 e resolução de P-01; testes unitários de UI com mocks não serão reportados como E2E real.
+
+### Suítes e comandos da revalidação
+
+Suítes existentes executadas: [HomeScreen.test.tsx](../../../../mobile/src/screens/__tests__/HomeScreen.test.tsx), [participantStudiesApi.test.ts](../../../../mobile/src/studies/__tests__/participantStudiesApi.test.ts), [VisitsContext.test.tsx](../../../../mobile/src/visits/__tests__/VisitsContext.test.tsx), [participantVisitsApi.test.ts](../../../../mobile/src/visits/__tests__/participantVisitsApi.test.ts), [visits-navigation.test.tsx](../../../../mobile/src/routes/__tests__/visits-navigation.test.tsx), [AuthContext.test.tsx](../../../../mobile/src/auth/__tests__/AuthContext.test.tsx), [auth-navigation.test.tsx](../../../../mobile/src/routes/__tests__/auth-navigation.test.tsx), [LoginScreen.test.tsx](../../../../mobile/src/screens/__tests__/LoginScreen.test.tsx), [api.test.ts](../../../../mobile/src/auth/__tests__/api.test.ts) e [tokenStorage.test.ts](../../../../mobile/src/auth/__tests__/tokenStorage.test.ts).
+
+| Comando | Resultado |
+|---|---|
+| `npm.cmd --prefix mobile test -- --runInBand` | **10/10 suítes, 72/72 testes passaram.** |
+| `npm.cmd --prefix mobile run typecheck` | Passou (`tsc --noEmit`). |
+| `npm.cmd --prefix mobile run lint` | Passou (`eslint .`). |
+| `git diff --check` | Passou. |
+
+## 8. S3-QA-06 — E2E Web RF12→RF13 e limitação Mobile — 2026-11-22
+
+- **Branch / HEAD:** `test/sprint-3-qa-leticia` / `093d51d`.
+- **Referências:** [plano RF12–RF18](./plano-testes-massa-dados-rf12-rf18.md), [contratos da API](./contratos-api-rf12-rf18.md) e [matriz de acesso](./matriz-acesso-e-identificacao-participante-rf12-rf18.md).
+- **Resultado:** E2E Web RF12→RF13 passou após ajuste da imagem local do Backend. E2E Mobile RF17→RF18 permanece bloqueado pelas limitações documentadas na seção 7.
+
+### Infraestrutura encontrada
+
+- **Web:** Cypress 16.2.0 já está em `web/package.json`, configurado em `web/cypress.config.ts`; havia 10 specs Cypress cobrindo fluxos anteriores. Foi adicionado um spec RF12→RF13. Não foi necessário adicionar dependências.
+- **Backend/PostgreSQL:** `compose.yaml` publica PostgreSQL em `127.0.0.1:5433`, API em `127.0.0.1:3000` e Web em `127.0.0.1:5173`. O PostgreSQL já estava saudável; Backend e Vite não estavam ativos no início. O Vite foi executado com `VITE_API_URL=http://localhost:3000` somente no processo, sem editar `.env`.
+- **Mobile:** `mobile/package.json` oferece Jest, typecheck e lint, mas não contém script/dependência/configuração Maestro, Detox ou Appium. Junto da ausência de E09/E10 no HEAD, não há base para declarar E2E Mobile real nesta rodada.
+
+### Fluxo automatizado e dados reais
+
+O novo [rf12-rf13-agendamento-situacao.cy.ts](../../../../web/cypress/e2e/rf12-rf13-agendamento-situacao.cy.ts) prepara estudo em recrutamento, visita prevista, candidato elegível/consentido e participação ativa pela API real. Em seguida autentica o Coordenador pela tela de login e executa as ações RF12/RF13 pela interface:
+
+1. Seleciona o estudo, participante e visita prevista e agenda pela tela, exercitando E02; valida a resposta `201` e o reflexo da visita na agenda.
+2. Atualiza a situação para `Realizada` pela tela, exercitando E04; valida resposta `200`, feedback e estado atualizado.
+3. Consulta E03 e recarrega a página para confirmar que a situação `Realizada` continua persistida no PostgreSQL.
+
+### Linha do tempo, ajustes e resultados
+
+| Execução | Resultado |
+|---|---|
+| Verificação inicial | PostgreSQL saudável em `5433`; API e Web indisponíveis. `docker compose up -d --wait backend` iniciou o Backend, e Vite foi iniciado com override processual de `VITE_API_URL`. Login de teste do Coordenador respondeu `201`. |
+| Cypress direcionado RF12→RF13 | **1/1 teste passou**, com agendamento via interface, E04 e persistência após reload. |
+| Primeira suíte completa | **11 specs, 54 testes: 51 passaram e 3 falharam** (1 no fluxo RF06 visual e 2 na suíte RF06 API). O log do Backend mostrou PostgreSQL `42703: column "ordem" does not exist` ao acessar `atividades_visita`; a imagem Compose já existente tinha duas semanas e não continha as migrações do código atual. |
+| Ajuste do ambiente | `docker compose up -d --build --wait backend` reconstruiu a imagem a partir da branch e iniciou as migrações sem apagar o volume do PostgreSQL. Os dois specs afetados passaram em execução direcionada: **7/7 testes**. |
+| Suíte completa final | `npm.cmd --prefix web run cypress:run`: **11/11 specs e 54/54 testes passaram**, sem falhas ou pendências. Cypress emitiu apenas aviso de que Electron 146 está depreciado. |
+| Typecheck/build Web | `npm.cmd --prefix web run build`: passou (`tsc --noEmit` e `vite build`). |
+| Typecheck dos specs | `.\node_modules\.bin\tsc.cmd --noEmit -p .\cypress\tsconfig.json` executado em `web`: passou. |
+| Lint | Backend: `npm.cmd --prefix backend run lint` passou. Web: **não disponível**, pois `web/package.json` não declara script de lint nem há configuração ESLint para Web. |
+| Diff | `git diff --check` passou. |
+
+### Arquivos criados/alterados nesta rodada
+
+- Novo: [rf12-rf13-agendamento-situacao.cy.ts](../../../../web/cypress/e2e/rf12-rf13-agendamento-situacao.cy.ts).
+- Atualizado: este relatório, com a limitação Mobile herdada da S3-QA-05, resultados E2E, evidências e roteiro de revalidação.
+- O worktree também mantém a alteração prévia da S3-QA-05 em [HomeScreen.test.tsx](../../../../mobile/src/screens/__tests__/HomeScreen.test.tsx); ela não foi alterada pela S3-QA-06.
