@@ -69,6 +69,7 @@ const scheduledResponse = {
 function mockScheduleApi(postResponse: () => Response, agenda: () => unknown[] = () => [], patchResponse?: (body: { status: string }) => Response) {
   mockRequest.mockImplementation(async (path: string, init?: RequestInit) => {
     if (path === '/studies/study-1/scheduled-visits' && !init?.method) return json(200, agenda());
+    if (path === '/studies/study-1/participants') return json(200, []);
     if (path.startsWith('/studies/study-1/scheduled-visits/') && init?.method === 'PATCH' && patchResponse) return patchResponse(JSON.parse(init.body as string));
     if (path === '/studies/study-1/participants?status=Ativo') return json(200, [{
       participationId: 'participation-1', candidateId: 'candidate-1', studyId: 'study-1', name: 'Bianca Oliveira',
@@ -821,10 +822,29 @@ describe('CoordinatorVisitsPage', () => {
     expect(within(dialog).queryByRole('button', { name: 'Registrar resultado' })).toBeNull();
   });
 
+  it('consulta o histórico de um participante do estudo selecionado', async () => {
+    const participantRow = { participationId: 'participation-1', candidateId: 'candidate-1', studyId: 'study-1', name: 'Bianca Oliveira', participationStatus: 'Ativo', includedAt: '2026-11-06', withdrawnAt: null, withdrawalReason: null };
+    mockRequest.mockImplementation(async (path: string) => {
+      if (path === '/studies/study-1/scheduled-visits') return json(200, agendaRows);
+      if (path === '/studies/study-1/participants') return json(200, [participantRow]);
+      if (path === '/studies/study-1/participants/participation-1/history') return json(200, { participant: participantRow, visits: [{ ...agendaRows[0], results: [] }] });
+      return json(200, studyOptions);
+    });
+    renderCoordinator(<CoordinatorVisitsPage />);
+    const panel = screen.getByRole('region', { name: 'Histórico por participante' });
+    const select = within(panel).getByLabelText('Participante') as HTMLSelectElement;
+    await waitFor(() => expect(select.disabled).toBe(false));
+    fireEvent.change(select, { target: { value: 'participation-1' } });
+    const timeline = await within(panel).findByRole('list', { name: 'Histórico de visitas de Bianca Oliveira' });
+    expect(within(timeline).getByText('Visita 1 — Consulta inicial')).toBeTruthy();
+    expect(within(timeline).getByText('Ainda não realizada')).toBeTruthy();
+  });
+
   it('informa quando a consulta da agenda falha e permite tentar novamente', async () => {
     let calls = 0;
     mockRequest.mockImplementation(async (path: string) => {
       if (path === '/studies/study-1/scheduled-visits') return ++calls === 1 ? json(503, null) : json(200, agendaRows);
+      if (path === '/studies/study-1/participants') return json(200, []);
       return json(200, studyOptions);
     });
     renderCoordinator(<CoordinatorVisitsPage />);

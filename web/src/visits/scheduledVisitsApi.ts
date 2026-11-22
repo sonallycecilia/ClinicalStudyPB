@@ -92,6 +92,22 @@ export interface RegisterResultInput {
 
 export type ResultField = keyof RegisterResultInput;
 
+/** Resultado no histórico (E07), com o nome e o tipo da atividade. */
+export interface HistoricalResult extends AssessmentResult {
+  activityName: string;
+  activityType: string;
+}
+
+export interface HistoricalVisit extends ScheduledVisit {
+  results: HistoricalResult[];
+}
+
+/** E07 — participação e visitas em ordem cronológica, cada uma com seus resultados. */
+export interface ParticipantHistory {
+  participant: IncludedParticipant;
+  visits: HistoricalVisit[];
+}
+
 export const RESULT_UNIT_MAX = 50;
 export const RESULT_OBSERVATION_MAX = 2000;
 
@@ -261,6 +277,8 @@ function listError(fallback: string, resource: string) {
 const participantsError = listError(PARTICIPANTS_LOAD_ERROR, 'os participantes');
 const scheduledVisitsError = listError(SCHEDULED_VISITS_LOAD_ERROR, 'as visitas agendadas');
 const resultsLoadError = listError(RESULTS_LOAD_ERROR, 'os resultados das visitas');
+export const HISTORY_LOAD_ERROR = 'Não foi possível carregar o histórico do participante. Tente novamente.';
+const historyError = listError(HISTORY_LOAD_ERROR, 'o histórico dos participantes');
 
 async function send(request: AuthenticatedRequest, path: string, init: RequestInit, toError: (status: number, body: ErrorBody | null) => ScheduledVisitsApiError, connectionError: string): Promise<unknown> {
   let response: Response;
@@ -333,6 +351,16 @@ export function isScheduledVisitResults(value: unknown, scheduledVisitId: string
         && isNullableText(activity.description)
         && (activity.result === null || isAssessmentResult(activity.result, scheduledVisitId, activity.activityId));
     });
+}
+
+export function isParticipantHistory(value: unknown, studyId: string, participationId: string): value is ParticipantHistory {
+  if (!value || typeof value !== 'object') return false;
+  const body = value as Partial<ParticipantHistory>;
+  return isIncludedParticipant(body.participant) && body.participant.studyId === studyId && body.participant.participationId === participationId
+    && Array.isArray(body.visits) && body.visits.every((visit) => isScheduledVisitRecord(visit, studyId)
+      && visit.participationId === participationId
+      && Array.isArray(visit.results) && visit.results.every((result) => isAssessmentResult(result, visit.id)
+        && typeof result.activityName === 'string' && typeof result.activityType === 'string'));
 }
 
 /** Confere se a resposta de E04 é a mesma visita, já na situação pedida. */
@@ -417,7 +445,27 @@ async function registerResult(request: AuthenticatedRequest, visit: Pick<Schedul
   return body;
 }
 
-export const scheduledVisitsApi = { listActiveParticipants, schedule, listScheduledVisits, updateStatus, getResults, registerResult };
+/** E01 sem filtro — inclui participações retiradas e concluídas, cujo histórico é preservado (D-09). */
+async function listParticipants(request: AuthenticatedRequest, studyId: string, signal?: AbortSignal): Promise<IncludedParticipant[]> {
+  const body = await send(request, `${studyPath(studyId)}/participants`, { signal }, participantsError, SCHEDULE_CONNECTION_ERROR);
+  if (!Array.isArray(body) || !body.every(isIncludedParticipant)) {
+    throw new ScheduledVisitsApiError('O servidor retornou uma listagem de participantes inválida. Tente novamente.');
+  }
+  return body.filter((item) => item.studyId === studyId);
+}
+
+/** Momento usado na ordenação cronológica; empate resolvido pela data de criação. */
+const chronological = (a: ScheduledVisit, b: ScheduledVisit) =>
+  Date.parse(a.scheduledAt) - Date.parse(b.scheduledAt) || Date.parse(a.createdAt) - Date.parse(b.createdAt);
+
+/** E07 — o histórico vazio (`visits: []`) não é erro. As visitas são reordenadas cronologicamente por garantia. */
+async function getHistory(request: AuthenticatedRequest, studyId: string, participationId: string, signal?: AbortSignal): Promise<ParticipantHistory> {
+  const body = await send(request, `${studyPath(studyId)}/participants/${encodeURIComponent(participationId)}/history`, { signal }, historyError, SCHEDULE_CONNECTION_ERROR);
+  if (!isParticipantHistory(body, studyId, participationId)) throw new ScheduledVisitsApiError('O servidor retornou um histórico inválido. Tente novamente.');
+  return { ...body, visits: [...body.visits].sort(chronological) };
+}
+
+export const scheduledVisitsApi = { listActiveParticipants, listParticipants, schedule, listScheduledVisits, updateStatus, getResults, registerResult, getHistory };
 
 const SAO_PAULO_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' });
 const SAO_PAULO_DATE_TIME = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });

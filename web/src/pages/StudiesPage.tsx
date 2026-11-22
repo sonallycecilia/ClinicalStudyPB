@@ -8,6 +8,7 @@ import { useAuth } from '../auth/AuthContext';
 import { StudyCriteriaEditor, StudyCriteriaSection, StudyCriteriaSummary } from '../components/StudyCriteriaSection';
 import { StudyVisitsSection } from '../components/StudyVisitsSection';
 import { StudyScheduledVisitsSection } from '../visits/StudyScheduledVisitsSection';
+import { StudyParticipantHistorySection } from '../visits/StudyParticipantHistorySection';
 import { StudyStatusBadge, StudyStatusDialog } from '../components/StudyStatusDialog';
 import { CriteriaApiError, UNEXPECTED_LOAD_ERROR, applyCriteriaChanges, criteriaApi, planCriteriaChanges } from '../studies/criteriaApi';
 import type { CriteriaChange, CriterionDraft, CriterionType, EligibilityCriterion } from '../studies/criteriaApi';
@@ -567,6 +568,7 @@ export function StudiesPage() {
           <StudyCriteriaSection key={`${selectedStudy.id}-${criteriaVersions[selectedStudy.id] ?? 0}`} studyId={selectedStudy.id} />
           <StudyVisitsSection key={selectedStudy.id} studyId={selectedStudy.id} readOnly={selectedStudy.status === 'encerrado'} />
           <StudyScheduledVisitsSection key={`scheduled-${selectedStudy.id}`} studyId={selectedStudy.id} readOnly={selectedStudy.status === 'encerrado'} />
+          <StudyParticipantHistorySection key={`history-${selectedStudy.id}`} studyId={selectedStudy.id} />
         </section>
         {dialogMode === 'edit' && renderStudyForm(true)}
         {dialogMode === 'criteria-recovery' && renderCriteriaRecoveryDialog()}

@@ -18,6 +18,7 @@ import { formatScheduledAt, SCHEDULED_VISIT_STATUSES, scheduledVisitsApi, type S
 import { useScheduledVisits } from '../visits/useScheduledVisits';
 import { VisitStatusForm } from '../visits/VisitStatusForm';
 import { VisitResultsPanel } from '../visits/VisitResultsPanel';
+import { ParticipantHistoryPanel } from '../visits/ParticipantHistoryPanel';
 import {
   Check,
   ChevronDown,
@@ -436,6 +437,9 @@ export function CoordinatorVisitsPage() {
   const requestedStudyId = params.get('studyId') ?? '';
   const studyId = options.some((study) => study.id === requestedStudyId) ? requestedStudyId : options[0]?.id ?? '';
   const agenda = useScheduledVisits(studyId);
+  const { request } = useAuth();
+  const loadAllParticipants = useCallback((id: string, signal: AbortSignal) => scheduledVisitsApi.listParticipants(request, id, signal), [request]);
+  const loadHistory = useCallback((id: string, participationId: string, signal: AbortSignal) => scheduledVisitsApi.getHistory(request, id, participationId, signal), [request]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState(ALL_VISIT_STATUSES);
   // A visita aberta fica guardada à parte: recarregar a agenda não fecha o formulário nem apaga o erro exibido.
@@ -485,6 +489,11 @@ export function CoordinatorVisitsPage() {
           <td><div className="coord-row-actions"><button type="button" className="coord-text-action" onClick={() => setActive(visit)}>{visit.status === 'Agendada' ? 'Atualizar situação' : 'Detalhes'}</button></div></td>
         </tr>) : <EmptyRow columns={5} message={feedback} />}
       </tbody></table></div>
+    </section>
+    <section className="table-card coord-panel coord-list-panel coord-history-panel" aria-labelledby="coord-history-title">
+      <div className="study-list-heading coord-panel-heading"><h2 id="coord-history-title">Histórico por participante</h2></div>
+      <p className="coord-help-copy">Visitas, datas, situações e resultados registrados do participante no estudo selecionado acima, em ordem cronológica.</p>
+      <ParticipantHistoryPanel studyId={studyId} loadParticipants={loadAllParticipants} loadHistory={loadHistory} renderStatus={(status) => <StatusBadge status={status} />} />
     </section>
     </div>
     {showNew && <ScheduleVisitModal onClose={closeSchedule} onScheduled={(visit) => {

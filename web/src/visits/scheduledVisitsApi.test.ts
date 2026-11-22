@@ -273,6 +273,51 @@ describe('scheduledVisitsApi resultados (E05/E06)', () => {
   });
 });
 
+describe('scheduledVisitsApi histórico (E01/E07)', () => {
+  const later = { ...created, id: 'scheduled-2', scheduledAt: '2026-12-01T12:00:00.000Z', results: [] };
+  const earlier = {
+    ...created, id: 'scheduled-1', status: 'Realizada', realizedAt: '2026-11-24T12:40:00.000Z',
+    results: [{ id: 'result-1', scheduledVisitId: 'scheduled-1', activityId: 'activity-1', activityName: 'Pressão arterial', activityType: 'Exame',
+      value: '120/80', unit: 'mmHg', observation: null, registeredAt: '2026-11-24T13:05:00.000Z', registrarId: 'researcher-1' }],
+  };
+  const history = { participant, visits: [later, earlier] };
+
+  it('lista todas as participações do estudo, inclusive retiradas', async () => {
+    const withdrawn = { ...participant, participationId: 'participation-2', participationStatus: 'Retirado', withdrawnAt: '2026-11-20', withdrawalReason: 'Mudança' };
+    const request = vi.fn().mockResolvedValue(reply(200, [participant, withdrawn]));
+    await expect(scheduledVisitsApi.listParticipants(request, studyId)).resolves.toEqual([participant, withdrawn]);
+    expect(request).toHaveBeenCalledWith('/studies/study-1/participants', { signal: undefined });
+  });
+
+  it('consulta E07 e devolve as visitas em ordem cronológica', async () => {
+    const request = vi.fn().mockResolvedValue(reply(200, history));
+    const result = await scheduledVisitsApi.getHistory(request, studyId, 'participation-1');
+    expect(request).toHaveBeenCalledWith('/studies/study-1/participants/participation-1/history', { signal: undefined });
+    expect(result.visits.map((visit) => visit.id)).toEqual(['scheduled-1', 'scheduled-2']);
+    expect(result.visits[0].results[0].activityName).toBe('Pressão arterial');
+  });
+
+  it('aceita histórico sem visitas', async () => {
+    const request = vi.fn().mockResolvedValue(reply(200, { participant, visits: [] }));
+    await expect(scheduledVisitsApi.getHistory(request, studyId, 'participation-1')).resolves.toEqual({ participant, visits: [] });
+  });
+
+  it('recusa histórico de outro participante ou com resultado de outra visita', async () => {
+    const other = vi.fn().mockResolvedValue(reply(200, { ...history, participant: { ...participant, participationId: 'outra' } }));
+    const mismatched = vi.fn().mockResolvedValue(reply(200, { participant, visits: [{ ...earlier, results: [{ ...earlier.results[0], scheduledVisitId: 'scheduled-9' }] }] }));
+    expect((await rejection(scheduledVisitsApi.getHistory(other, studyId, 'participation-1'))).message).toMatch(/histórico inválido/);
+    expect((await rejection(scheduledVisitsApi.getHistory(mismatched, studyId, 'participation-1'))).message).toMatch(/histórico inválido/);
+  });
+
+  it('usa a mensagem do servidor em 404 e mensagem genérica em falha inesperada', async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce(reply(404, { statusCode: 404, message: 'Participante não encontrado neste estudo.' }))
+      .mockResolvedValueOnce(reply(500, null));
+    expect((await rejection(scheduledVisitsApi.getHistory(request, studyId, 'participation-1'))).message).toBe('Participante não encontrado neste estudo.');
+    expect((await rejection(scheduledVisitsApi.getHistory(request, studyId, 'participation-1'))).message).toBe('Não foi possível carregar o histórico do participante. Tente novamente.');
+  });
+});
+
 describe('utilitários de data', () => {
   it('converte datetime-local em ISO UTC e recusa valores inválidos', () => {
     expect(localDateTimeToIso('2026-11-24T09:00')).toBe(new Date('2026-11-24T09:00').toISOString());
