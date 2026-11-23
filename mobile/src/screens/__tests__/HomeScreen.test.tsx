@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { useAuth } from '../../auth/AuthContext';
-import type { ParticipantStudy } from '../../studies/participantStudiesApi';
+import { ParticipantStudiesUnavailableError, type ParticipantStudy } from '../../studies/participantStudiesApi';
 import HomeScreen from '../HomeScreen';
 import { studies } from '../../../tests/fixtures/studies';
 
@@ -10,6 +10,7 @@ let mockAuth: ReturnType<typeof useAuth>;
 
 jest.mock('../../auth/AuthContext', () => ({ useAuth: () => mockAuth }));
 jest.mock('../../studies/participantStudiesApi', () => ({
+  ...jest.requireActual<typeof import('../../studies/participantStudiesApi')>('../../studies/participantStudiesApi'),
   participantStudiesService: { listForAuthenticatedParticipant: () => mockListForAuthenticatedParticipant() },
 }));
 
@@ -63,7 +64,7 @@ describe('HomeScreen — estudos do participante', () => {
     expect(await screen.findByText('Qualidade do sono')).toBeTruthy();
   });
 
-  it('apresenta a mensagem de lista vazia quando não há estudos', async () => {
+  it('apresenta estado vazio quando o serviço retorna [] (inclui E09 sem vínculo P-01)', async () => {
     mockListForAuthenticatedParticipant.mockResolvedValueOnce([]);
     await render(<HomeScreen />);
 

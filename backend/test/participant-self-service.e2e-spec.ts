@@ -480,13 +480,19 @@ describe('Consultas autenticadas do participante (E2E)', () => {
       .get('/me/visits?scope=recent')
       .set('Authorization', bearer(participant.token))
       .expect(400);
+    for (const key of ['userId', 'candidateId', 'participationId']) {
+      await request(api())
+        .get(`/me/studies?${key}=00000000-0000-4000-8000-000000000001`)
+        .set('Authorization', bearer(participant.token))
+        .expect(400);
+    }
     await request(api())
       .get('/me/visits?scope=history&studyId=nao-e-uuid')
       .set('Authorization', bearer(participant.token))
       .expect(400);
     for (const key of ['userId', 'candidateId', 'participationId']) {
       await request(api())
-        .get(`/me/visits?scope=history&${key}=00000000-0000-4000-8000-000000000001`)
+          .get(`/me/visits?scope=history&${key}=00000000-0000-4000-8000-000000000001`)
         .set('Authorization', bearer(participant.token))
         .expect(400);
     }
