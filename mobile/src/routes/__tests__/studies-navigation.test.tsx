@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals
 import { router } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { studies } from '../../../tests/fixtures/studies';
+import { completeFirstAccess } from '../../../tests/fixtures/completeFirstAccess';
 
 jest.mock('expo-secure-store');
 jest.setTimeout(30000);
@@ -31,6 +32,7 @@ afterEach(() => {
 });
 async function openStudies() {
   const app = await renderRouter('./src/app', { initialUrl: '/' });
+  await completeFirstAccess();
   await screen.findByRole('button', { name: 'Ver detalhes de Qualidade do sono' });
   return app;
 }

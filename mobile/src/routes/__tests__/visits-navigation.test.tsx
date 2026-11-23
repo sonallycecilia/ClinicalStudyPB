@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 import { participantVisitsService, type Visit, visitsForScope } from '../../visits/participantVisitsApi';
 import { HttpError } from '../../api/http';
 import { visits } from '../../../tests/fixtures/visits';
+import { completeFirstAccess } from '../../../tests/fixtures/completeFirstAccess';
 
 jest.mock('../../visits/participantVisitsApi', () => ({
   ...jest.requireActual<typeof import('../../visits/participantVisitsApi')>('../../visits/participantVisitsApi'),
@@ -36,6 +37,7 @@ async function openVisits() {
   jest.mocked(SecureStore.getItemAsync).mockResolvedValue('saved-token');
   fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => user } as Response);
   const app = await renderRouter('./src/app', { initialUrl: '/' });
+  await completeFirstAccess();
   await waitFor(() => expect(app.getPathname()).toBe('/'));
   await fireEvent.press(screen.getByRole('tab', { name: 'Visitas' }));
   await waitFor(() => expect(app.getPathname()).toBe('/visitas'));
@@ -57,6 +59,7 @@ describe('Visitas — navegação autenticada', () => {
     jest.mocked(SecureStore.getItemAsync).mockResolvedValue('saved-token');
     fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => user } as Response);
     const app = await renderRouter('./src/app', { initialUrl: '/visitas' });
+    await completeFirstAccess();
     await waitFor(() => expect(app.getPathname()).toBe('/'));
     await fireEvent.press(screen.getByRole('tab', { name: 'Visitas' }));
     await waitFor(() => expect(app.getPathname()).toBe('/visitas'));

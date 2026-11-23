@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { useAuth } from '../../auth/AuthContext';
-import { ParticipantStudiesUnavailableError, type ParticipantStudy } from '../../studies/participantStudiesApi';
+import { type ParticipantStudy } from '../../studies/participantStudiesApi';
 import HomeScreen from '../HomeScreen';
 import { studies } from '../../../tests/fixtures/studies';
 

@@ -2,6 +2,8 @@ import { Image } from 'expo-image';
 import { colors } from '../ui/theme';
 
 const sources = {
+  check: require('../../assets/icons/check.svg'),
+  shieldCheck: require('../../assets/icons/shield-check.svg'),
   mail: require('../../assets/icons/mail.svg'),
   lock: require('../../assets/icons/lock.svg'),
   eye: require('../../assets/icons/eye.svg'),

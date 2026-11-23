@@ -1,6 +1,7 @@
 import { act, fireEvent, renderRouter, screen, waitFor } from 'expo-router/testing-library';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import * as SecureStore from 'expo-secure-store';
+import { completeFirstAccess } from '../../../tests/fixtures/completeFirstAccess';
 
 jest.mock('expo-secure-store');
 // A primeira montagem inclui os navegadores e as telas reais do aplicativo.
@@ -47,6 +48,9 @@ describe('Rotas protegidas', () => {
     expect(screen.queryByText('Bem-vindo de volta')).toBeNull();
     expect(screen.queryByText('Olá, Bianca')).toBeNull();
     await act(async () => { resolve(response(200, user)); });
+    await waitFor(() => expect(app.getPathname()).toBe('/primeiro-acesso'));
+    expect(screen.queryByText('Olá, Bianca')).toBeNull();
+    await completeFirstAccess();
     await waitFor(() => expect(app.getPathname()).toBe('/'));
     expect(screen.getByText('Olá, Bianca')).toBeTruthy();
   });
@@ -60,6 +64,7 @@ describe('Rotas protegidas', () => {
     expect(screen.getByRole('button', { name: 'Sair da conta' })).toBeTruthy();
     fetchMock.mockResolvedValueOnce(response(200, user));
     await fireEvent.press(screen.getByRole('button', { name: 'Tentar novamente' }));
+    await completeFirstAccess();
     await waitFor(() => expect(app.getPathname()).toBe('/'));
     fetchMock.mockResolvedValueOnce(response(201));
     await fireEvent.press(screen.getByRole('tab', { name: 'Perfil' }));
@@ -83,6 +88,7 @@ describe('Rotas protegidas', () => {
       return response(String(url).includes(`/me/${resource}`) ? 401 : 200, []);
     });
     const app = await renderRouter('./src/app', { initialUrl: '/' });
+    await completeFirstAccess();
     if (resource === 'visits') {
       await waitFor(() => expect(app.getPathname()).toBe('/'));
       await fireEvent.press(screen.getByRole('tab', { name: 'Visitas' }));
