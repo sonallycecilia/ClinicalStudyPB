@@ -1,0 +1,35 @@
+{
+  "result": "passed",
+  "checkedAt": "2026-11-22T21:31:09.640Z",
+  "platform": "Expo Web / Chrome headless / 390x844",
+  "account": "bianca.oliveira@clinicalstudypb.test",
+  "study": "EST-001",
+  "queries": [
+    {
+      "path": "/me/studies",
+      "bearer": true
+    },
+    {
+      "path": "/me/studies",
+      "bearer": true
+    },
+    {
+      "path": "/me/visits?scope=upcoming",
+      "bearer": true
+    }
+  ],
+  "runtimeErrors": [],
+  "checks": [
+    "Real title, objective, status and participation",
+    "Civil dates 01 Abr 2026 and 28 Nov 2026",
+    "Protected details show real code and researcher",
+    "Withdrawal preview sends no request and claims no success",
+    "Back and existing tabs work",
+    "Profile and logout work"
+  ],
+  "limits": [
+    "No new business data created",
+    "Area, phase, protocol and research center are absent from E09",
+    "Android/iOS not manually exercised"
+  ]
+}

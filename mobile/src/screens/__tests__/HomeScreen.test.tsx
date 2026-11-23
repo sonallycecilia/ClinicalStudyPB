@@ -1,14 +1,16 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { useAuth } from '../../auth/AuthContext';
-import type { ParticipantStudy } from '../../studies/participantStudiesApi';
+import { type ParticipantStudy } from '../../studies/participantStudiesApi';
 import HomeScreen from '../HomeScreen';
+import { studies } from '../../../tests/fixtures/studies';
 
 const mockListForAuthenticatedParticipant = jest.fn<() => Promise<ParticipantStudy[]>>();
 let mockAuth: ReturnType<typeof useAuth>;
 
 jest.mock('../../auth/AuthContext', () => ({ useAuth: () => mockAuth }));
 jest.mock('../../studies/participantStudiesApi', () => ({
+  ...jest.requireActual<typeof import('../../studies/participantStudiesApi')>('../../studies/participantStudiesApi'),
   participantStudiesService: { listForAuthenticatedParticipant: () => mockListForAuthenticatedParticipant() },
 }));
 
@@ -21,15 +23,8 @@ const participant = {
   status: 'Ativo' as const,
   createdAt: '2026-11-01T00:00:00.000Z',
 };
-const studies: ParticipantStudy[] = [{
-  id: 'study-1',
-  title: 'Qualidade do sono',
-  objective: 'Investigar padrões de sono dos participantes.',
-  status: 'execução',
-}];
-
 function authenticatedUser(user = participant): ReturnType<typeof useAuth> {
-  return { status: 'authenticated', user, message: null, login: async () => {}, logout: async () => {}, retry: async () => {} };
+  return { status: 'authenticated', user, client: { get: async () => [] }, message: null, login: async () => {}, logout: async () => {}, retry: async () => {} };
 }
 
 function deferred<T>() {
@@ -50,6 +45,11 @@ describe('HomeScreen — estudos do participante', () => {
     expect(await screen.findByText('Qualidade do sono')).toBeTruthy();
     expect(screen.getByText('Investigar padrões de sono dos participantes.')).toBeTruthy();
     expect(screen.getByText('Em execução')).toBeTruthy();
+    expect(screen.getByText('Participação: Ativo')).toBeTruthy();
+    expect(screen.getByText('01 Abr 2026')).toBeTruthy();
+    expect(screen.getByText('28 Nov 2026')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Ver detalhes de Qualidade do sono' })).toBeTruthy();
+    expect(screen.getByLabelText('1 estudo')).toBeTruthy();
     expect(screen.getByText('Meus Estudos Clínicos')).toBeTruthy();
     expect(mockListForAuthenticatedParticipant).toHaveBeenCalledTimes(1);
   });
@@ -64,11 +64,32 @@ describe('HomeScreen — estudos do participante', () => {
     expect(await screen.findByText('Qualidade do sono')).toBeTruthy();
   });
 
-  it('apresenta a mensagem de lista vazia quando não há estudos', async () => {
+  it('apresenta estado vazio quando o serviço retorna [] (inclui E09 sem vínculo P-01)', async () => {
     mockListForAuthenticatedParticipant.mockResolvedValueOnce([]);
     await render(<HomeScreen />);
 
     expect(await screen.findByText('Você ainda não participa de nenhum estudo.')).toBeTruthy();
+  });
+
+  it('distingue a situação do estudo da participação retirada', async () => {
+    mockListForAuthenticatedParticipant.mockResolvedValueOnce([{ ...studies[0], participationStatus: 'Retirado', withdrawnAt: '2026-11-18' }]);
+    await render(<HomeScreen />);
+    expect(await screen.findByText('Participação: Retirado')).toBeTruthy();
+    expect(screen.getByText('Em execução')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Solicitar retirada do estudo' })).toBeNull();
+  });
+
+  it('ignora dados antigos mesmo quando a nova sessão reutiliza o mesmo objeto de usuário', async () => {
+    const pending = deferred<ParticipantStudy[]>();
+    mockListForAuthenticatedParticipant.mockReturnValueOnce(pending.promise).mockResolvedValueOnce([]);
+    const app = await render(<HomeScreen />);
+    await act(async () => {
+      mockAuth = { ...mockAuth, client: { get: async () => [] } };
+      app.rerender(<HomeScreen />);
+    });
+    expect(await screen.findByText('Você ainda não participa de nenhum estudo.')).toBeTruthy();
+    await act(async () => { pending.resolve(studies); });
+    expect(screen.queryByText('Qualidade do sono')).toBeNull();
   });
 
   it('mostra erro e permite tentar novamente', async () => {
@@ -106,7 +127,7 @@ describe('HomeScreen — estudos do participante', () => {
 
   it('ignora respostas de uma sessão anterior após a troca de participante', async () => {
     const pending = deferred<ParticipantStudy[]>();
-    const otherStudy: ParticipantStudy = { ...studies[0], id: 'study-2', title: 'Outro estudo' };
+    const otherStudy: ParticipantStudy = { ...studies[0], participationId: 'participation-2', study: { ...studies[0].study, id: 'study-2', title: 'Outro estudo' } };
     mockListForAuthenticatedParticipant.mockReturnValueOnce(pending.promise).mockResolvedValueOnce([otherStudy]);
     const app = await render(<HomeScreen />);
 

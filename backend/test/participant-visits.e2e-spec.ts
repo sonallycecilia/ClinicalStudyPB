@@ -97,7 +97,11 @@ describe('Participantes e visitas agendadas (E2E)', () => {
     return response.body as { id: string };
   }
 
-  async function createActivity(studyId: string, plannedVisitId: string, name: string) {
+  async function createActivity(
+    studyId: string,
+    plannedVisitId: string,
+    name: string,
+  ) {
     const response = await request(api())
       .post(`/studies/${studyId}/visits/${plannedVisitId}/activities`)
       .set('Authorization', bearer(researcherToken))
@@ -255,6 +259,116 @@ describe('Participantes e visitas agendadas (E2E)', () => {
       .expect(403);
   });
 
+  it('valida autenticação, filtros e estados de acesso em E01-E03', async () => {
+    const study = await createStudy('E01-E03 autorização e filtros');
+    const participant = await createParticipant(
+      study.id,
+      'Participante E01-E03',
+    );
+    const plannedVisit = await createPlannedVisit(study.id);
+    const participantsEndpoint = `/studies/${study.id}/participants`;
+    const scheduledVisitsEndpoint = `/studies/${study.id}/scheduled-visits`;
+
+    await request(api()).get(participantsEndpoint).expect(401);
+    await request(api())
+      .get(`/studies/not-a-uuid/participants`)
+      .set('Authorization', bearer(researcherToken))
+      .expect(400);
+    const invalidParticipantStatus = await request(api())
+      .get(`${participantsEndpoint}?status=Pendente`)
+      .set('Authorization', bearer(researcherToken))
+      .expect(400);
+    expect(invalidParticipantStatus.body.statusCode).toBe(400);
+
+    await request(api()).get(scheduledVisitsEndpoint).expect(401);
+    await request(api())
+      .get(`${scheduledVisitsEndpoint}?participationId=not-a-uuid`)
+      .set('Authorization', bearer(researcherToken))
+      .expect(400);
+    const invalidVisitStatus = await request(api())
+      .get(`${scheduledVisitsEndpoint}?status=Pendente`)
+      .set('Authorization', bearer(researcherToken))
+      .expect(400);
+    expect(invalidVisitStatus.body.statusCode).toBe(400);
+    await request(api())
+      .get(`${scheduledVisitsEndpoint}?unexpected=true`)
+      .set('Authorization', bearer(researcherToken))
+      .expect(400);
+
+    const payload = {
+      participationId: participant.participationId,
+      plannedVisitId: plannedVisit.id,
+      scheduledAt: '2025-03-15T10:00:00-03:00',
+    };
+    await request(api())
+      .post(scheduledVisitsEndpoint)
+      .send(payload)
+      .expect(401);
+    await request(api())
+      .post(scheduledVisitsEndpoint)
+      .set('Authorization', bearer(adminToken))
+      .send(payload)
+      .expect(403);
+    await request(api())
+      .post(scheduledVisitsEndpoint)
+      .set('Authorization', bearer(participantToken))
+      .send(payload)
+      .expect(403);
+    await request(api())
+      .post(scheduledVisitsEndpoint)
+      .set('Authorization', bearer(researcherToken))
+      .send({ ...payload, unexpected: true })
+      .expect(400);
+    await request(api())
+      .post(scheduledVisitsEndpoint)
+      .set('Authorization', bearer(researcherToken))
+      .send({ ...payload, scheduledAt: '2025-03-15T10:00:00' })
+      .expect(400);
+
+    const database = fixture.app.get(DatabaseService);
+    await database.query(
+      `UPDATE estudos SET status = 'planejamento' WHERE id_estudo = $1`,
+      [study.id],
+    );
+    await request(api())
+      .get(participantsEndpoint)
+      .set('Authorization', bearer(coordinatorToken))
+      .expect(403);
+    await request(api())
+      .get(scheduledVisitsEndpoint)
+      .set('Authorization', bearer(coordinatorToken))
+      .expect(403);
+    await scheduleAs(
+      coordinatorToken,
+      study.id,
+      participant.participationId,
+      plannedVisit.id,
+    ).expect(403);
+
+    const researcherCreate = await schedule(
+      study.id,
+      participant.participationId,
+      plannedVisit.id,
+    ).expect(201);
+    expect(researcherCreate.body.status).toBe('Agendada');
+
+    await database.query(
+      `UPDATE usuarios SET status = 'Inativo' WHERE id_usuario = $1`,
+      [coordinator.id],
+    );
+    try {
+      await request(api())
+        .get(participantsEndpoint)
+        .set('Authorization', bearer(coordinatorToken))
+        .expect(401);
+    } finally {
+      await database.query(
+        `UPDATE usuarios SET status = 'Ativo' WHERE id_usuario = $1`,
+        [coordinator.id],
+      );
+    }
+  });
+
   it('cria agendamentos, valida vínculos e limites, impede duplicidade e permite remarcar ausências/cancelamentos', async () => {
     const study = await createStudy('E02 agendamento e validações');
     const otherStudy = await createStudy('E02 estudo isolado');
@@ -303,8 +417,35 @@ describe('Participantes e visitas agendadas (E2E)', () => {
       plannedVisit.id,
     ).expect(409);
     expect(duplicate.body.code).toBe('VISIT_ALREADY_SCHEDULED');
+    expect(duplicate.body.message).toBe(
+      'Esta visita prevista já está agendada ou realizada para o participante.',
+    );
 
     const database = fixture.app.get(DatabaseService);
+    const observedPlannedVisit = await createPlannedVisit(
+      study.id,
+      'Visita com observação',
+      2,
+    );
+    const observedSchedule = await request(api())
+      .post(endpoint)
+      .set('Authorization', bearer(researcherToken))
+      .send({
+        participationId: coordinatorParticipant.participationId,
+        plannedVisitId: observedPlannedVisit.id,
+        scheduledAt: '2025-03-16T10:00:00-03:00',
+        observation: '  Trazer exames anteriores.  ',
+      })
+      .expect(201);
+    expect(observedSchedule.body.observation).toBe('Trazer exames anteriores.');
+    const persistedObservation = await database.query<{ observation: string }>(
+      `SELECT observacao AS observation FROM visitas WHERE id_visita = $1`,
+      [observedSchedule.body.id],
+    );
+    expect(persistedObservation.rows[0]?.observation).toBe(
+      'Trazer exames anteriores.',
+    );
+
     await database.query(
       `UPDATE visitas SET status = 'Ausente' WHERE id_visita = $1`,
       [created.body.id],
@@ -328,6 +469,9 @@ describe('Participantes e visitas agendadas (E2E)', () => {
       plannedVisit.id,
     ).expect(400);
     expect(inactiveResponse.body.code).toBe('PARTICIPATION_NOT_ACTIVE');
+    expect(inactiveResponse.body.message).toBe(
+      'Somente participantes ativos podem ter visitas agendadas.',
+    );
     await schedule(study.id, foreign.participationId, plannedVisit.id).expect(
       404,
     );
@@ -342,6 +486,9 @@ describe('Participantes e visitas agendadas (E2E)', () => {
       '2019-12-31T23:59:59Z',
     ).expect(400);
     expect(beforeInclusion.body.code).toBe('SCHEDULE_OUT_OF_RANGE');
+    expect(beforeInclusion.body.message).toBe(
+      'A data agendada deve estar entre a inclusão do participante e o término do estudo.',
+    );
     const afterStudy = await schedule(
       study.id,
       active.participationId,
@@ -668,6 +815,7 @@ describe('Participantes e visitas agendadas (E2E)', () => {
       },
     ).expect(400);
     expect(future.body.code).toBe('REALIZED_AT_INVALID');
+    expect(future.body.message).toBe('A data de realização é inválida.');
 
     const beforeInclusionDay = await updateScheduledVisitAs(
       researcherToken,
@@ -747,6 +895,9 @@ describe('Participantes e visitas agendadas (E2E)', () => {
       },
     ).expect(400);
     expect(inactiveResponse.body.code).toBe('PARTICIPATION_NOT_ACTIVE');
+    expect(inactiveResponse.body.message).toBe(
+      'Somente visitas de participantes ativos podem ser atualizadas.',
+    );
 
     await updateScheduledVisitAs(
       researcherToken,
@@ -1028,30 +1179,40 @@ describe('Participantes e visitas agendadas (E2E)', () => {
     const study = await createStudy('E05 ordem de atividades');
     const participant = await createParticipant(study.id, 'Participante E05');
     const plannedVisit = await createPlannedVisit(study.id);
-    const secondActivity = await createActivity(study.id, plannedVisit.id, 'Zeta');
-    const firstActivity = await createActivity(study.id, plannedVisit.id, 'Alfa');
+    const secondActivity = await createActivity(
+      study.id,
+      plannedVisit.id,
+      'Zeta',
+    );
+    const firstActivity = await createActivity(
+      study.id,
+      plannedVisit.id,
+      'Alfa',
+    );
     const plannedActivities = await request(api())
       .get(`/studies/${study.id}/visits/${plannedVisit.id}/activities`)
       .set('Authorization', bearer(researcherToken))
       .expect(200);
-    expect(plannedActivities.body.map((activity: { id: string }) => activity.id))
-      .toEqual([secondActivity.id, firstActivity.id]);
+    expect(
+      plannedActivities.body.map((activity: { id: string }) => activity.id),
+    ).toEqual([secondActivity.id, firstActivity.id]);
     const scheduled = await schedule(
       study.id,
       participant.participationId,
       plannedVisit.id,
     ).expect(201);
-    await updateScheduledVisitAs(
-      researcherToken,
-      study.id,
-      scheduled.body.id,
-      { status: 'Realizada', realizedAt: '2025-03-16T13:40:00Z' },
-    ).expect(200);
+    await updateScheduledVisitAs(researcherToken, study.id, scheduled.body.id, {
+      status: 'Realizada',
+      realizedAt: '2025-03-16T13:40:00Z',
+    }).expect(200);
 
     const initial = await request(api())
       .get(`/studies/${study.id}/scheduled-visits/${scheduled.body.id}/results`)
       .set('Authorization', bearer(researcherToken))
       .expect(200);
+    await request(api())
+      .get(`/studies/${study.id}/scheduled-visits/${scheduled.body.id}/results`)
+      .expect(401);
     expect(initial.body).toMatchObject({
       scheduledVisitId: scheduled.body.id,
       plannedVisitId: plannedVisit.id,
@@ -1113,18 +1274,20 @@ describe('Participantes e visitas agendadas (E2E)', () => {
     const study = await createStudy('E06 registro');
     const participant = await createParticipant(study.id, 'Participante E06');
     const plannedVisit = await createPlannedVisit(study.id);
-    const activity = await createActivity(study.id, plannedVisit.id, 'Resultado');
+    const activity = await createActivity(
+      study.id,
+      plannedVisit.id,
+      'Resultado',
+    );
     const scheduled = await schedule(
       study.id,
       participant.participationId,
       plannedVisit.id,
     ).expect(201);
-    await updateScheduledVisitAs(
-      researcherToken,
-      study.id,
-      scheduled.body.id,
-      { status: 'Realizada', realizedAt: '2025-03-16T13:40:00Z' },
-    ).expect(200);
+    await updateScheduledVisitAs(researcherToken, study.id, scheduled.body.id, {
+      status: 'Realizada',
+      realizedAt: '2025-03-16T13:40:00Z',
+    }).expect(200);
 
     const body = {
       activityId: activity.id,
@@ -1133,7 +1296,9 @@ describe('Participantes e visitas agendadas (E2E)', () => {
       observation: '  Dado acadêmico.  ',
     };
     const recorded = await request(api())
-      .post(`/studies/${study.id}/scheduled-visits/${scheduled.body.id}/results`)
+      .post(
+        `/studies/${study.id}/scheduled-visits/${scheduled.body.id}/results`,
+      )
       .set('Authorization', bearer(researcherToken))
       .send(body)
       .expect(201);
@@ -1165,11 +1330,16 @@ describe('Participantes e visitas agendadas (E2E)', () => {
     });
 
     const duplicate = await request(api())
-      .post(`/studies/${study.id}/scheduled-visits/${scheduled.body.id}/results`)
+      .post(
+        `/studies/${study.id}/scheduled-visits/${scheduled.body.id}/results`,
+      )
       .set('Authorization', bearer(researcherToken))
       .send(body)
       .expect(409);
     expect(duplicate.body.code).toBe('RESULT_ALREADY_REGISTERED');
+    expect(duplicate.body.message).toBe(
+      'Já existe resultado registrado para esta atividade nesta visita.',
+    );
 
     const listed = await request(api())
       .get(`/studies/${study.id}/scheduled-visits/${scheduled.body.id}/results`)
@@ -1186,9 +1356,16 @@ describe('Participantes e visitas agendadas (E2E)', () => {
   it('E06 aplica status, vínculos e perfis autorizados', async () => {
     const study = await createStudy('E06 validações');
     const otherStudy = await createStudy('E06 outro estudo');
-    const participant = await createParticipant(study.id, 'Participante E06 validação');
+    const participant = await createParticipant(
+      study.id,
+      'Participante E06 validação',
+    );
     const plannedVisit = await createPlannedVisit(study.id);
-    const activity = await createActivity(study.id, plannedVisit.id, 'Atividade compatível');
+    const activity = await createActivity(
+      study.id,
+      plannedVisit.id,
+      'Atividade compatível',
+    );
     const foreignPlannedVisit = await createPlannedVisit(otherStudy.id);
     const foreignActivity = await createActivity(
       otherStudy.id,
@@ -1209,13 +1386,13 @@ describe('Participantes e visitas agendadas (E2E)', () => {
       .send(payload)
       .expect(400);
     expect(notRealized.body.code).toBe('VISIT_NOT_REALIZED');
+    expect(notRealized.body.message).toBe(
+      'Registre resultados somente em visitas realizadas.',
+    );
 
-    await updateScheduledVisitAs(
-      researcherToken,
-      study.id,
-      scheduled.body.id,
-      { status: 'Ausente' },
-    ).expect(200);
+    await updateScheduledVisitAs(researcherToken, study.id, scheduled.body.id, {
+      status: 'Ausente',
+    }).expect(200);
     const absent = await request(api())
       .post(endpoint)
       .set('Authorization', bearer(researcherToken))
@@ -1235,7 +1412,9 @@ describe('Participantes e visitas agendadas (E2E)', () => {
       { status: 'Cancelada' },
     ).expect(200);
     const cancelled = await request(api())
-      .post(`/studies/${study.id}/scheduled-visits/${cancelledScheduled.body.id}/results`)
+      .post(
+        `/studies/${study.id}/scheduled-visits/${cancelledScheduled.body.id}/results`,
+      )
       .set('Authorization', bearer(researcherToken))
       .send(payload)
       .expect(400);
@@ -1253,12 +1432,10 @@ describe('Participantes e visitas agendadas (E2E)', () => {
       .expect(400);
     expect(wrongActivity.body.code).toBe('VISIT_NOT_REALIZED');
 
-    await updateScheduledVisitAs(
-      researcherToken,
-      study.id,
-      scheduled.body.id,
-      { status: 'Realizada', realizedAt: '2025-03-16T13:40:00Z' },
-    ).expect(400);
+    await updateScheduledVisitAs(researcherToken, study.id, scheduled.body.id, {
+      status: 'Realizada',
+      realizedAt: '2025-03-16T13:40:00Z',
+    }).expect(400);
 
     const realizedScheduled = await schedule(
       study.id,
@@ -1271,14 +1448,22 @@ describe('Participantes e visitas agendadas (E2E)', () => {
       realizedScheduled.body.id,
       { status: 'Realizada', realizedAt: '2025-03-16T13:40:00Z' },
     ).expect(200);
-    const realizedEndpoint =
-      `/studies/${study.id}/scheduled-visits/${realizedScheduled.body.id}/results`;
+    const realizedEndpoint = `/studies/${study.id}/scheduled-visits/${realizedScheduled.body.id}/results`;
+    const emptyValue = await request(api())
+      .post(realizedEndpoint)
+      .set('Authorization', bearer(researcherToken))
+      .send({ activityId: activity.id, value: '   ' })
+      .expect(400);
+    expect(emptyValue.body.statusCode).toBe(400);
     const incompatibleActivity = await request(api())
       .post(realizedEndpoint)
       .set('Authorization', bearer(researcherToken))
       .send({ activityId: foreignActivity.id, value: '1' })
       .expect(400);
     expect(incompatibleActivity.body.code).toBe('ACTIVITY_NOT_IN_VISIT');
+    expect(incompatibleActivity.body.message).toBe(
+      'A atividade não pertence à visita prevista agendada.',
+    );
     const missingActivity = await request(api())
       .post(realizedEndpoint)
       .set('Authorization', bearer(researcherToken))
@@ -1314,10 +1499,20 @@ describe('Participantes e visitas agendadas (E2E)', () => {
   it('E06 impede resultados em estudo encerrado e visita de outro estudo', async () => {
     const study = await createStudy('E06 encerrado');
     const otherStudy = await createStudy('E06 visita isolada');
-    const participant = await createParticipant(study.id, 'Participante encerrado');
-    const otherParticipant = await createParticipant(otherStudy.id, 'Participante externo E06');
+    const participant = await createParticipant(
+      study.id,
+      'Participante encerrado',
+    );
+    const otherParticipant = await createParticipant(
+      otherStudy.id,
+      'Participante externo E06',
+    );
     const plannedVisit = await createPlannedVisit(study.id);
-    const activity = await createActivity(study.id, plannedVisit.id, 'Encerramento');
+    const activity = await createActivity(
+      study.id,
+      plannedVisit.id,
+      'Encerramento',
+    );
     const foreignVisitPlan = await createPlannedVisit(otherStudy.id);
     const foreignActivity = await createActivity(
       otherStudy.id,
@@ -1342,12 +1537,10 @@ describe('Participantes e visitas agendadas (E2E)', () => {
        RETURNING id_visita::text AS id`,
       [participant.participationId, foreignVisitPlan.id],
     );
-    await updateScheduledVisitAs(
-      researcherToken,
-      study.id,
-      scheduled.body.id,
-      { status: 'Realizada', realizedAt: '2025-03-16T13:40:00Z' },
-    ).expect(200);
+    await updateScheduledVisitAs(researcherToken, study.id, scheduled.body.id, {
+      status: 'Realizada',
+      realizedAt: '2025-03-16T13:40:00Z',
+    }).expect(200);
     await updateScheduledVisitAs(
       researcherToken,
       otherStudy.id,
@@ -1356,12 +1549,16 @@ describe('Participantes e visitas agendadas (E2E)', () => {
     ).expect(200);
 
     await request(api())
-      .post(`/studies/${study.id}/scheduled-visits/${foreignScheduled.body.id}/results`)
+      .post(
+        `/studies/${study.id}/scheduled-visits/${foreignScheduled.body.id}/results`,
+      )
       .set('Authorization', bearer(researcherToken))
       .send({ activityId: foreignActivity.id, value: '1' })
       .expect(404);
     await request(api())
-      .post(`/studies/${study.id}/scheduled-visits/${crossStudyVisit.rows[0]!.id}/results`)
+      .post(
+        `/studies/${study.id}/scheduled-visits/${crossStudyVisit.rows[0]!.id}/results`,
+      )
       .set('Authorization', bearer(researcherToken))
       .send({ activityId: foreignActivity.id, value: '1' })
       .expect(404);
@@ -1377,7 +1574,9 @@ describe('Participantes e visitas agendadas (E2E)', () => {
       .send({ status: 'encerrado' })
       .expect(200);
     const closed = await request(api())
-      .post(`/studies/${study.id}/scheduled-visits/${scheduled.body.id}/results`)
+      .post(
+        `/studies/${study.id}/scheduled-visits/${scheduled.body.id}/results`,
+      )
       .set('Authorization', bearer(researcherToken))
       .send({ activityId: activity.id, value: '1' })
       .expect(400);
@@ -1390,30 +1589,43 @@ describe('Participantes e visitas agendadas (E2E)', () => {
 
   it('serializa E06 concorrente e reverte falhas reais de trigger PostgreSQL', async () => {
     const study = await createStudy('E06 concorrência e rollback');
-    const participant = await createParticipant(study.id, 'Participante E06 concorrente');
+    const participant = await createParticipant(
+      study.id,
+      'Participante E06 concorrente',
+    );
     const plannedVisit = await createPlannedVisit(study.id);
-    const activity = await createActivity(study.id, plannedVisit.id, 'Atividade concorrente');
+    const activity = await createActivity(
+      study.id,
+      plannedVisit.id,
+      'Atividade concorrente',
+    );
     const scheduled = await schedule(
       study.id,
       participant.participationId,
       plannedVisit.id,
     ).expect(201);
-    await updateScheduledVisitAs(
-      researcherToken,
-      study.id,
-      scheduled.body.id,
-      { status: 'Realizada', realizedAt: '2025-03-16T13:40:00Z' },
-    ).expect(200);
-    const endpoint =
-      `/studies/${study.id}/scheduled-visits/${scheduled.body.id}/results`;
+    await updateScheduledVisitAs(researcherToken, study.id, scheduled.body.id, {
+      status: 'Realizada',
+      realizedAt: '2025-03-16T13:40:00Z',
+    }).expect(200);
+    const endpoint = `/studies/${study.id}/scheduled-visits/${scheduled.body.id}/results`;
     const payload = { activityId: activity.id, value: 'concorrente' };
     const responses = await Promise.all([
-      request(api()).post(endpoint).set('Authorization', bearer(researcherToken)).send(payload),
-      request(api()).post(endpoint).set('Authorization', bearer(researcherToken)).send(payload),
+      request(api())
+        .post(endpoint)
+        .set('Authorization', bearer(researcherToken))
+        .send(payload),
+      request(api())
+        .post(endpoint)
+        .set('Authorization', bearer(researcherToken))
+        .send(payload),
     ]);
-    expect(responses.map(({ status }) => status).sort((a, b) => a - b)).toEqual([201, 409]);
-    expect(responses.find(({ status }) => status === 409)?.body.code)
-      .toBe('RESULT_ALREADY_REGISTERED');
+    expect(responses.map(({ status }) => status).sort((a, b) => a - b)).toEqual(
+      [201, 409],
+    );
+    expect(responses.find(({ status }) => status === 409)?.body.code).toBe(
+      'RESULT_ALREADY_REGISTERED',
+    );
 
     const database = fixture.app.get(DatabaseService);
     const rollbackStudy = await createStudy('E06 falha de persistência');
@@ -1461,12 +1673,16 @@ describe('Participantes e visitas agendadas (E2E)', () => {
     let responseStatus: number | undefined;
     try {
       const response = await request(api())
-        .post(`/studies/${rollbackStudy.id}/scheduled-visits/${rollbackVisit.body.id}/results`)
+        .post(
+          `/studies/${rollbackStudy.id}/scheduled-visits/${rollbackVisit.body.id}/results`,
+        )
         .set('Authorization', bearer(researcherToken))
         .send({ activityId: rollbackActivity.id, value: 'falha' });
       responseStatus = response.status;
     } finally {
-      await database.query(`DROP TRIGGER ${triggerName} ON resultados_avaliacao`);
+      await database.query(
+        `DROP TRIGGER ${triggerName} ON resultados_avaliacao`,
+      );
       await database.query(`DROP FUNCTION ${functionName}()`);
     }
 
@@ -1483,9 +1699,21 @@ describe('Participantes e visitas agendadas (E2E)', () => {
     const study = await createStudy('E07 histórico completo');
     const participant = await createParticipant(study.id, 'Participante E07');
     const laterPlan = await createPlannedVisit(study.id, 'Visita posterior', 2);
-    const earlierPlan = await createPlannedVisit(study.id, 'Visita anterior', 1);
-    const laterActivity = await createActivity(study.id, laterPlan.id, 'Avaliação posterior');
-    const earlierActivity = await createActivity(study.id, earlierPlan.id, 'Avaliação anterior');
+    const earlierPlan = await createPlannedVisit(
+      study.id,
+      'Visita anterior',
+      1,
+    );
+    const laterActivity = await createActivity(
+      study.id,
+      laterPlan.id,
+      'Avaliação posterior',
+    );
+    const earlierActivity = await createActivity(
+      study.id,
+      earlierPlan.id,
+      'Avaliação anterior',
+    );
     const laterVisit = await schedule(
       study.id,
       participant.participationId,
@@ -1511,7 +1739,9 @@ describe('Participantes e visitas agendadas (E2E)', () => {
       { status: 'Realizada', realizedAt: '2025-03-10T14:00:00Z' },
     ).expect(200);
     await request(api())
-      .post(`/studies/${study.id}/scheduled-visits/${laterVisit.body.id}/results`)
+      .post(
+        `/studies/${study.id}/scheduled-visits/${laterVisit.body.id}/results`,
+      )
       .set('Authorization', bearer(researcherToken))
       .send({
         activityId: laterActivity.id,
@@ -1519,7 +1749,9 @@ describe('Participantes e visitas agendadas (E2E)', () => {
       })
       .expect(201);
     await request(api())
-      .post(`/studies/${study.id}/scheduled-visits/${earlierVisit.body.id}/results`)
+      .post(
+        `/studies/${study.id}/scheduled-visits/${earlierVisit.body.id}/results`,
+      )
       .set('Authorization', bearer(researcherToken))
       .send({
         activityId: earlierActivity.id,
@@ -1527,8 +1759,7 @@ describe('Participantes e visitas agendadas (E2E)', () => {
       })
       .expect(201);
 
-    const endpoint =
-      `/studies/${study.id}/participants/${participant.participationId}/history`;
+    const endpoint = `/studies/${study.id}/participants/${participant.participationId}/history`;
     const response = await request(api())
       .get(endpoint)
       .set('Authorization', bearer(researcherToken))
@@ -1544,10 +1775,9 @@ describe('Participantes e visitas agendadas (E2E)', () => {
       withdrawalReason: null,
     });
     expect(response.body.visits).toHaveLength(2);
-    expect(response.body.visits.map((visit: { id: string }) => visit.id)).toEqual([
-      earlierVisit.body.id,
-      laterVisit.body.id,
-    ]);
+    expect(
+      response.body.visits.map((visit: { id: string }) => visit.id),
+    ).toEqual([earlierVisit.body.id, laterVisit.body.id]);
     expect(response.body.visits[0].results).toMatchObject([
       {
         scheduledVisitId: earlierVisit.body.id,
@@ -1566,7 +1796,9 @@ describe('Participantes e visitas agendadas (E2E)', () => {
         value: 'resultado posterior',
       },
     ]);
-    expect(response.body.visits[0].scheduledAt).toBe('2025-03-10T13:00:00.000Z');
+    expect(response.body.visits[0].scheduledAt).toBe(
+      '2025-03-10T13:00:00.000Z',
+    );
     expect(response.body.visits[0].results[0].registeredAt).toMatch(/Z$/);
 
     await request(api())
@@ -1595,15 +1827,19 @@ describe('Participantes e visitas agendadas (E2E)', () => {
 
   it('E07 mantém histórico sem visitas e visitas sem resultados', async () => {
     const study = await createStudy('E07 histórico vazio');
-    const participant = await createParticipant(study.id, 'Participante sem visita');
-    const endpoint =
-      `/studies/${study.id}/participants/${participant.participationId}/history`;
+    const participant = await createParticipant(
+      study.id,
+      'Participante sem visita',
+    );
+    const endpoint = `/studies/${study.id}/participants/${participant.participationId}/history`;
     await request(api())
       .get(endpoint)
       .set('Authorization', bearer(researcherToken))
       .expect(200)
       .expect(({ body }) => {
-        expect(body.participant.participationId).toBe(participant.participationId);
+        expect(body.participant.participationId).toBe(
+          participant.participationId,
+        );
         expect(body.visits).toEqual([]);
       });
 
@@ -1627,13 +1863,15 @@ describe('Participantes e visitas agendadas (E2E)', () => {
   it('E07 aplica perfis, estados do Coordenador e isolamento do estudo', async () => {
     const study = await createStudy('E07 autorização');
     const foreignStudy = await createStudy('E07 participação externa');
-    const participant = await createParticipant(study.id, 'Participante E07 autorizado');
+    const participant = await createParticipant(
+      study.id,
+      'Participante E07 autorizado',
+    );
     const foreignParticipant = await createParticipant(
       foreignStudy.id,
       'Participante E07 externo',
     );
-    const endpoint =
-      `/studies/${study.id}/participants/${participant.participationId}/history`;
+    const endpoint = `/studies/${study.id}/participants/${participant.participationId}/history`;
 
     await request(api()).get(endpoint).expect(401);
     await request(api())
@@ -1690,26 +1928,29 @@ describe('Participantes e visitas agendadas (E2E)', () => {
     const study = await createStudy('E08 preservação do histórico');
     const participant = await createParticipant(study.id, 'Participante E08');
     const plannedVisit = await createPlannedVisit(study.id);
-    const activity = await createActivity(study.id, plannedVisit.id, 'Avaliação E08');
+    const activity = await createActivity(
+      study.id,
+      plannedVisit.id,
+      'Avaliação E08',
+    );
     const scheduled = await schedule(
       study.id,
       participant.participationId,
       plannedVisit.id,
     ).expect(201);
-    await updateScheduledVisitAs(
-      researcherToken,
-      study.id,
-      scheduled.body.id,
-      { status: 'Realizada', realizedAt: '2025-03-16T13:40:00Z' },
-    ).expect(200);
+    await updateScheduledVisitAs(researcherToken, study.id, scheduled.body.id, {
+      status: 'Realizada',
+      realizedAt: '2025-03-16T13:40:00Z',
+    }).expect(200);
     await request(api())
-      .post(`/studies/${study.id}/scheduled-visits/${scheduled.body.id}/results`)
+      .post(
+        `/studies/${study.id}/scheduled-visits/${scheduled.body.id}/results`,
+      )
       .set('Authorization', bearer(researcherToken))
       .send({ activityId: activity.id, value: 'resultado preservado' })
       .expect(201);
 
-    const endpoint =
-      `/studies/${study.id}/participants/${participant.participationId}/history`;
+    const endpoint = `/studies/${study.id}/participants/${participant.participationId}/history`;
     const historyBefore = await request(api())
       .get(endpoint)
       .set('Authorization', bearer(researcherToken))
@@ -1738,7 +1979,8 @@ describe('Participantes e visitas agendadas (E2E)', () => {
     );
 
     const withdrawalDate = await brazilToday();
-    const reason = '  Participante solicitou desligamento por motivos pessoais.  ';
+    const reason =
+      '  Participante solicitou desligamento por motivos pessoais.  ';
     const response = await registerWithdrawalAs(
       researcherToken,
       study.id,
@@ -1844,10 +2086,13 @@ describe('Participantes e visitas agendadas (E2E)', () => {
     ).expect(201);
 
     const endpoint = `/studies/${study.id}/participants/${unauthorizedParticipant.participationId}/withdrawal`;
-    await request(api()).post(endpoint).send({
-      withdrawalDate: date,
-      reason: 'Sem autenticação.',
-    }).expect(401);
+    await request(api())
+      .post(endpoint)
+      .send({
+        withdrawalDate: date,
+        reason: 'Sem autenticação.',
+      })
+      .expect(401);
     await registerWithdrawalAs(
       otherResearcherToken,
       study.id,
@@ -1868,9 +2113,10 @@ describe('Participantes e visitas agendadas (E2E)', () => {
     ).expect(403);
 
     const database = fixture.app.get(DatabaseService);
-    await database.query(`UPDATE usuarios SET status = 'Inativo' WHERE id_usuario = $1`, [
-      coordinator.id,
-    ]);
+    await database.query(
+      `UPDATE usuarios SET status = 'Inativo' WHERE id_usuario = $1`,
+      [coordinator.id],
+    );
     try {
       await registerWithdrawalAs(
         coordinatorToken,
@@ -1879,9 +2125,10 @@ describe('Participantes e visitas agendadas (E2E)', () => {
         { withdrawalDate: date, reason: 'Coordenador inativo.' },
       ).expect(401);
     } finally {
-      await database.query(`UPDATE usuarios SET status = 'Ativo' WHERE id_usuario = $1`, [
-        coordinator.id,
-      ]);
+      await database.query(
+        `UPDATE usuarios SET status = 'Ativo' WHERE id_usuario = $1`,
+        [coordinator.id],
+      );
     }
 
     const planningStudy = await request(api())
@@ -1924,13 +2171,21 @@ describe('Participantes e visitas agendadas (E2E)', () => {
       'Participante concluído E08',
       'Concluído',
     );
-    const foreign = await createParticipant(otherStudy.id, 'Participante externo E08');
+    const foreign = await createParticipant(
+      otherStudy.id,
+      'Participante externo E08',
+    );
     const date = await brazilToday();
 
-    await registerWithdrawalAs(researcherToken, study.id, active.participationId, {
-      withdrawalDate: '2019-12-31',
-      reason: 'Data anterior à inclusão.',
-    })
+    await registerWithdrawalAs(
+      researcherToken,
+      study.id,
+      active.participationId,
+      {
+        withdrawalDate: '2019-12-31',
+        reason: 'Data anterior à inclusão.',
+      },
+    )
       .expect(400)
       .then((response) =>
         expect(response.body.code).toBe('WITHDRAWAL_DATE_INVALID'),
@@ -1947,6 +2202,9 @@ describe('Participantes e visitas agendadas (E2E)', () => {
       { withdrawalDate: futureDate.rows[0]!.date, reason: 'Data futura.' },
     ).expect(400);
     expect(future.body.code).toBe('WITHDRAWAL_DATE_INVALID');
+    expect(future.body.message).toBe(
+      'A data de retirada deve estar entre a inclusão e a data atual.',
+    );
 
     const alreadyWithdrawn = await registerWithdrawalAs(
       researcherToken,
@@ -1955,6 +2213,9 @@ describe('Participantes e visitas agendadas (E2E)', () => {
       { withdrawalDate: date, reason: 'Retirada repetida.' },
     ).expect(400);
     expect(alreadyWithdrawn.body.code).toBe('PARTICIPATION_NOT_ACTIVE');
+    expect(alreadyWithdrawn.body.message).toBe(
+      'Somente participantes ativos podem ser retirados do estudo.',
+    );
     const alreadyCompleted = await registerWithdrawalAs(
       researcherToken,
       study.id,
@@ -1976,7 +2237,9 @@ describe('Participantes e visitas agendadas (E2E)', () => {
       { withdrawalDate: date, reason: 'Participação inexistente.' },
     ).expect(404);
     await request(api())
-      .post(`/studies/00000000-0000-4000-8000-000000000099/participants/${active.participationId}/withdrawal`)
+      .post(
+        `/studies/00000000-0000-4000-8000-000000000099/participants/${active.participationId}/withdrawal`,
+      )
       .set('Authorization', bearer(researcherToken))
       .send({ withdrawalDate: date, reason: 'Estudo inexistente.' })
       .expect(404);
@@ -2048,13 +2311,12 @@ describe('Participantes e visitas agendadas (E2E)', () => {
         { withdrawalDate: date, reason: 'Segunda tentativa.' },
       ),
     ]);
-    expect(responses.map(({ status }) => status).sort((a, b) => a - b)).toEqual([
-      201,
-      400,
-    ]);
-    expect(
-      responses.find(({ status }) => status === 400)?.body.code,
-    ).toBe('PARTICIPATION_NOT_ACTIVE');
+    expect(responses.map(({ status }) => status).sort((a, b) => a - b)).toEqual(
+      [201, 400],
+    );
+    expect(responses.find(({ status }) => status === 400)?.body.code).toBe(
+      'PARTICIPATION_NOT_ACTIVE',
+    );
 
     const rollbackParticipant = await createParticipant(
       study.id,

@@ -46,7 +46,7 @@ function openStudyDetails(title: string) {
 describe('RF05 e RF06 — critérios, visitas e atividades', () => {
   beforeEach(() => loginAsResearcher());
 
-  it('cadastra, edita e consulta critérios persistidos no backend', () => {
+  it('CYP-RF05-06-01 — cadastra, edita e consulta critérios persistidos no backend', () => {
     const title = `Estudo Cypress com critérios ${Date.now()}`;
     const originalCriterion = `Participante com idade mínima ${Date.now()}`;
     const updatedCriterion = `${originalCriterion} confirmado`;
@@ -88,7 +88,7 @@ describe('RF05 e RF06 — critérios, visitas e atividades', () => {
       .find('.study-criteria-item p').should('have.text', updatedCriterion);
   });
 
-  it('persiste visitas e atividades, rejeita ordem duplicada e bloqueia cadastro após encerramento', () => {
+  it('CYP-RF06-07-01 — persiste visitas e atividades, valida ordem e bloqueia alterações após encerramento', () => {
     const title = `Estudo Cypress com visitas ${Date.now()}`;
     const visitName = `Visita inicial ${Date.now()}`;
     const activityName = `Coleta clínica ${Date.now()}`;

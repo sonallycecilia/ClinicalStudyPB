@@ -89,6 +89,15 @@ describe('VisitStatusForm', () => {
     expect(props.onUpdate).not.toHaveBeenCalled();
   });
 
+  it('valida o limite de caracteres da observação antes de atualizar', async () => {
+    const props = setup();
+    choose('Ausente');
+    fireEvent.change(screen.getByLabelText('Observação (opcional)'), { target: { value: 'x'.repeat(2001) } });
+    await act(async () => { fireEvent.click(confirmButton()); });
+    expect(screen.getByText('A observação deve ter até 2000 caracteres.')).toBeTruthy();
+    expect(props.onUpdate).not.toHaveBeenCalled();
+  });
+
   it('registra Realizada com realizedAt em ISO e observação alterada, e só então confirma', async () => {
     const props = setup();
     choose('Realizada');

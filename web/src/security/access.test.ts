@@ -6,7 +6,7 @@ describe('permissões por perfil — tasks 3078, 3081 e 3094', () => {
     expect(menuForRole('Administrador').map((item) => item.path)).toEqual(['/usuarios']);
     expect(menuForRole('Pesquisador').map((item) => item.path)).toEqual(['/estudos']);
     expect(menuForRole('Coordenador').map((item) => item.path)).toEqual([
-      '/coordenador/painel', '/coordenador/candidatos', '/coordenador/visitas',
+      '/coordenador/painel', '/coordenador/candidatos', '/coordenador/participantes', '/coordenador/visitas',
       '/coordenador/reagendamentos', '/coordenador/relatorios',
     ]);
   });
@@ -40,5 +40,23 @@ describe('permissões por perfil — tasks 3078, 3081 e 3094', () => {
     expect(canAccessRoute('Pesquisador', path)).toBe(false);
     expect(canAccessRoute(undefined, path)).toBe(false);
     expect(canAccessRoute('Coordenador', `${path}/nao-autorizado`)).toBe(false);
+  });
+
+  it('autoriza somente o Coordenador na tela de participantes incluídos, sem ampliar permissões', () => {
+    const path = '/coordenador/participantes';
+    expect(canAccessRoute('Coordenador', path)).toBe(true);
+    expect(canAccessRoute('Administrador', path)).toBe(false);
+    expect(canAccessRoute('Pesquisador', path)).toBe(false);
+    expect(canAccessRoute(undefined, path)).toBe(false);
+    expect(canAccessRoute('Coordenador', `${path}/outro`)).toBe(false);
+    expect(menuForRole('Pesquisador').map((item) => item.path)).not.toContain(path);
+    expect(menuForRole('Administrador').map((item) => item.path)).not.toContain(path);
+  });
+
+  it.each(['/coordenador/visitas', '/coordenador/reagendamentos'] as const)('restringe %s ao Coordenador', (path) => {
+    expect(canAccessRoute('Coordenador', path)).toBe(true);
+    expect(canAccessRoute('Pesquisador', path)).toBe(false);
+    expect(canAccessRoute('Administrador', path)).toBe(false);
+    expect(canAccessRoute(undefined, path)).toBe(false);
   });
 });

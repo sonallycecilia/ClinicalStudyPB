@@ -72,6 +72,21 @@ export class StudiesController {
     return this.studiesService.listAvailableForRecruitment();
   }
 
+  @Get('acompanhamento')
+  @Roles('Coordenador')
+  @ApiOperation({ summary: 'Listar estudos em recrutamento, execução ou encerrados para acompanhamento de participantes' })
+  @ApiOkResponse({ description: 'ID, título e fase dos estudos que o Coordenador pode acompanhar. Estudos encerrados são somente leitura.', schema: {
+    type: 'array', items: { type: 'object', properties: {
+      id: { type: 'string', format: 'uuid' }, title: { type: 'string' },
+      status: { type: 'string', enum: ['recrutamento', 'execução', 'encerrado'] },
+    } },
+  } })
+  @ApiUnauthorizedResponse({ description: 'Sessão ausente ou inválida.', type: ApiErrorResponseDto })
+  @ApiForbiddenResponse({ description: 'Consulta restrita ao Coordenador.', type: ApiErrorResponseDto })
+  listForFollowUp() {
+    return this.studiesService.listForFollowUp();
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Consultar um estudo pelo identificador' })
   @ApiParam({ name: 'id', description: 'UUID do estudo.', format: 'uuid', example: 'e34e7889-4221-4a63-9f15-5e4d60c5955b' })

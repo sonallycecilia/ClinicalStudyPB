@@ -177,6 +177,15 @@ describe('ScheduleVisitForm', () => {
     expect(props.onSchedule).not.toHaveBeenCalled();
   });
 
+  it('valida o limite de caracteres da observação antes de enviar', async () => {
+    const props = setup();
+    await fillValid();
+    fireEvent.change(field('Observação (opcional)'), { target: { value: 'x'.repeat(2001) } });
+    await act(async () => { fireEvent.click(submitButton()); });
+    expect(screen.getByText('A observação deve ter até 2000 caracteres.')).toBeTruthy();
+    expect(props.onSchedule).not.toHaveBeenCalled();
+  });
+
   it('limpa participante e visita prevista ao trocar de estudo', async () => {
     setup();
     await fillValid();

@@ -85,6 +85,17 @@ describe('StudiesService com PostgreSQL', () => {
     expect(users.findById).not.toHaveBeenCalled();
   });
 
+  it('lista para acompanhamento apenas estudos em recrutamento, execução ou encerrados, sem planejamento', async () => {
+    const rows = [{ id: studyId, title: payload.title, status: StudyStatus.Execucao }];
+    database.query.mockResolvedValue({ rows, rowCount: 1 });
+    await expect(service.listForFollowUp()).resolves.toEqual(rows);
+    expect(database.query).toHaveBeenCalledWith(
+      expect.stringContaining('status = ANY($1::text[])'),
+      [[StudyStatus.Recrutamento, StudyStatus.Execucao, StudyStatus.Encerrado]],
+    );
+    expect(users.findById).not.toHaveBeenCalled();
+  });
+
   it('autoriza Coordenador ativo no RF08 em recrutamento, sem exigir propriedade', async () => {
     users.findById.mockResolvedValue({ ...researcher, id: adminId, role: 'Coordenador' });
     database.query.mockResolvedValue({ rows: [{ ...baseStudyRow, status: StudyStatus.Recrutamento }], rowCount: 1 });
