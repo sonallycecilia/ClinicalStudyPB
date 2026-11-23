@@ -2,8 +2,10 @@ import { act, fireEvent, renderRouter, screen, waitFor } from 'expo-router/testi
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import * as SecureStore from 'expo-secure-store';
 import { router } from 'expo-router';
-import { participantVisitsService, ParticipantVisitsUnavailableError, type Visit, visitsForScope } from '../../visits/participantVisitsApi';
+import { participantVisitsService, type Visit, visitsForScope } from '../../visits/participantVisitsApi';
+import { HttpError } from '../../api/http';
 import { visits } from '../../../tests/fixtures/visits';
+import { completeFirstAccess } from '../../../tests/fixtures/completeFirstAccess';
 
 jest.mock('../../visits/participantVisitsApi', () => ({
   ...jest.requireActual<typeof import('../../visits/participantVisitsApi')>('../../visits/participantVisitsApi'),
@@ -18,12 +20,14 @@ Object.defineProperty(globalThis, 'fetch', { configurable: true, writable: true,
 const user = { id: 'participant', name: 'Bianca Oliveira', email: 'bianca.oliveira@clinicalstudypb.test', phone: '', role: 'Participante', status: 'Ativo', createdAt: '2026-11-01T00:00:00.000Z' };
 const previousUrl = process.env.EXPO_PUBLIC_API_URL;
 beforeEach(() => {
+  jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-11-22T12:00:00Z'));
   process.env.EXPO_PUBLIC_API_URL = 'http://localhost:3000';
   fetchMock.mockReset();
-  listMock.mockReset().mockRejectedValue(new ParticipantVisitsUnavailableError());
+  listMock.mockReset().mockRejectedValue(new HttpError(404));
   jest.mocked(SecureStore.getItemAsync).mockReset().mockResolvedValue(null);
 });
 afterEach(() => {
+  jest.restoreAllMocks();
   if (previousUrl === undefined) delete process.env.EXPO_PUBLIC_API_URL;
   else process.env.EXPO_PUBLIC_API_URL = previousUrl;
 });
@@ -33,6 +37,7 @@ async function openVisits() {
   jest.mocked(SecureStore.getItemAsync).mockResolvedValue('saved-token');
   fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => user } as Response);
   const app = await renderRouter('./src/app', { initialUrl: '/' });
+  await completeFirstAccess();
   await waitFor(() => expect(app.getPathname()).toBe('/'));
   await fireEvent.press(screen.getByRole('tab', { name: 'Visitas' }));
   await waitFor(() => expect(app.getPathname()).toBe('/visitas'));
@@ -50,16 +55,17 @@ describe('Visitas — navegação autenticada', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('mostra a dependência real, sem dados fictícios, para o participante autenticado', async () => {
+  it('mostra indisponibilidade sem dados fictícios para o participante autenticado', async () => {
     jest.mocked(SecureStore.getItemAsync).mockResolvedValue('saved-token');
     fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => user } as Response);
     const app = await renderRouter('./src/app', { initialUrl: '/visitas' });
+    await completeFirstAccess();
     await waitFor(() => expect(app.getPathname()).toBe('/'));
     await fireEvent.press(screen.getByRole('tab', { name: 'Visitas' }));
     await waitFor(() => expect(app.getPathname()).toBe('/visitas'));
-    expect(await screen.findByText(/A consulta das visitas.*S3-BE-07/)).toBeTruthy();
+    expect(await screen.findByText(/O recurso solicitado não foi encontrado/)).toBeTruthy();
     expect(screen.queryByText('Visita A')).toBeNull();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('navega por detalhes, confirmação, reagendamento, calendário e histórico sem enviar operações', async () => {
@@ -96,9 +102,14 @@ describe('Visitas — navegação autenticada', () => {
     expect(await screen.findByText('Ausente')).toBeTruthy();
     expect(screen.getByText('Cancelada')).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Ver detalhes de Visita D' }));
+    await waitFor(() => expect(app.getPathname()).toBe('/visitas/4'));
     expect(screen.queryByRole('button', { name: 'Confirmar presença' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Solicitar reagendamento' })).toBeNull();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await fireEvent.press(screen.getByRole('button', { name: 'Voltar para visitas' }));
+    await waitFor(() => expect(app.getPathname()).toBe('/visitas'));
+    expect(screen.getByRole('tab', { name: 'Histórico' }).props.accessibilityState.selected).toBe(true);
+    expect(screen.getByRole('button', { name: 'Ver detalhes de Visita D' })).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(String(fetchMock.mock.calls[0][0])).toContain("/auth/me");
   });
 
@@ -126,5 +137,16 @@ describe('Visitas — navegação autenticada', () => {
     await act(async () => { router.push('/visitas/inexistente'); });
     expect(await screen.findByText('Visita não encontrada nesta agenda.')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Confirmar presença' })).toBeNull();
+  });
+
+  it('preserva detalhes quando E10 não fornece código, local ou instruções de preparo', async () => {
+    listMock.mockResolvedValue([{ ...visits[0], code: undefined, location: undefined, preparation: undefined }]);
+    await openVisits();
+    await fireEvent.press(await screen.findByRole('button', { name: 'Ver detalhes de Visita A' }));
+    expect(await screen.findByText('Visita 01')).toBeTruthy();
+    expect(screen.getByText('Local a informar')).toBeTruthy();
+    expect(screen.queryByText('Código TEST-1')).toBeNull();
+    expect(screen.queryByText('INSTRUÇÕES DE PREPARO')).toBeNull();
+    expect(screen.queryByText(/Chegue com 15 minutos/)).toBeNull();
   });
 });

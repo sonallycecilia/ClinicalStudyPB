@@ -1,3 +1,6 @@
+import type { AuthenticatedHttpClient } from '../api/http';
+import { hasStrings, invalidListResponse, isDate, isRecord } from '../api/validation';
+
 export type VisitStatus = 'Agendada' | 'Realizada' | 'Ausente' | 'Cancelada';
 export type VisitScope = 'upcoming' | 'history';
 
@@ -23,24 +26,33 @@ export interface Visit extends ParticipantVisit {
 }
 
 export interface ParticipantVisitsService {
-  listForAuthenticatedParticipant(scope: VisitScope): Promise<Visit[]>;
+  listForAuthenticatedParticipant(scope: VisitScope, client: AuthenticatedHttpClient): Promise<Visit[]>;
 }
 
-export class ParticipantVisitsUnavailableError extends Error {
-  constructor() {
-    super('A consulta das visitas do participante ainda não está disponível. Aguarde a implementação da S3-BE-07.');
-    this.name = 'ParticipantVisitsUnavailableError';
-  }
+function isParticipantVisit(value: unknown): value is ParticipantVisit {
+  return isRecord(value)
+    && hasStrings(value, ['id', 'participationId', 'studyId', 'studyTitle', 'plannedVisitName'])
+    && Number.isInteger(value.plannedVisitOrder)
+    && isDate(value.scheduledAt)
+    && ['Agendada', 'Realizada', 'Ausente', 'Cancelada'].includes(value.status as string)
+    && (value.realizedAt === null || isDate(value.realizedAt));
 }
 
 // No /studies/:id/visits fallback: that route is RF06 and is not participant data.
 export const participantVisitsService: ParticipantVisitsService = {
-  async listForAuthenticatedParticipant() { throw new ParticipantVisitsUnavailableError(); },
+  async listForAuthenticatedParticipant(scope, client) {
+    const data = await client.get(`/me/visits?scope=${encodeURIComponent(scope)}`);
+    if (!Array.isArray(data) || !data.every(isParticipantVisit)) throw invalidListResponse();
+    return data;
+  },
 };
 
 export function visitsForScope(visits: Visit[], scope: VisitScope): Visit[] {
-  // E10 includes overdue scheduled visits; attendance status defines the scope.
-  return visits.filter(visit => scope === 'upcoming' ? visit.status === 'Agendada' : visit.status !== 'Agendada')
+  // E10 compares the full instant, including its timezone, and excludes overdue appointments.
+  const now = Date.now();
+  return visits.filter(visit => scope === 'upcoming'
+    ? visit.status === 'Agendada' && Date.parse(visit.scheduledAt) > now
+    : ['Realizada', 'Ausente', 'Cancelada'].includes(visit.status))
     .sort((a, b) => (Date.parse(a.scheduledAt) - Date.parse(b.scheduledAt)) * (scope === 'upcoming' ? 1 : -1));
 }
 
