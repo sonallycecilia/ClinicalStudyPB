@@ -23,7 +23,14 @@ export function VisitsProvider({ children }: { children: ReactNode }) {
     async function load() {
       try {
         const visits = await participantVisitsService.listForAuthenticatedParticipant(scope, sessionClient);
-        save({ kind: 'success', visits: visitsForScope(visits, scope) });
+        // Local fictício solicitado para as visitas de demonstração da Bianca.
+        const displayVisits = visits.map(visit => __DEV__
+          && user?.email === 'bianca.oliveira@clinicalstudypb.test'
+          && ['S3M05 Bianca — visita futura', 'S3M05 Bianca — visita realizada'].includes(visit.plannedVisitName)
+          && !visit.location
+          ? { ...visit, location: 'Centro de Pesquisa ClinicalStudyPB — João Pessoa/PB ' }
+          : visit);
+        save({ kind: 'success', visits: visitsForScope(displayVisits, scope) });
       } catch (reason) {
         save({ kind: 'error', message: reason instanceof Error ? reason.message : 'Não foi possível carregar suas visitas. Tente novamente.' });
       }

@@ -104,7 +104,9 @@ Visitas agendadas cujo horário já passou não são incluídas automaticamente 
 
 Os cartões e detalhes apresentam estudo, nome da visita prevista, situação, data, dia da semana e horário no fuso local do dispositivo. Os detalhes utilizam os dados carregados para a agenda atual; uma visita ausente apresenta **Visita não encontrada nesta agenda.** A aba selecionada é mantida ao retornar dos detalhes para a lista.
 
-O contrato atual da API não fornece código da visita, local, endereço ou instruções de preparo. A interface utiliza **Visita NN** e **Local a informar** como alternativas e só exibe o bloco de preparo quando esse dado estiver disponível. Esses campos não são preenchidos com dados fictícios.
+O contrato atual da API não fornece código da visita, local, endereço ou instruções de preparo. A interface utiliza **Visita NN** e **Local a informar** como alternativas e só exibe o bloco de preparo quando esse dado estiver disponível.
+
+Em desenvolvimento, as visitas **S3M05 Bianca — visita futura** e **S3M05 Bianca — visita realizada**, da conta `bianca.oliveira@clinicalstudypb.test`, exibem o local fictício **Centro de Pesquisa ClinicalStudyPB — João Pessoa/PB** na lista e nos detalhes. A visita futura também exibe esse local nas prévias de ações. Esse exemplo é aplicado somente quando a visita não possui local informado e não é gravado no backend. As demais visitas mantêm os dados recebidos ou a indicação **Local a informar**.
 
 Para visitas agendadas, estão disponíveis as seguintes prévias:
 
