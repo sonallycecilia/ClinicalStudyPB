@@ -34,7 +34,7 @@ Os resultados de Backend abaixo estão registrados na sequência das rodadas, ma
 ### Rodada 1 — Backend / S3-QA-03
 
 - Lint passou e os testes unitários passaram: **76/76**.
-- Os **29 testes E2E**, nas suítes [participant-visits.e2e-spec.ts](../../../../backend/test/participant-visits.e2e-spec.ts) e [participant-self-service.e2e-spec.ts](../../../../backend/test/participant-self-service.e2e-spec.ts), não chegaram às assertions: falharam ao conectar ao PostgreSQL em `localhost:5433` (`ECONNREFUSED`).
+- Os **29 testes E2E**, nas suítes [participant-visits.e2e-spec.ts](../../../../../backend/test/participant-visits.e2e-spec.ts) e [participant-self-service.e2e-spec.ts](../../../../../backend/test/participant-self-service.e2e-spec.ts), não chegaram às assertions: falharam ao conectar ao PostgreSQL em `localhost:5433` (`ECONNREFUSED`).
 - **Diagnóstico registrado:** PostgreSQL/Docker Compose indisponível. Esta rodada indica bloqueio de ambiente, não falha funcional comprovada pelas assertions.
 - **Ação para a rodada seguinte:** iniciar o PostgreSQL do Compose em `localhost:5433`.
 
@@ -56,20 +56,20 @@ Os resultados de Backend abaixo estão registrados na sequência das rodadas, ma
 - **Primeira tentativa:** `npm.cmd --prefix mobile test -- --runInBand` não iniciou porque `jest` não era reconhecido no ambiente.
 - **Ação tomada:** `npm.cmd ci --prefix mobile` instalou as dependências do lockfile; não foi alterado código-fonte para destravar o teste.
 - **Reexecução:** Jest + React Native Testing Library passou em **10/10 suítes e 71/71 testes**; `typecheck` e `lint` também passaram.
-- **Limite de escopo:** isso valida os componentes e a regressão já cobertos por mocks. Não valida chamadas reais E09/E10, pois [participantStudiesApi.ts](../../../../mobile/src/studies/participantStudiesApi.ts) e [participantVisitsApi.ts](../../../../mobile/src/visits/participantVisitsApi.ts) ainda lançam erros de serviço indisponível.
+- **Limite de escopo:** isso valida os componentes e a regressão já cobertos por mocks. Não valida chamadas reais E09/E10, pois [participantStudiesApi.ts](../../../../../mobile/src/studies/participantStudiesApi.ts) e [participantVisitsApi.ts](../../../../../mobile/src/visits/participantVisitsApi.ts) ainda lançam erros de serviço indisponível.
 - A pendência P-01, sobre o vínculo `candidatos.id_usuario`, permanece documentada; a tela Mobile não distingue ausência de participação de candidato sem vínculo.
 
 ## 4. Detalhamento por Requisito — RF12 a RF18
 
 | Requisito | Validado no Backend | Web / Mobile e bloqueios | Evidências |
 |---|---|---|---|
-| **RF12 — Agendamento (E01–E03)** | Coberto na rodada E2E aprovada: consulta, filtros, criação de agendamento, validação de vínculo/limite, concorrência e datas. | Integração real Web com E01–E03 continua pendente segundo o plano. | [participant-visits.e2e-spec.ts](../../../../backend/test/participant-visits.e2e-spec.ts); [visits.service.spec.ts](../../../../backend/src/studies/visits.service.spec.ts); [visits.dto.spec.ts](../../../../backend/src/studies/visits.dto.spec.ts). |
-| **RF13 — Situação da visita (E04)** | Coberto na rodada E2E aprovada: transições, autorização, concorrência e rollback. Os erros de banco nos testes de rollback são esperados e validados. | Integração real Web com E04 pendente; o plano registra estados locais diferentes do contrato. | [participant-visits.e2e-spec.ts](../../../../backend/test/participant-visits.e2e-spec.ts); [visits.service.spec.ts](../../../../backend/src/studies/visits.service.spec.ts). |
-| **RF14 — Resultados (E05–E06)** | Coberto na rodada E2E aprovada: leitura/ordem de atividades, registro, autorização, duplicidade e rollback. | Não há integração funcional Web registrada para RF14. | [participant-visits.e2e-spec.ts](../../../../backend/test/participant-visits.e2e-spec.ts); [assessment-results.service.spec.ts](../../../../backend/src/studies/assessment-results.service.spec.ts). |
-| **RF15 — Histórico da equipe (E07)** | Coberto na rodada E2E aprovada: histórico cronológico, histórico sem visitas, visitas sem resultados e isolamento/autorização. | Integração Web com E07 não identificada no plano; a tela de relatórios contém dados locais de exemplo. | [participant-visits.e2e-spec.ts](../../../../backend/test/participant-visits.e2e-spec.ts); [visits.service.spec.ts](../../../../backend/src/studies/visits.service.spec.ts). |
-| **RF16 — Retirada (E08)** | Coberto na rodada E2E aprovada: retirada e preservação de visitas/resultados, permissões, validações, concorrência e rollback. | Confirmação visual e envio real de E08 pela Web continuam pendentes. | [participant-visits.e2e-spec.ts](../../../../backend/test/participant-visits.e2e-spec.ts); [candidates.service.spec.ts](../../../../backend/src/studies/candidates.service.spec.ts). |
-| **RF17 — Estudos do participante (E09)** | Coberto na rodada E2E aprovada para estudos próprios, estados de participação, lista vazia e autorização/validação. A semântica de candidato sem vínculo prevê `[]` enquanto P-01 não for resolvido. | Testes Mobile aprovam apresentação com dados mockados, estado vazio, erro/repetição e proteção de sessão. A consulta real E09 está bloqueada pelo placeholder; P-01 não está validado com integração de cadastro real. | [participant-self-service.e2e-spec.ts](../../../../backend/test/participant-self-service.e2e-spec.ts); [participant-self-service.service.spec.ts](../../../../backend/src/studies/participant-self-service.service.spec.ts); [HomeScreen.test.tsx](../../../../mobile/src/screens/__tests__/HomeScreen.test.tsx); [participantStudiesApi.test.ts](../../../../mobile/src/studies/__tests__/participantStudiesApi.test.ts). |
-| **RF18 — Próximas visitas e histórico próprio (E10)** | Coberto na rodada E2E aprovada para `upcoming`/`history`, estados, ordenação, isolamento e validação/autorização. | Testes Mobile cobrem telas, escopos vazios, erros simulados e repetição; serviço real E10 permanece bloqueado pelo placeholder. O contrato não expõe `observation` nem resultados de avaliação. | [participant-self-service.e2e-spec.ts](../../../../backend/test/participant-self-service.e2e-spec.ts); [participant-visits.service.spec.ts](../../../../backend/src/studies/participant-visits.service.spec.ts); [visits-navigation.test.tsx](../../../../mobile/src/routes/__tests__/visits-navigation.test.tsx); [VisitsContext.test.tsx](../../../../mobile/src/visits/__tests__/VisitsContext.test.tsx); [participantVisitsApi.test.ts](../../../../mobile/src/visits/__tests__/participantVisitsApi.test.ts). |
+| **RF12 — Agendamento (E01–E03)** | Coberto na rodada E2E aprovada: consulta, filtros, criação de agendamento, validação de vínculo/limite, concorrência e datas. | Integração real Web com E01–E03 continua pendente segundo o plano. | [participant-visits.e2e-spec.ts](../../../../../backend/test/participant-visits.e2e-spec.ts); [visits.service.spec.ts](../../../../../backend/src/studies/visits.service.spec.ts); [visits.dto.spec.ts](../../../../../backend/src/studies/visits.dto.spec.ts). |
+| **RF13 — Situação da visita (E04)** | Coberto na rodada E2E aprovada: transições, autorização, concorrência e rollback. Os erros de banco nos testes de rollback são esperados e validados. | Integração real Web com E04 pendente; o plano registra estados locais diferentes do contrato. | [participant-visits.e2e-spec.ts](../../../../../backend/test/participant-visits.e2e-spec.ts); [visits.service.spec.ts](../../../../../backend/src/studies/visits.service.spec.ts). |
+| **RF14 — Resultados (E05–E06)** | Coberto na rodada E2E aprovada: leitura/ordem de atividades, registro, autorização, duplicidade e rollback. | Não há integração funcional Web registrada para RF14. | [participant-visits.e2e-spec.ts](../../../../../backend/test/participant-visits.e2e-spec.ts); [assessment-results.service.spec.ts](../../../../../backend/src/studies/assessment-results.service.spec.ts). |
+| **RF15 — Histórico da equipe (E07)** | Coberto na rodada E2E aprovada: histórico cronológico, histórico sem visitas, visitas sem resultados e isolamento/autorização. | Integração Web com E07 não identificada no plano; a tela de relatórios contém dados locais de exemplo. | [participant-visits.e2e-spec.ts](../../../../../backend/test/participant-visits.e2e-spec.ts); [visits.service.spec.ts](../../../../../backend/src/studies/visits.service.spec.ts). |
+| **RF16 — Retirada (E08)** | Coberto na rodada E2E aprovada: retirada e preservação de visitas/resultados, permissões, validações, concorrência e rollback. | Confirmação visual e envio real de E08 pela Web continuam pendentes. | [participant-visits.e2e-spec.ts](../../../../../backend/test/participant-visits.e2e-spec.ts); [candidates.service.spec.ts](../../../../../backend/src/studies/candidates.service.spec.ts). |
+| **RF17 — Estudos do participante (E09)** | Coberto na rodada E2E aprovada para estudos próprios, estados de participação, lista vazia e autorização/validação. A semântica de candidato sem vínculo prevê `[]` enquanto P-01 não for resolvido. | Testes Mobile aprovam apresentação com dados mockados, estado vazio, erro/repetição e proteção de sessão. A consulta real E09 está bloqueada pelo placeholder; P-01 não está validado com integração de cadastro real. | [participant-self-service.e2e-spec.ts](../../../../../backend/test/participant-self-service.e2e-spec.ts); [participant-self-service.service.spec.ts](../../../../../backend/src/studies/participant-self-service.service.spec.ts); [HomeScreen.test.tsx](../../../../../mobile/src/screens/__tests__/HomeScreen.test.tsx); [participantStudiesApi.test.ts](../../../../../mobile/src/studies/__tests__/participantStudiesApi.test.ts). |
+| **RF18 — Próximas visitas e histórico próprio (E10)** | Coberto na rodada E2E aprovada para `upcoming`/`history`, estados, ordenação, isolamento e validação/autorização. | Testes Mobile cobrem telas, escopos vazios, erros simulados e repetição; serviço real E10 permanece bloqueado pelo placeholder. O contrato não expõe `observation` nem resultados de avaliação. | [participant-self-service.e2e-spec.ts](../../../../../backend/test/participant-self-service.e2e-spec.ts); [participant-visits.service.spec.ts](../../../../../backend/src/studies/participant-visits.service.spec.ts); [visits-navigation.test.tsx](../../../../../mobile/src/routes/__tests__/visits-navigation.test.tsx); [VisitsContext.test.tsx](../../../../../mobile/src/visits/__tests__/VisitsContext.test.tsx); [participantVisitsApi.test.ts](../../../../../mobile/src/visits/__tests__/participantVisitsApi.test.ts). |
 
 Os totais unitários de Backend são globais (**76 testes**) e não foram particionados por RF nas evidências desta execução.
 
@@ -115,23 +115,23 @@ Os totais unitários de Backend são globais (**76 testes**) e não foram partic
 ## 6. Rodada S3-QA-04 — Validação Web RF12–RF16 — 2026-11-22
 
 - **Branch / HEAD:** `test/sprint-3-qa-leticia` / `08e11ff`.
-- **Referências:** [plano de testes RF12–RF18](./plano-testes-massa-dados-rf12-rf18.md), [contratos da API RF12–RF18](./contratos-api-rf12-rf18.md) e [matriz de acesso](./matriz-acesso-e-identificacao-participante-rf12-rf18.md).
+- **Referências:** [plano de testes RF12–RF18](./plano-testes-massa-dados-rf12-rf18.md), [contratos da API RF12–RF18](../contratos-api-rf12-rf18.md) e [matriz de acesso](../matriz-acesso-e-identificacao-participante-rf12-rf18.md).
 - **Histórico que já estava em `origin/main`:** merge do PR #34 (`fa7390b`, 22/11), precedido pelo PR #31 (`8cc1717`). Entre os commits incorporados estão `a1fc9c7` (cliente de visitas), `b99e620` (seleção e histórico), `c42290c` (fluxos de participantes/agendamento), `230d35e` (histórico completo) e `80a3777` (simplificação da página do Coordenador). A integração descrita abaixo já existia antes desta rodada de QA.
 
 ### Mapeamento de componentes e integração
 
 | RF | Páginas/componentes e serviços | Estado verificado |
 |---|---|---|
-| **RF12 — Agendamento** | `/coordenador/visitas` em [coordenatorPage.tsx](../../../../web/src/pages/coordenatorPage.tsx); `ScheduleVisitForm`; `useRecruitmentStudies`; `visitsApi.list` (X02) e `scheduledVisitsApi.listActiveParticipants` (E01), `schedule` (E02), `listScheduledVisits` (E03). | Formulário e agenda usam `request` autenticado, selecionam participante ativo/visita prevista, persistem e recarregam a agenda. Os testes cobrem validação, carregamento, vazio, sucesso, erros HTTP e rede. **Limite:** a escolha de estudos usa `/studies/disponiveis-recrutamento`; estudos em execução, embora aceitos pelo contrato para a equipe, ainda não são oferecidos nessa tela. X03 não é chamado nessa tela. |
+| **RF12 — Agendamento** | `/coordenador/visitas` em [coordenatorPage.tsx](../../../../../web/src/pages/coordenatorPage.tsx); `ScheduleVisitForm`; `useRecruitmentStudies`; `visitsApi.list` (X02) e `scheduledVisitsApi.listActiveParticipants` (E01), `schedule` (E02), `listScheduledVisits` (E03). | Formulário e agenda usam `request` autenticado, selecionam participante ativo/visita prevista, persistem e recarregam a agenda. Os testes cobrem validação, carregamento, vazio, sucesso, erros HTTP e rede. **Limite:** a escolha de estudos usa `/studies/disponiveis-recrutamento`; estudos em execução, embora aceitos pelo contrato para a equipe, ainda não são oferecidos nessa tela. X03 não é chamado nessa tela. |
 | **RF13 — Situação** | `VisitStatusModal` + `VisitStatusForm` na mesma página; `scheduledVisitsApi.updateStatus` (E04) e atualização/reconsulta de E03. | Atualiza situação apenas após resposta do servidor; valida data futura/vazia para “Realizada”; estados finais ficam somente para consulta. Erros de transição/estudo encerrado são preservados e reportados. |
-| **RF14 — Resultados** | [StudiesPage.tsx](../../../../web/src/pages/StudiesPage.tsx) monta `StudyScheduledVisitsSection`; `VisitResultsPanel` chama `getResults` (E05) e `registerResult` (E06). Na página do Coordenador, `VisitStatusModal` oferece apenas E05 e `readOnlyNotice`, sem E06. | **Implementado para Pesquisador** em visita realizada e estudo não encerrado; resultado atualiza a atividade somente após retorno da API. O Coordenador consulta, mas não registra, conforme D-04. Estudos encerrados são somente leitura. A consulta de atividades usa E05; X03 não é necessário no formulário de resultados. |
+| **RF14 — Resultados** | [StudiesPage.tsx](../../../../../web/src/pages/StudiesPage.tsx) monta `StudyScheduledVisitsSection`; `VisitResultsPanel` chama `getResults` (E05) e `registerResult` (E06). Na página do Coordenador, `VisitStatusModal` oferece apenas E05 e `readOnlyNotice`, sem E06. | **Implementado para Pesquisador** em visita realizada e estudo não encerrado; resultado atualiza a atividade somente após retorno da API. O Coordenador consulta, mas não registra, conforme D-04. Estudos encerrados são somente leitura. A consulta de atividades usa E05; X03 não é necessário no formulário de resultados. |
 | **RF15 — Histórico** | `/coordenador/visitas` inclui `ParticipantHistoryPanel`; `scheduledVisitsApi.listParticipants` (E01) e `getHistory` (E07). | Histórico cronológico, retirados, lista sem participantes, histórico sem visitas, resultado indisponível e erro/repetição estão cobertos. `StudyParticipantHistorySection.tsx` também existe, mas não está montado em `StudiesPage` nesta versão. `/coordenador/relatorios` continua com métricas e linhas locais demonstrativas; não é fonte do histórico RF15. |
 | **RF16 — Retirada** | A seção de histórico na página do Coordenador usa `WithdrawalForm` + `scheduledVisitsApi.registerWithdrawal` (E08). A rota `/coordenador/participantes` também dispõe de `WithdrawalPanel` com `participantsApi.registerWithdrawal`. | Motivo obrigatório (trim), data dentro da janela, confirmação, loading, sucesso e erros do serviço estão cobertos. A retirada atualiza situação/data/motivo e preserva visitas/resultados. Não foi imposto limite de caracteres ao motivo: o contrato não define um máximo. |
 
 ### Suítes e cobertura executada
 
-- Componentes/formulários: [ScheduleVisitForm.test.tsx](../../../../web/src/visits/ScheduleVisitForm.test.tsx), [VisitStatusForm.test.tsx](../../../../web/src/visits/VisitStatusForm.test.tsx), [VisitResultsPanel.test.tsx](../../../../web/src/visits/VisitResultsPanel.test.tsx), [ParticipantHistoryPanel.test.tsx](../../../../web/src/visits/ParticipantHistoryPanel.test.tsx) e [WithdrawalForm.test.tsx](../../../../web/src/visits/WithdrawalForm.test.tsx).
-- Integração visual/API: [coordenatorPage.test.tsx](../../../../web/src/pages/coordenatorPage.test.tsx), [StudyScheduledVisitsSection.test.tsx](../../../../web/src/visits/StudyScheduledVisitsSection.test.tsx), [scheduledVisitsApi.test.ts](../../../../web/src/visits/scheduledVisitsApi.test.ts) e [participantsRoutes.test.tsx](../../../../web/src/participants/participantsRoutes.test.tsx). O cliente de visitas verifica caminhos/payloads E01–E08, códigos 400/401/403/404/409/500 e falha de rede.
+- Componentes/formulários: [ScheduleVisitForm.test.tsx](../../../../../web/src/visits/ScheduleVisitForm.test.tsx), [VisitStatusForm.test.tsx](../../../../../web/src/visits/VisitStatusForm.test.tsx), [VisitResultsPanel.test.tsx](../../../../../web/src/visits/VisitResultsPanel.test.tsx), [ParticipantHistoryPanel.test.tsx](../../../../../web/src/visits/ParticipantHistoryPanel.test.tsx) e [WithdrawalForm.test.tsx](../../../../../web/src/visits/WithdrawalForm.test.tsx).
+- Integração visual/API: [coordenatorPage.test.tsx](../../../../../web/src/pages/coordenatorPage.test.tsx), [StudyScheduledVisitsSection.test.tsx](../../../../../web/src/visits/StudyScheduledVisitsSection.test.tsx), [scheduledVisitsApi.test.ts](../../../../../web/src/visits/scheduledVisitsApi.test.ts) e [participantsRoutes.test.tsx](../../../../../web/src/participants/participantsRoutes.test.tsx). O cliente de visitas verifica caminhos/payloads E01–E08, códigos 400/401/403/404/409/500 e falha de rede.
 - Complementos desta rodada: limites de 2.000 caracteres para observações em RF12/RF13/RF14; sucesso E08 via página, payload aparado e preservação do histórico; Administrador bloqueado na rota de visitas antes de chamadas à API. O perfil Participante não integra o tipo de usuário Web e é recusado no login; os testes de `AuthContext` cobrem essa recusa.
 
 ### Comandos e resultados
@@ -151,7 +151,7 @@ Os testes ainda emitem avisos React `act(...)` em casos já existentes do histó
 ## 7. Revalidação S3-QA-05 — Mobile RF17/RF18 e login — 2026-11-22
 
 - **Branch / HEAD:** `test/sprint-3-qa-leticia` / `093d51d`.
-- **Referências:** [plano de testes RF12–RF18](./plano-testes-massa-dados-rf12-rf18.md), [contratos da API RF12–RF18](./contratos-api-rf12-rf18.md) e [matriz de acesso](./matriz-acesso-e-identificacao-participante-rf12-rf18.md).
+- **Referências:** [plano de testes RF12–RF18](./plano-testes-massa-dados-rf12-rf18.md), [contratos da API RF12–RF18](../contratos-api-rf12-rf18.md) e [matriz de acesso](../matriz-acesso-e-identificacao-participante-rf12-rf18.md).
 
 ### Histórico e estado presente na branch
 
@@ -181,7 +181,7 @@ No HEAD testado, login, validação/restauração de sessão e logout usam `/aut
 
 ### Suítes e comandos da revalidação
 
-Suítes existentes executadas: [HomeScreen.test.tsx](../../../../mobile/src/screens/__tests__/HomeScreen.test.tsx), [participantStudiesApi.test.ts](../../../../mobile/src/studies/__tests__/participantStudiesApi.test.ts), [VisitsContext.test.tsx](../../../../mobile/src/visits/__tests__/VisitsContext.test.tsx), [participantVisitsApi.test.ts](../../../../mobile/src/visits/__tests__/participantVisitsApi.test.ts), [visits-navigation.test.tsx](../../../../mobile/src/routes/__tests__/visits-navigation.test.tsx), [AuthContext.test.tsx](../../../../mobile/src/auth/__tests__/AuthContext.test.tsx), [auth-navigation.test.tsx](../../../../mobile/src/routes/__tests__/auth-navigation.test.tsx), [LoginScreen.test.tsx](../../../../mobile/src/screens/__tests__/LoginScreen.test.tsx), [api.test.ts](../../../../mobile/src/auth/__tests__/api.test.ts) e [tokenStorage.test.ts](../../../../mobile/src/auth/__tests__/tokenStorage.test.ts).
+Suítes existentes executadas: [HomeScreen.test.tsx](../../../../../mobile/src/screens/__tests__/HomeScreen.test.tsx), [participantStudiesApi.test.ts](../../../../../mobile/src/studies/__tests__/participantStudiesApi.test.ts), [VisitsContext.test.tsx](../../../../../mobile/src/visits/__tests__/VisitsContext.test.tsx), [participantVisitsApi.test.ts](../../../../../mobile/src/visits/__tests__/participantVisitsApi.test.ts), [visits-navigation.test.tsx](../../../../../mobile/src/routes/__tests__/visits-navigation.test.tsx), [AuthContext.test.tsx](../../../../../mobile/src/auth/__tests__/AuthContext.test.tsx), [auth-navigation.test.tsx](../../../../../mobile/src/routes/__tests__/auth-navigation.test.tsx), [LoginScreen.test.tsx](../../../../../mobile/src/screens/__tests__/LoginScreen.test.tsx), [api.test.ts](../../../../../mobile/src/auth/__tests__/api.test.ts) e [tokenStorage.test.ts](../../../../../mobile/src/auth/__tests__/tokenStorage.test.ts).
 
 | Comando | Resultado |
 |---|---|
@@ -193,7 +193,7 @@ Suítes existentes executadas: [HomeScreen.test.tsx](../../../../mobile/src/scre
 ## 8. S3-QA-06 — E2E Web RF12→RF13 e limitação Mobile — 2026-11-22
 
 - **Branch / HEAD:** `test/sprint-3-qa-leticia` / `093d51d`.
-- **Referências:** [plano RF12–RF18](./plano-testes-massa-dados-rf12-rf18.md), [contratos da API](./contratos-api-rf12-rf18.md) e [matriz de acesso](./matriz-acesso-e-identificacao-participante-rf12-rf18.md).
+- **Referências:** [plano RF12–RF18](./plano-testes-massa-dados-rf12-rf18.md), [contratos da API](../contratos-api-rf12-rf18.md) e [matriz de acesso](../matriz-acesso-e-identificacao-participante-rf12-rf18.md).
 - **Resultado:** E2E Web RF12→RF13 passou após ajuste da imagem local do Backend. E2E Mobile RF17→RF18 permanece bloqueado pelas limitações documentadas na seção 7.
 
 ### Infraestrutura encontrada
@@ -204,7 +204,7 @@ Suítes existentes executadas: [HomeScreen.test.tsx](../../../../mobile/src/scre
 
 ### Fluxo automatizado e dados reais
 
-O novo [rf12-rf13-agendamento-situacao.cy.ts](../../../../web/cypress/e2e/rf12-rf13-agendamento-situacao.cy.ts) prepara estudo em recrutamento, visita prevista, candidato elegível/consentido e participação ativa pela API real. Em seguida autentica o Coordenador pela tela de login e executa as ações RF12/RF13 pela interface:
+O novo [rf12-rf13-agendamento-situacao.cy.ts](../../../../../web/cypress/e2e/rf12-rf13-agendamento-situacao.cy.ts) prepara estudo em recrutamento, visita prevista, candidato elegível/consentido e participação ativa pela API real. Em seguida autentica o Coordenador pela tela de login e executa as ações RF12/RF13 pela interface:
 
 1. Seleciona o estudo, participante e visita prevista e agenda pela tela, exercitando E02; valida a resposta `201` e o reflexo da visita na agenda.
 2. Atualiza a situação para `Realizada` pela tela, exercitando E04; valida resposta `200`, feedback e estado atualizado.
@@ -226,25 +226,25 @@ O novo [rf12-rf13-agendamento-situacao.cy.ts](../../../../web/cypress/e2e/rf12-r
 
 ### Arquivos criados/alterados nesta rodada
 
-- Novo: [rf12-rf13-agendamento-situacao.cy.ts](../../../../web/cypress/e2e/rf12-rf13-agendamento-situacao.cy.ts).
+- Novo: [rf12-rf13-agendamento-situacao.cy.ts](../../../../../web/cypress/e2e/rf12-rf13-agendamento-situacao.cy.ts).
 - Atualizado: este relatório, com a limitação Mobile herdada da S3-QA-05, resultados E2E, evidências e roteiro de revalidação.
-- O worktree também mantém a alteração prévia da S3-QA-05 em [HomeScreen.test.tsx](../../../../mobile/src/screens/__tests__/HomeScreen.test.tsx); ela não foi alterada pela S3-QA-06.
+- O worktree também mantém a alteração prévia da S3-QA-05 em [HomeScreen.test.tsx](../../../../../mobile/src/screens/__tests__/HomeScreen.test.tsx); ela não foi alterada pela S3-QA-06.
 
 ## 9. S3-QA-07 — CI, regressão e cobertura — 2026-11-22
 
 ### Merge com `main`
 
 - Integrado `origin/main` em `84dce54` na branch `test/sprint-3-qa-leticia`; merge concluído em `6af58f6`.
-- O único conflito foi [participantsRoutes.test.tsx](../../../../web/src/participants/participantsRoutes.test.tsx): os dois lados acrescentavam verificações sobrepostas de acesso negado à rota de visitas. A matriz parametrizada da resolução cobre Pesquisador e Administrador em visitas e reagendamentos, preservando a asserção de que nenhum endpoint da equipe é consultado. Nenhum código de produção ou regra de negócio foi alterado.
+- O único conflito foi [participantsRoutes.test.tsx](../../../../../web/src/participants/participantsRoutes.test.tsx): os dois lados acrescentavam verificações sobrepostas de acesso negado à rota de visitas. A matriz parametrizada da resolução cobre Pesquisador e Administrador em visitas e reagendamentos, preservando a asserção de que nenhum endpoint da equipe é consultado. Nenhum código de produção ou regra de negócio foi alterado.
 - Os testes e registros anteriores S3-QA-02 a S3-QA-06 foram mantidos. `git diff --check` passou e não restaram caminhos não mesclados nem marcadores de conflito.
 
 ### CI configurado para Pull Requests
 
 | Workflow | Jobs e verificações | Lacunas / observações |
 |---|---|---|
-| [backend-ci.yml](../../../../.github/workflows/backend-ci.yml) | PostgreSQL 17; `npm ci`; lint; build; `test:coverage:all` (unitários + E2E + relatório de cobertura). | Não há `coverageThreshold` nem publicação do relatório como artefato; portanto a meta de 80% não bloqueia o CI. |
-| [web-ci.yml](../../../../.github/workflows/web-ci.yml) | Vitest e build; Cypress E2E com PostgreSQL e API. | Não há step de lint nem cobertura Web. |
-| [mobile-ci.yml](../../../../.github/workflows/mobile-ci.yml) | Jest; lint; typecheck; export Expo. | O step de export falha neste projeto: a configuração Expo resolvida não declara plataformas (`platforms: []`), e `expo export --platform all` retorna “No platforms are configured to use the Metro bundler”. |
+| [backend-ci.yml](../../../../../.github/workflows/backend-ci.yml) | PostgreSQL 17; `npm ci`; lint; build; `test:coverage:all` (unitários + E2E + relatório de cobertura). | Não há `coverageThreshold` nem publicação do relatório como artefato; portanto a meta de 80% não bloqueia o CI. |
+| [web-ci.yml](../../../../../.github/workflows/web-ci.yml) | Vitest e build; Cypress E2E com PostgreSQL e API. | Não há step de lint nem cobertura Web. |
+| [mobile-ci.yml](../../../../../.github/workflows/mobile-ci.yml) | Jest; lint; typecheck; export Expo. | O step de export falha neste projeto: a configuração Expo resolvida não declara plataformas (`platforms: []`), e `expo export --platform all` retorna “No platforms are configured to use the Metro bundler”. |
 
 Os workflows têm filtros por caminhos: backend cobre `backend/**`, Web cobre `web/**` e `backend/**`, e Mobile cobre `mobile/**`, além dos respectivos arquivos de workflow. Alterações fora desses escopos não acionam esses jobs.
 
@@ -270,4 +270,4 @@ O relatório Jest bruto inclui modelos Swagger/DTOs. Para a métrica de código 
 | Usuários | 85/86 | 98,84% |
 | **Código de negócio total** | **836/885** | **94,46%** |
 
-Nenhum arquivo de negócio ficou abaixo de 80%; o menor foi `database.service.ts`, com **88,89%**. `users.controller.ts` tinha 76,59% antes dos testes adicionais; foi criado [users.controller.spec.ts](../../../../backend/src/users/users.controller.spec.ts) com casos pontuais para os validadores de criação e atualização. Após a execução completa, o controller atingiu **100% de linhas**. A cobertura bruta Jest foi **95,60% de linhas** (incluindo os modelos Swagger/DTOs).
+Nenhum arquivo de negócio ficou abaixo de 80%; o menor foi `database.service.ts`, com **88,89%**. `users.controller.ts` tinha 76,59% antes dos testes adicionais; foi criado [users.controller.spec.ts](../../../../../backend/src/users/users.controller.spec.ts) com casos pontuais para os validadores de criação e atualização. Após a execução completa, o controller atingiu **100% de linhas**. A cobertura bruta Jest foi **95,60% de linhas** (incluindo os modelos Swagger/DTOs).
