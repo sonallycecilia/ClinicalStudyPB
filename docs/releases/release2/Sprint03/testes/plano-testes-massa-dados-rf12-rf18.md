@@ -4,8 +4,8 @@
 
 A `main` atual aponta para o merge do Pull Request **#32** e já contém:
 
-- Contratos de API RF12–RF18 em [contratos-api-rf12-rf18.md](./contratos-api-rf12-rf18.md).
-- Matriz de acesso em [matriz-acesso-e-identificacao-participante-rf12-rf18.md](./matriz-acesso-e-identificacao-participante-rf12-rf18.md).
+- Contratos de API RF12–RF18 em [contratos-api-rf12-rf18.md](../contratos-api-rf12-rf18.md).
+- Matriz de acesso em [matriz-acesso-e-identificacao-participante-rf12-rf18.md](../matriz-acesso-e-identificacao-participante-rf12-rf18.md).
 - Endpoints E01–E10 implementados no Backend.
 - Testes E2E para participantes e visitas agendadas.
 - Testes E2E para autoatendimento do participante.
