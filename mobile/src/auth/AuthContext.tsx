@@ -1,4 +1,5 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { HttpError, SessionChangedError, httpRequest, type AuthenticatedHttpClient } from '../api/http';
 import { authRequest } from './api';
 import { tokenStorage } from './tokenStorage';
 import { accessError, isUser, type LoginResponse, type MeResponse, type User } from './types';
@@ -7,6 +8,7 @@ export type { User } from './types';
 export type AuthStatus = 'initializing' | 'unauthenticated' | 'verifying' | 'authenticated' | 'validation-error';
 interface AuthState { status: AuthStatus; user: User | null; message: string | null }
 interface AuthValue extends AuthState {
+  client: AuthenticatedHttpClient | null;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   retry: () => Promise<void>;
@@ -145,7 +147,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  return <AuthContext.Provider value={{ ...state, login, logout, retry }}>{children}</AuthContext.Provider>;
+  // The client belongs to this session generation. Components never receive its token.
+  const client = useMemo<AuthenticatedHttpClient | null>(() => {
+    if (state.status !== 'authenticated' || !state.user) return null;
+    const id = generation.current;
+    const current = () => id === generation.current && token.current !== null;
+    return {
+      async get(path) {
+        if (!current()) throw new SessionChangedError();
+        let response;
+        try {
+          response = await httpRequest(path, { method: 'GET', token: token.current! });
+        } catch (error) {
+          if (!current()) throw new SessionChangedError();
+          throw error;
+        }
+        if (!current()) throw new SessionChangedError();
+        // /me endpoints return 403 when the account is no longer a Participant (matrix 12.1).
+        if (response.status === 401 || response.status === 403) {
+          const expiredId = ++generation.current;
+          busy.current = true;
+          try { await clearLocal(expiredId, new HttpError(response.status).message); }
+          finally { if (expiredId === generation.current) busy.current = false; }
+        }
+        if (!response.ok) throw new HttpError(response.status);
+        return response.data;
+      },
+    };
+  }, [state.status, state.user, clearLocal]);
+
+  return <AuthContext.Provider value={{ ...state, client, login, logout, retry }}>{children}</AuthContext.Provider>;
 }
 export function useAuth() {
   const context = useContext(AuthContext);

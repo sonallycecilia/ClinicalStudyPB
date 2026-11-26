@@ -1,25 +1,54 @@
-import { describe, expect, it, jest } from '@jest/globals';
-import { participantVisitsService, visitsForScope } from '../participantVisitsApi';
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { participantVisitsService, visitDateLabels, visitsForScope } from '../participantVisitsApi';
 import { visits } from '../../../tests/fixtures/visits';
 import { calendarCells, localDateKey } from '../../components/VisitDatePicker';
 
+const now = Date.parse('2026-11-22T12:00:00.000Z');
+beforeEach(() => { jest.spyOn(Date, 'now').mockReturnValue(now); });
+afterEach(() => { jest.restoreAllMocks(); });
+
 describe('RF18 — contrato e isolamento', () => {
-  it('não consulta endpoints RF06 nem oferece mocks no serviço real', async () => {
-    const fetchSpy = jest.spyOn(globalThis, 'fetch');
-    try {
-      await expect(participantVisitsService.listForAuthenticatedParticipant('upcoming')).rejects.toThrow('S3-BE-07');
-      await expect(participantVisitsService.listForAuthenticatedParticipant('history')).rejects.toThrow('S3-BE-07');
-      expect(fetchSpy).not.toHaveBeenCalled();
-    } finally { fetchSpy.mockRestore(); }
+  it.each(['upcoming', 'history'] as const)('consulta apenas E10 com scope=%s, sem identificadores de terceiros', async scope => {
+    const data = visitsForScope(visits, scope).map(({ code, location, preparation, ...visit }) => visit);
+    const client = { get: jest.fn<() => Promise<unknown>>().mockResolvedValue(data) };
+    await expect(participantVisitsService.listForAuthenticatedParticipant(scope, client)).resolves.toEqual(data);
+    expect(client.get.mock.calls).toEqual([[`/me/visits?scope=${scope}`]]);
   });
-  it('ordena próximas em ordem crescente e inclui agendamentos vencidos (E10)', () => {
+  it.each(['upcoming', 'history'] as const)('aceita lista vazia em %s', async scope => {
+    await expect(participantVisitsService.listForAuthenticatedParticipant(scope, { get: async () => [] })).resolves.toEqual([]);
+  });
+  it.each([null, {}, { data: visits }, [{ ...visits[0], status: 'Inválido' }],
+    [{ ...visits[0], scheduledAt: 'inválida' }], [{ ...visits[0], plannedVisitOrder: '1' }]])('recusa resposta fora de E10: %j', async data => {
+    await expect(participantVisitsService.listForAuthenticatedParticipant('upcoming', { get: async () => data })).rejects.toThrow('formato inválido');
+  });
+  it('ordena próximas em ordem crescente e exclui agendamentos passados ou no instante atual (E10)', () => {
     const overdue = { ...visits[0], id: 'overdue', scheduledAt: '2020-01-01T12:00:00Z' };
-    expect(visitsForScope([visits[1], visits[0], overdue], 'upcoming').map(visit => visit.id)).toEqual(['overdue', '1', '2']);
+    const earlierToday = { ...visits[0], id: 'earlier', scheduledAt: new Date(now - 1).toISOString() };
+    const atNow = { ...visits[0], id: 'now', scheduledAt: new Date(now).toISOString() };
+    const laterToday = { ...visits[0], id: 'later', scheduledAt: new Date(now + 1).toISOString() };
+    expect(visitsForScope([visits[1], atNow, visits[0], overdue, earlierToday, laterToday, visits[2]], 'upcoming')
+      .map(visit => visit.id)).toEqual(['later', '1', '2']);
+    expect(visitsForScope([overdue, earlierToday, atNow], 'history')).toEqual([]);
+  });
+  it('compara e ordena os instantes com fuso sem truncar para a data civil', () => {
+    jest.mocked(Date.now).mockReturnValue(Date.parse('2026-11-22T00:30:00Z'));
+    const future = { ...visits[0], id: 'future', scheduledAt: '2026-11-21T22:00:00-03:00' };
+    const later = { ...visits[0], id: 'later', scheduledAt: '2026-11-22T00:00:00-02:00' };
+    const past = { ...visits[0], id: 'past', scheduledAt: '2026-11-22T02:00:00+02:00' };
+    expect(visitsForScope([later, past, future], 'upcoming').map(visit => visit.id)).toEqual(['future', 'later']);
+    expect(visitsForScope([{ ...future, status: 'Realizada' }, { ...later, status: 'Ausente' }], 'history')
+      .map(visit => visit.id)).toEqual(['later', 'future']);
   });
   it('inclui canceladas no histórico e ordena por data decrescente', () => {
     const history = visitsForScope(visits, 'history');
     expect(history.map(visit => visit.id)).toEqual(['3', '5', '4']);
     expect(history.map(visit => visit.status)).toEqual(['Realizada', 'Cancelada', 'Ausente']);
+  });
+  it.each([
+    { instant: new Date(2026, 10, 22, 0, 5), expected: { date: '22 Nov 2026', day: 'Domingo', time: '00:05' } },
+    { instant: new Date(2026, 11, 31, 23, 55), expected: { date: '31 Dez 2026', day: 'Quinta-feira', time: '23:55' } },
+  ])('apresenta o instante UTC no dia e horário locais: $expected.date $expected.time', ({ instant, expected }) => {
+    expect(visitDateLabels(instant.toISOString())).toEqual(expected);
   });
 });
 
