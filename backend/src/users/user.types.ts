@@ -8,6 +8,12 @@ export const USER_ROLES = [
 export type UserRole = (typeof USER_ROLES)[number];
 export type AccountStatus = 'Ativo' | 'Inativo';
 
+export interface EligibleParticipantAccount {
+  id: string;
+  name: string;
+  email: string;
+}
+
 export interface PublicUser {
   id: string;
   name: string;

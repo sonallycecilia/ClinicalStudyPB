@@ -1,7 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { DatabaseService } from '../database/database.service.js';
-import type { CreateUserInput, InternalUser, PublicUser, UpdateUserInput } from './user.types.js';
+import type { CreateUserInput, EligibleParticipantAccount, InternalUser, PublicUser, UpdateUserInput } from './user.types.js';
 
 const columns = `id_usuario AS id, nome AS name, email, COALESCE(telefone, '') AS phone,
   perfil AS role, status, data_criacao AS "createdAt",
@@ -14,6 +14,17 @@ export class UsersService {
   async list(): Promise<PublicUser[]> {
     const { rows } = await this.database.query<InternalUser>('SELECT ' + columns + ' FROM usuarios ORDER BY data_criacao, id_usuario');
     return rows.map((row) => this.toPublic(row));
+  }
+
+  async listEligibleParticipants(): Promise<EligibleParticipantAccount[]> {
+    const { rows } = await this.database.query<EligibleParticipantAccount>(
+      `SELECT id_usuario AS id, nome AS name, email
+       FROM usuarios
+       WHERE perfil = $1 AND status = $2
+       ORDER BY data_criacao, id_usuario`,
+      ['Participante', 'Ativo'],
+    );
+    return rows;
   }
 
   async findById(id: string): Promise<PublicUser> {

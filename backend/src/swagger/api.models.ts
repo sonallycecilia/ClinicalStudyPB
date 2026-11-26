@@ -19,7 +19,7 @@ import {
   isISO8601,
 } from 'class-validator';
 import { USER_ROLES } from '../users/user.types.js';
-import type { AccountStatus, UserRole } from '../users/user.types.js';
+import type { AccountStatus, EligibleParticipantAccount, UserRole } from '../users/user.types.js';
 import { StudyStatus } from '../studies/study.types.js';
 import { CANDIDATE_INCLUSION_ERROR_CODES } from '../studies/candidates.types.js';
 import type { StudyKind, StudySymbol } from '../studies/study.types.js';
@@ -119,6 +119,21 @@ export class LoginRequestDto {
 
   @ApiPropertyOptional({ example: 'Admin123!' })
   password?: string;
+}
+
+export class EligibleParticipantAccountResponseDto implements EligibleParticipantAccount {
+  @ApiProperty({
+    format: 'uuid',
+    example: 'e34e7889-4221-4a63-9f15-5e4d60c5955b',
+    description: 'Identificador da conta a selecionar para o vínculo com um candidato.',
+  })
+  id!: string;
+
+  @ApiProperty({ example: 'Ana Souza' })
+  name!: string;
+
+  @ApiProperty({ example: 'ana.souza@clinicalstudypb.test', format: 'email' })
+  email!: string;
 }
 
 export class PublicUserResponseDto {
