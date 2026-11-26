@@ -2,7 +2,7 @@
 
 **Release 2 · execução na Sprint 4 · responsável: Letícia · 3h previstas.** Liberação de contrato para o vínculo entre candidato e conta. Sem esse vínculo, a inclusão feita na web pode ocupar uma vaga enquanto o aplicativo do participante continua sem localizar o estudo.
 
-> **Versão: 1.0**
+> **Versão: 1.1**
 **Status: Em revisão** (este documento ainda pode ser contestado e alterado mediante conflitos com regras omitidas)
 
 ---
@@ -14,15 +14,21 @@
 
 ---
 
-## S3C-PO-01 — Ata e contratos corretivos
+## Ata e contratos corretivos
+
+<!-- SC3-PO-01-->
 
 A numeração abaixo é uma proposta de correspondência do PO atual ([Letícia](https://github.com/daCruzZzLeticia)). 
 
-> Enquanto estiver em revisão, qualquer outro papel pode conferir as decisões, aprovando-as ou não. [Abrir chamado de contestação (issue)](https://github.com/sonallycecilia/ClinicalStudyPB/issues).
+> **OBS:** D1-10 são as decisões tomadas para os problemas encontrados entre a srpint 2 e 3. Originalmente, a decisão seria em conjunto na week meeting (14/11). Tendo em vista adversidades e falta de tempo para reunião extra entre os dias 22 a 27, é sugerido a Ata abaixo.
 
-### 1. Ata de decisões · D01–D10
+
+#### a. Ata de decisões · D01–D10
 
 As deliberações abaixo orientam a execução da contingência da Sprint 3 na Sprint 4.
+
+> Enquanto estiver em revisão, qualquer outro papel pode conferir as decisões, aprovando-as ou não. [Abrir chamado de contestação (issue)](https://github.com/sonallycecilia/ClinicalStudyPB/issues).
+
 
 | Item | Tema | Deliberação |
 |---|---|---|
@@ -39,7 +45,7 @@ As deliberações abaixo orientam a execução da contingência da Sprint 3 na S
 
 ---
 
-### 2. Vínculo entre candidato, conta e estudo
+#### b. Vínculo entre candidato, conta e estudo
 
 O Administrador cria e ativa a conta de Participante em RF01. Durante o cadastro de um novo candidato em RF08, o Coordenador identifica a conta pelo nome e pelo e-mail e seleciona seu identificador. O servidor verifica se a conta está ativa, se tem o perfil Participante e se o Coordenador pode atuar naquele estudo. A seleção associa a conta ao candidato sem alterar o cadastro do usuário.
 
@@ -47,7 +53,7 @@ O estudo passa a constar no aplicativo da conta vinculada após a inclusão por 
 
 ---
 
-### 3. Contratos de integração
+#### c. Contratos de integração
 
 O plano identifica os caminhos `GET /studies/:id/visits` e `/me/consents`. Os demais caminhos, campos ilustrativos e códigos HTTP abaixo são propostas para conferência com os controladores e o Swagger. Os exemplos usam IDs fictícios e mostram somente os campos relevantes à correção. Todas as operações exigem sessão válida (401 se ausente ou expirada).
 
@@ -64,7 +70,7 @@ Exemplo de erro de negócio proposto para RF08: `{"codigo":"CONTA_PARTICIPANTE_I
 
 ---
 
-### 4. Roteiro de aceite para QA e PO
+#### d. Roteiro de aceite para QA e PO
 
 Usar contas e estudos fictícios. Registrar requisito, cenário, responsável, resultado observado e evidência da execução na matriz de QA.
 
@@ -79,11 +85,15 @@ Usar contas e estudos fictícios. Registrar requisito, cenário, responsável, r
 | D10 · Legado | Consultar candidato antigo sem conta e tentar avançar em etapa que exige vínculo. O cadastro continua consultável, a operação é bloqueada e o candidato não aparece no aplicativo de outro participante. |
 | RF17–RF18 · Isolamento | Alternar entre duas contas no mesmo aparelho. Cada pessoa vê somente seus estudos e visitas. Conferir se as identidades usadas no Figma, nos mocks e no seed correspondem ao roteiro. |
 
-## S3C-PO-02 — Termo simulado de primeiro acesso
+---
+
+## Termo simulado de primeiro acesso
+
+<!-- SC3-PO-02-->
 
 RF10 registra o consentimento durante o recrutamento na Web e é pré-condição para inclusão por RF11. Depois da inclusão, o participante acessa o aplicativo e confirma a leitura do termo simulado daquele estudo. Adiar a leitura mantém o acesso ao conteúdo do estudo pendente e preserva a inclusão e o registro de RF10. Após o aceite, o aplicativo libera o estudo diretamente, sem solicitar dados complementares.
 
-### Texto proposto para a tela
+#### a. Texto proposto para a tela
 
 > **Termo simulado de acesso ao estudo — [nome do estudo]**  
 > Versão [1.0]  
@@ -93,7 +103,7 @@ RF10 registra o consentimento durante o recrutamento na Web e é pré-condição
 
 > Ação "Agora não" pode ser contestada.
 
-### Consulta, gravação e retorno
+#### b. Consulta, gravação e retorno
 
 | Operação · participante autenticado | Solicitação proposta | Resposta proposta |
 |---|---|---|
