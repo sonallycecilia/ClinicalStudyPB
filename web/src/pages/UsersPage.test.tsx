@@ -125,6 +125,65 @@ describe('UsersPage', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
+  it('cadastra conta Participante enviando o perfil aceito pela API', async () => {
+    const created: User = {
+      id: 'participant-id',
+      name: 'Bruno Participante',
+      email: 'bruno@example.test',
+      phone: '(83) 91234-5678',
+      role: 'Participante',
+      status: 'Ativo',
+      createdAt: '2026-10-04T12:00:00.000Z',
+    };
+    mockRequest.mockResolvedValueOnce(response(users));
+    mockRequest.mockResolvedValueOnce(response(created));
+    renderUsers();
+    await screen.findByText('Marina Costa');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Novo usuário' }));
+    fireEvent.change(screen.getByLabelText(/Nome completo/), { target: { value: created.name } });
+    fireEvent.change(screen.getByLabelText('E-mail *'), { target: { value: created.email } });
+    fireEvent.change(screen.getByLabelText('Telefone *'), { target: { value: '83912345678' } });
+    fireEvent.change(screen.getByLabelText(/Senha/), { target: { value: 'Senha123!' } });
+    fireEvent.change(screen.getByLabelText(/Perfil de acesso/), { target: { value: 'Participante' } });
+
+    expect(screen.getByText(/acessam somente o aplicativo mobile/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Cadastrar usuário' }));
+
+    expect(await screen.findByText(created.name)).toBeTruthy();
+    const [, init] = mockRequest.mock.lastCall as [string, RequestInit];
+    expect(mockRequest.mock.lastCall?.[0]).toBe('/users');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toMatchObject({ email: created.email, role: 'Participante', password: 'Senha123!' });
+    expect(screen.getByRole('status').textContent).toContain('Usuário cadastrado com sucesso.');
+  });
+
+  it('exibe validação de e-mail duplicado e mantém o formulário preenchido', async () => {
+    mockRequest.mockResolvedValueOnce(response(users));
+    mockRequest.mockResolvedValueOnce({ ok: false, status: 409, json: async () => ({ message: 'Já existe uma conta com este e-mail.' }) } as Response);
+    renderUsers();
+    await screen.findByText('Marina Costa');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Novo usuário' }));
+    fireEvent.change(screen.getByLabelText(/Nome completo/), { target: { value: 'Outra Marina' } });
+    fireEvent.change(screen.getByLabelText('E-mail *'), { target: { value: 'marina@example.test' } });
+    fireEvent.change(screen.getByLabelText('Telefone *'), { target: { value: '83912345678' } });
+    fireEvent.change(screen.getByLabelText(/Senha/), { target: { value: 'Senha123!' } });
+    fireEvent.change(screen.getByLabelText(/Perfil de acesso/), { target: { value: 'Participante' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cadastrar usuário' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toBe('Já existe uma conta com este e-mail. Informe outro e-mail.');
+    const emailInput = screen.getByLabelText('E-mail *') as HTMLInputElement;
+    expect(emailInput.getAttribute('aria-invalid')).toBe('true');
+    expect(emailInput.value).toBe('marina@example.test');
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(screen.getAllByText('Marina Costa')).toHaveLength(1);
+
+    fireEvent.change(emailInput, { target: { value: 'outra@example.test' } });
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   it('edita uma conta e mostra falha de API sem atualizar a lista', async () => {
     mockRequest.mockResolvedValueOnce(response(users));
     mockRequest.mockResolvedValueOnce(response({ message: 'E-mail já utilizado.' }, false));

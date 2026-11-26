@@ -113,6 +113,58 @@ describe('Task 3209 — fluxo de acesso e usuários', () => {
     cy.contains('[role="status"]', 'Conta excluída com sucesso.').should('be.visible');
   });
 
+  it('CYP-S3C-W1-01 — Administrador cria conta Participante que autentica na API e recusa e-mail duplicado', () => {
+    const uniqueId = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
+    const participantName = `Participante Cypress ${uniqueId}`;
+    const participantEmail = `participante.${uniqueId}@example.test`;
+    const participantPassword = 'Participante123!';
+
+    function fillNewUser(email: string) {
+      cy.contains('button', 'Novo usuário').click();
+      cy.get('[role="dialog"]').should('be.visible').within(() => {
+        cy.contains('label', 'Nome completo').find('input').type(participantName);
+        cy.contains('label', 'E-mail').find('input').type(email);
+        cy.contains('label', 'Telefone').find('input').type('(83) 91234-5678');
+        cy.get('input[autocomplete="new-password"]').type(participantPassword, { log: false });
+        cy.contains('label', 'Perfil de acesso').find('select').select('Participante');
+        cy.contains('somente o aplicativo mobile').should('be.visible');
+        cy.contains('button', 'Cadastrar usuário').click();
+      });
+    }
+
+    login(adminEmail, demoAdminPassword);
+    cy.location('pathname', { timeout: 10000 }).should('eq', '/usuarios');
+
+    cy.intercept('POST', `${API_URL}/users`).as('createUser');
+    fillNewUser(participantEmail);
+    cy.wait('@createUser').then(({ request, response }) => {
+      expect(request.body).to.include({ email: participantEmail, role: 'Participante' });
+      expect(response?.statusCode).to.eq(201);
+    });
+    cy.contains('[role="status"]', 'Usuário cadastrado com sucesso.').should('be.visible');
+    cy.contains('tr', participantEmail).should('contain.text', 'Participante').and('contain.text', 'Ativo');
+
+    // A conta criada autentica na API (usada pelo aplicativo mobile) com o perfil Participante.
+    cy.request('POST', `${API_URL}/auth/login`, { email: participantEmail, password: participantPassword }).then(({ status, body }) => {
+      expect(status).to.eq(201);
+      expect(body.user).to.include({ email: participantEmail, role: 'Participante', status: 'Ativo' });
+    });
+
+    // E-mail já cadastrado: a API responde 409 e o formulário permanece aberto com a validação no campo.
+    fillNewUser(participantEmail.toUpperCase());
+    cy.wait('@createUser').its('response.statusCode').should('eq', 409);
+    cy.get('[role="dialog"]').within(() => {
+      cy.contains('[role="alert"]', 'Já existe uma conta com este e-mail. Informe outro e-mail.').should('be.visible');
+      cy.contains('label', 'E-mail').find('input').should('have.attr', 'aria-invalid', 'true');
+      cy.contains('button', 'Cancelar').click();
+    });
+
+    // Limpeza: remove a conta criada pelo teste.
+    cy.contains('tr', participantEmail).within(() => cy.contains('button', 'Excluir').click());
+    cy.get('[role="dialog"]').within(() => cy.contains('button', 'Excluir usuário').click());
+    cy.contains('tr', participantEmail).should('not.exist');
+  });
+
   it('CYP-RF02-03 — mantém a sessão após recarregar e revoga ao sair', () => {
     cy.intercept('POST', `${API_URL}/auth/logout`).as('serverLogout');
     login(adminEmail, demoAdminPassword);

@@ -5,6 +5,9 @@ import { useAuth } from '../auth/AuthContext';
 import type { AccountRole, AccountStatus, User, UserRole } from '../types';
 
 const roles: UserRole[] = ['Administrador', 'Pesquisador', 'Coordenador'];
+// Participante usa somente o aplicativo mobile, mas a conta é criada pelo Administrador (D03).
+const formRoles: AccountRole[] = [...roles, 'Participante'];
+const duplicateEmailMessage = 'Já existe uma conta com este e-mail. Informe outro e-mail.';
 
 interface UserForm {
   name: string;
@@ -27,6 +30,7 @@ export function UsersPage() {
   const [editing, setEditing] = useState<User | null>(null);
   const [form, setForm] = useState<UserForm>(blankForm);
   const [formError, setFormError] = useState('');
+  const [emailError, setEmailError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
@@ -73,6 +77,7 @@ export function UsersPage() {
     setEditing(null);
     setForm(blankForm);
     setFormError('');
+    setEmailError('');
     setShowPassword(false);
     setModalOpen(true);
   }
@@ -81,6 +86,7 @@ export function UsersPage() {
     setEditing(entry);
     setForm({ name: entry.name, email: entry.email, phone: formatPhone(entry.phone), password: '', role: entry.role, status: entry.status });
     setFormError('');
+    setEmailError('');
     setShowPassword(false);
     setModalOpen(true);
   }
@@ -90,11 +96,13 @@ export function UsersPage() {
     setModalOpen(false);
     setEditing(null);
     setFormError('');
+    setEmailError('');
   }
 
   async function saveUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFormError('');
+    setEmailError('');
     if (form.name.trim().length < 3) return setFormError('Informe o nome completo.');
     if (!/^\S+@\S+\.\S+$/.test(form.email.trim())) return setFormError('Informe um e-mail válido.');
     if (![10, 11].includes(form.phone.replace(/\D/g, '').length)) return setFormError('Informe um telefone com DDD e 10 ou 11 dígitos.');
@@ -111,6 +119,10 @@ export function UsersPage() {
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
           body: JSON.stringify(editing ? payload : { ...payload, password: form.password }),
         });
+        if (response.status === 409) {
+          setEmailError(duplicateEmailMessage);
+          return;
+        }
         if (!response.ok) {
           const body = await response.json().catch(() => null) as { message?: string | string[] } | null;
           let message = 'Não foi possível salvar a conta na API.';
@@ -218,10 +230,10 @@ export function UsersPage() {
           <header className="modal-header"><div><p className="eyebrow">CONTA DE ACESSO</p><h2 id="user-modal-title">{editing ? 'Informações da conta' : 'Novo usuário'}</h2><p>{editing ? 'Atualize as informações e as permissões desta conta.' : 'Preencha os dados para cadastrar um novo usuário.'}</p></div><button type="button" className="icon-button close-modal" aria-label="Fechar formulário" onClick={closeModal}><X size={20} /></button></header>
           <form onSubmit={saveUser} className="user-form">
             <label className="form-field form-field-wide"><span>Nome completo <b>*</b></span><input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Digite o nome completo" required minLength={3} /></label>
-            <label className="form-field"><span>E-mail <b>*</b></span><input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="nome@exemplo.com" required /></label>
+            <div className="form-field"><label className="form-field"><span>E-mail <b>*</b></span><input type="email" value={form.email} onChange={(event) => { setForm({ ...form, email: event.target.value }); setEmailError(''); }} placeholder="nome@exemplo.com" required aria-invalid={emailError ? true : undefined} aria-describedby={emailError ? 'user-email-error' : undefined} /></label>{emailError && <span id="user-email-error" className="form-error" role="alert">{emailError}</span>}</div>
             <label className="form-field"><span>Telefone <b>*</b></span><input type="tel" inputMode="numeric" autoComplete="tel" value={form.phone} onChange={(event) => setForm({ ...form, phone: formatPhone(event.target.value) })} placeholder="(00) 00000-0000" maxLength={15} required /></label>
             <label className="form-field"><span>Senha {editing ? '(opcional)' : <b>*</b>}</span><div className="password-field"><input type={showPassword ? 'text' : 'password'} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} placeholder={editing ? 'Deixe em branco para manter' : 'Mínimo de 8 caracteres'} required={!editing} minLength={editing && !form.password ? undefined : 8} autoComplete="new-password" /><button type="button" className="icon-button" aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'} onClick={() => setShowPassword((visible) => !visible)}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></div></label>
-            <label className="form-field"><span>Perfil de acesso <b>*</b></span><select value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value as AccountRole })}>{roles.map((role) => <option key={role}>{role}</option>)}{editing?.role === 'Participante' && <option value="Participante">Participante (conta do aplicativo mobile)</option>}</select></label>
+            <label className="form-field"><span>Perfil de acesso <b>*</b></span><select value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value as AccountRole })}>{formRoles.map((role) => <option key={role} value={role}>{role === 'Participante' ? 'Participante (aplicativo mobile)' : role}</option>)}</select>{form.role === 'Participante' && <span className="user-role-hint">Contas Participante acessam somente o aplicativo mobile; o login na web não é permitido.</span>}</label>
             {editing && <label className="form-field"><span>Situação da conta <b>*</b></span><select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value as AccountStatus })}><option>Ativo</option><option>Inativo</option></select></label>}
             {formError && <p className="form-error form-error-wide" role="alert">{formError}</p>}
             <footer className="modal-actions"><button className="button button-outline" type="button" onClick={closeModal} disabled={saving}>Cancelar</button><button className="button button-primary" type="submit" disabled={saving}>{saving ? 'Salvando…' : editing ? 'Salvar alterações' : 'Cadastrar usuário'}</button></footer>
