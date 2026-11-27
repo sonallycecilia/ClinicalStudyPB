@@ -15,6 +15,8 @@ import {
   ApiBearerAuth,
   ApiBody,
   ApiCreatedResponse,
+  ApiConflictResponse,
+  ApiUnprocessableEntityResponse,
   ApiForbiddenResponse,
   ApiInternalServerErrorResponse,
   ApiNotFoundResponse,
@@ -40,6 +42,20 @@ import {
   RegisterCandidateConsentRequestDto,
 } from '../swagger/api.models.js';
 import { CandidatesService } from './candidates.service.js';
+import { createCandidateValidation } from './candidates.validation.js';
+
+const linkageErrorResponse = {
+  description: 'Vínculo ausente, UUID inválido ou conta inexistente, inativa ou de outro perfil.',
+  schema: {
+    type: 'object',
+    required: ['codigo', 'mensagem', 'campo'],
+    properties: {
+      codigo: { type: 'string', example: 'CONTA_PARTICIPANTE_INVALIDA' },
+      mensagem: { type: 'string', example: 'Selecione uma conta de participante ativa.' },
+      campo: { type: 'string', example: 'id_usuario' },
+    },
+  },
+};
 
 @Controller('studies/:studyId/candidates')
 @UseGuards(AccessTokenGuard, RolesGuard)
@@ -68,12 +84,14 @@ export class CandidatesController {
 
   @Post()
   @Roles('Pesquisador', 'Coordenador')
-  @UsePipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }))
+  @UsePipes(createCandidateValidation)
   @ApiOperation({ summary: 'Cadastrar candidato em estudo próprio ou em recrutamento para o Coordenador' })
   @ApiParam({ name: 'studyId', description: 'UUID do estudo.', format: 'uuid' })
   @ApiBody({ type: CreateCandidateRequestDto })
   @ApiCreatedResponse({ description: 'Candidato cadastrado e vinculado ao estudo.', type: CandidateResponseDto })
-  @ApiBadRequestResponse({ description: 'Parâmetros inválidos, dados obrigatórios ausentes ou estudo encerrado.', type: ApiErrorResponseDto })
+  @ApiUnprocessableEntityResponse(linkageErrorResponse)
+  @ApiConflictResponse({ description: 'Conta já vinculada ao mesmo estudo.', type: ApiErrorResponseDto })
+  @ApiBadRequestResponse({ description: 'studyId inválido, campos name/email inválidos, campos extras ou estudo encerrado. Erros de id_usuario retornam 422.', type: ApiErrorResponseDto })
   @ApiUnauthorizedResponse({ description: 'Token ausente, inválido ou expirado.', type: ApiErrorResponseDto })
   @ApiForbiddenResponse({ description: 'Exige pesquisador proprietário ou Coordenador em estudo na fase de recrutamento.', type: ApiErrorResponseDto })
   @ApiNotFoundResponse({ description: 'Estudo não encontrado.', type: ApiErrorResponseDto })
@@ -86,6 +104,7 @@ export class CandidatesController {
   }
 
   @Post(':candidateId/consents')
+  @ApiUnprocessableEntityResponse({ description: 'Candidato legado sem conta vinculada: somente consulta (D10).' })
   @Roles('Pesquisador', 'Coordenador')
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }))
   @ApiOperation({ summary: 'Registrar o consentimento simulado do candidato' })
@@ -125,6 +144,7 @@ export class CandidatesController {
   }
 
   @Post(':candidateId/include')
+  @ApiUnprocessableEntityResponse({ description: 'Candidato legado sem conta vinculada: somente consulta (D10).' })
   @Roles('Pesquisador', 'Coordenador')
   @ApiOperation({ summary: 'Incluir candidato elegível como participante do estudo' })
   @ApiParam({ name: 'studyId', description: 'UUID do estudo.', format: 'uuid' })
@@ -146,6 +166,7 @@ export class CandidatesController {
   }
 
   @Post(':candidateId/eligibility-assessments')
+  @ApiUnprocessableEntityResponse({ description: 'Candidato legado sem conta vinculada: somente consulta (D10).' })
   @Roles('Pesquisador', 'Coordenador')
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }))
   @ApiOperation({ summary: 'Avaliar os critérios ativos de um candidato' })

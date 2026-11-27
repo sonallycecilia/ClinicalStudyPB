@@ -2,10 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import pg from 'pg';
 import { Test } from '@nestjs/testing';
+import type { INestApplication } from '@nestjs/common';
 import { AppModule } from '../src/app.module.js';
 
 // Cada suíte usa um schema descartável, sem alterar os dados de desenvolvimento.
-export async function databaseTestApp() {
+export async function databaseTestApp(configure?: (app: INestApplication) => void) {
   const originalUrl = process.env.DATABASE_URL;
   if (!originalUrl) throw new Error('Testes E2E exigem DATABASE_URL com PostgreSQL disponível.');
   const schema = `test_${randomUUID().replaceAll('-', '')}`;
@@ -23,6 +24,7 @@ export async function databaseTestApp() {
   async function open() {
     const module = await Test.createTestingModule({ imports: [AppModule] }).compile();
     const app = module.createNestApplication();
+    configure?.(app);
     await app.init();
     return app;
   }

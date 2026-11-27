@@ -46,7 +46,7 @@ describe('RF08 HTTP — controller, guards e services reais, persistência simul
     const module = await Test.createTestingModule({
       controllers: [CandidatesController],
       providers: [CandidatesService, StudiesService, AccessTokenGuard, RolesGuard,
-        { provide: DatabaseService, useValue: { query } },
+        { provide: DatabaseService, useValue: { query, transaction: async (operation: (client: { query: typeof query }) => Promise<unknown>) => operation({ query }) } },
         { provide: UsersService, useValue: { findById: async (id: string) => users.get(id) } },
         { provide: SessionsService, useValue: { isActive: async () => sessionActive } },
       ],
@@ -65,8 +65,15 @@ describe('RF08 HTTP — controller, guards e services reais, persistência simul
         const rows = values[0] === study.id ? [study] : [];
         return { rows, rowCount: rows.length };
       }
+      if (sql.includes('SELECT status FROM estudos')) {
+        return { rows: [{ status: study.status }], rowCount: 1 };
+      }
+      if (sql.includes('SELECT perfil, status FROM usuarios')) {
+        const user = users.get(values[0] as string);
+        return { rows: user ? [{ perfil: user.role, status: user.status }] : [], rowCount: user ? 1 : 0 };
+      }
       if (sql.includes('INSERT INTO candidatos')) {
-        const created: Candidate = { id: candidateId, studyId: values[0] as string, name: values[1] as string,
+        const created: Candidate = { id_usuario: values[3] as string, id: candidateId, studyId: values[0] as string, name: values[1] as string,
           email: values[2] as string | null, status: 'Em avaliação', registeredAt: '2026-11-08T12:00:00Z' };
         candidates.push(created);
         return { rows: [created], rowCount: 1 };
@@ -81,10 +88,10 @@ describe('RF08 HTTP — controller, guards e services reais, persistência simul
 
   it.each([researcher, coordinator])('$role cadastra e lista candidatos no estudo autorizado', async (user) => {
     const created = await request(app.getHttpServer()).post(path).set('Authorization', bearer(user))
-      .send({ name: '  Ana Silva  ', email: ' ana@example.test ' }).expect(201);
+      .send({ id_usuario: participant.id, name: '  Ana Silva  ', email: ' ana@example.test ' }).expect(201);
     expect(created.body).toMatchObject({ studyId, name: 'Ana Silva', email: 'ana@example.test' });
     await request(app.getHttpServer()).post(path).set('Authorization', bearer(user))
-      .send({ name: 'Sem e-mail' }).expect(201).expect(({ body }) => expect(body.email).toBeNull());
+      .send({ id_usuario: participant.id, name: 'Sem e-mail' }).expect(201).expect(({ body }) => expect(body.email).toBeNull());
     await request(app.getHttpServer()).get(path).set('Authorization', bearer(user))
       .expect(200).expect(({ body }) => expect(body).toHaveLength(2));
     expect(query.mock.calls.filter(([sql]) => sql.includes('INSERT INTO candidatos'))).toHaveLength(2);
@@ -93,7 +100,7 @@ describe('RF08 HTTP — controller, guards e services reais, persistência simul
 
   it('permite ao Coordenador acessar estudos em recrutamento de outro pesquisador', async () => {
     study.researcherId = otherResearcher.id;
-    await request(app.getHttpServer()).post(path).set('Authorization', bearer(coordinator)).send({ name: 'Ana' }).expect(201);
+    await request(app.getHttpServer()).post(path).set('Authorization', bearer(coordinator)).send({ id_usuario: participant.id, name: 'Ana' }).expect(201);
     await request(app.getHttpServer()).get(path).set('Authorization', bearer(coordinator)).expect(200);
   });
 
@@ -105,7 +112,7 @@ describe('RF08 HTTP — controller, guards e services reais, persistência simul
   it.each([StudyStatus.Planejamento, StudyStatus.Execucao, StudyStatus.Encerrado])('bloqueia Coordenador fora de recrutamento: %s', async (status) => {
     study.status = status;
     for (const method of ['get', 'post'] as const) {
-      await request(app.getHttpServer())[method](path).set('Authorization', bearer(coordinator)).send({ name: 'Ana' }).expect(403);
+      await request(app.getHttpServer())[method](path).set('Authorization', bearer(coordinator)).send({ id_usuario: participant.id, name: 'Ana' }).expect(403);
     }
     expect(query.mock.calls.every(([sql]) => !sql.includes('FROM candidatos') && !sql.includes('INSERT INTO candidatos'))).toBe(true);
   });
@@ -113,34 +120,34 @@ describe('RF08 HTTP — controller, guards e services reais, persistência simul
   it.each([StudyStatus.Planejamento, StudyStatus.Recrutamento, StudyStatus.Execucao, StudyStatus.Encerrado])('mantém propriedade do Pesquisador na fase %s', async (status) => {
     study.status = status;
     for (const method of ['get', 'post'] as const) {
-      await request(app.getHttpServer())[method](path).set('Authorization', bearer(otherResearcher)).send({ name: 'Ana' }).expect(403);
+      await request(app.getHttpServer())[method](path).set('Authorization', bearer(otherResearcher)).send({ id_usuario: participant.id, name: 'Ana' }).expect(403);
     }
     expect(candidates).toEqual([]);
   });
 
   it.each([StudyStatus.Planejamento, StudyStatus.Execucao])('preserva cadastro do Pesquisador proprietário na fase %s', async (status) => {
     study.status = status;
-    await request(app.getHttpServer()).post(path).set('Authorization', bearer(researcher)).send({ name: 'Ana' }).expect(201);
+    await request(app.getHttpServer()).post(path).set('Authorization', bearer(researcher)).send({ id_usuario: participant.id, name: 'Ana' }).expect(201);
   });
 
   it('preserva leitura do proprietário e bloqueio de cadastro após encerramento', async () => {
     study.status = StudyStatus.Encerrado;
     await request(app.getHttpServer()).get(path).set('Authorization', bearer(researcher)).expect(200);
-    await request(app.getHttpServer()).post(path).set('Authorization', bearer(researcher)).send({ name: 'Ana' }).expect(400);
+    await request(app.getHttpServer()).post(path).set('Authorization', bearer(researcher)).send({ id_usuario: participant.id, name: 'Ana' }).expect(400);
     expect(candidates).toEqual([]);
   });
 
   it.each([admin, participant])('nega os dois endpoints ao $role', async (user) => {
     for (const method of ['get', 'post'] as const) {
-      await request(app.getHttpServer())[method](path).set('Authorization', bearer(user)).send({ name: 'Ana' }).expect(403);
+      await request(app.getHttpServer())[method](path).set('Authorization', bearer(user)).send({ id_usuario: participant.id, name: 'Ana' }).expect(403);
     }
     expect(query).not.toHaveBeenCalled();
   });
 
   it.each(['get', 'post'] as const)('nega %s sem autenticação ou com token inválido/expirado', async (method) => {
-    await request(app.getHttpServer())[method](path).send({ name: 'Ana' }).expect(401);
+    await request(app.getHttpServer())[method](path).send({ id_usuario: participant.id, name: 'Ana' }).expect(401);
     for (const token of ['invalid', createAccessToken(coordinator, -1)]) {
-      await request(app.getHttpServer())[method](path).set('Authorization', `Bearer ${token}`).send({ name: 'Ana' }).expect(401);
+      await request(app.getHttpServer())[method](path).set('Authorization', `Bearer ${token}`).send({ id_usuario: participant.id, name: 'Ana' }).expect(401);
     }
     expect(query).not.toHaveBeenCalled();
   });
@@ -168,16 +175,16 @@ describe('RF08 HTTP — controller, guards e services reais, persistência simul
 
   it.each([{}, { name: '   ' }, { name: 'Ana', email: 'invalid' }, { name: 'Ana', id_estudo: studyId },
     { name: 'Ana', role: 'Pesquisador' }, { name: 'Ana', status: 'Incluído' }])('preserva validação e rejeita campos extras: %j', async (input) => {
-    await request(app.getHttpServer()).post(path).set('Authorization', bearer(coordinator)).send(input).expect(400);
+    await request(app.getHttpServer()).post(path).set('Authorization', bearer(coordinator)).send({ ...input, id_usuario: participant.id }).expect(400);
     expect(query).not.toHaveBeenCalled();
   });
 
   it('retorna 404 para estudo inexistente e 400 para UUID inválido', async () => {
     for (const method of ['get', 'post'] as const) {
       await request(app.getHttpServer())[method]('/studies/00000000-0000-4000-8000-000000000099/candidates')
-        .set('Authorization', bearer(coordinator)).send({ name: 'Ana' }).expect(404);
+        .set('Authorization', bearer(coordinator)).send({ id_usuario: participant.id, name: 'Ana' }).expect(404);
       await request(app.getHttpServer())[method]('/studies/invalid/candidates')
-        .set('Authorization', bearer(coordinator)).send({ name: 'Ana' }).expect(400);
+        .set('Authorization', bearer(coordinator)).send({ id_usuario: participant.id, name: 'Ana' }).expect(400);
     }
     expect(candidates).toEqual([]);
   });

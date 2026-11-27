@@ -11,6 +11,7 @@ const researcherId = '00000000-0000-4000-8000-000000000002';
 const candidate: Candidate = {
   id: '00000000-0000-4000-8000-000000000004',
   studyId,
+  id_usuario: researcherId,
   name: 'Lucas Martins',
   email: 'lucas@example.test',
   status: 'Em avaliação',
@@ -54,7 +55,7 @@ describe('CandidatesService', () => {
     studies = {
       assertInclusionStudyAccess: jest.fn<(id: string, userId: string) => Promise<unknown>>().mockResolvedValue({ researcherId }),
       assertConsentStudyAccess: jest.fn<(id: string, userId: string, modifying?: boolean) => Promise<unknown>>().mockResolvedValue({ researcherId }),
-      assertCandidateStudyAccess: jest.fn<(id: string, userId: string, modifying?: boolean) => Promise<unknown>>(),
+      assertCandidateStudyAccess: jest.fn<(id: string, userId: string, modifying?: boolean) => Promise<unknown>>().mockResolvedValue({ researcherId }),
       findById: jest.fn<(id: string, ownerId: string) => Promise<unknown>>(),
       assertStudyCanBeModified: jest.fn<(id: string, ownerId: string) => Promise<unknown>>(),
     };
@@ -65,31 +66,38 @@ describe('CandidatesService', () => {
   });
 
   it('cadastra candidato associado ao estudo validado', async () => {
-    database.query.mockResolvedValue({ rows: [candidate], rowCount: 1 });
+    transactionClient.query
+      .mockResolvedValueOnce({ rows: [{ status: StudyStatus.Recrutamento }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ perfil: 'Participante', status: 'Ativo' }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [candidate], rowCount: 1 });
     await expect(service.create(studyId, {
+      id_usuario: researcherId,
       name: candidate.name,
       email: candidate.email,
     }, researcherId)).resolves.toEqual(candidate);
     expect(studies.assertCandidateStudyAccess).toHaveBeenCalledWith(studyId, researcherId, true);
-    expect(database.query.mock.calls[0]?.[1]).toEqual([studyId, candidate.name, candidate.email]);
+    expect(transactionClient.query.mock.calls[2]?.[1]).toEqual([studyId, candidate.name, candidate.email, researcherId]);
+    expect(transactionClient.query.mock.calls[1]?.[0]).toContain('FOR SHARE');
   });
 
   it('cadastra sem e-mail e lista apenas candidatos do estudo', async () => {
-    database.query
-      .mockResolvedValueOnce({ rows: [{ ...candidate, email: null }], rowCount: 1 })
-      .mockResolvedValueOnce({ rows: [candidate], rowCount: 1 });
-    await service.create(studyId, { name: candidate.name }, researcherId);
-    expect(database.query.mock.calls[0]?.[1]).toEqual([studyId, candidate.name, null]);
+    transactionClient.query
+      .mockResolvedValueOnce({ rows: [{ status: StudyStatus.Recrutamento }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ perfil: 'Participante', status: 'Ativo' }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ ...candidate, email: null }], rowCount: 1 });
+    database.query.mockResolvedValueOnce({ rows: [candidate], rowCount: 1 });
+    await service.create(studyId, { id_usuario: researcherId, name: candidate.name }, researcherId);
+    expect(transactionClient.query.mock.calls[2]?.[1]).toEqual([studyId, candidate.name, null, researcherId]);
 
     await expect(service.list(studyId, researcherId)).resolves.toEqual([candidate]);
     expect(studies.assertCandidateStudyAccess).toHaveBeenCalledWith(studyId, researcherId);
-    expect(database.query.mock.calls[1]?.[1]).toEqual([studyId]);
-    expect(database.query.mock.calls[1]?.[0]).toContain('WHERE id_estudo = $1');
+    expect(database.query.mock.calls[0]?.[1]).toEqual([studyId]);
+    expect(database.query.mock.calls[0]?.[0]).toContain('WHERE id_estudo = $1');
   });
 
   it('não cadastra candidato se o estudo não existe', async () => {
     studies.assertCandidateStudyAccess.mockRejectedValue(new NotFoundException('Estudo não encontrado.'));
-    await expect(service.create(studyId, { name: candidate.name }, researcherId))
+    await expect(service.create(studyId, { id_usuario: researcherId, name: candidate.name }, researcherId))
       .rejects.toThrow(NotFoundException);
     expect(database.query).not.toHaveBeenCalled();
   });
@@ -105,14 +113,15 @@ describe('CandidatesService', () => {
       observation: null,
     };
     transactionClient.query.mockResolvedValueOnce({ rows: [{ status: StudyStatus.Recrutamento }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ id_usuario: researcherId }], rowCount: 1 })
       .mockResolvedValueOnce({ rows: [consent], rowCount: 1 });
     await expect(service.registerConsent(studyId, candidate.id, {
       status: 'Registrado',
       termVersion: 'simulado-v1',
     }, researcherId)).resolves.toEqual(consent);
     expect(studies.assertConsentStudyAccess).toHaveBeenCalledWith(studyId, researcherId, true);
-    expect(transactionClient.query.mock.calls[1]?.[0]).toContain('FROM candidatos c');
-    expect(transactionClient.query.mock.calls[1]?.[1]).toEqual([
+    expect(transactionClient.query.mock.calls[2]?.[0]).toContain('FROM candidatos c');
+    expect(transactionClient.query.mock.calls[2]?.[1]).toEqual([
       studyId, candidate.id, 'Registrado', 'simulado-v1', researcherId, null,
     ]);
   });
@@ -179,12 +188,12 @@ describe('CandidatesService', () => {
         rows: [{ status: 'recrutamento', participantLimit: 5, participantsLinked: 2 }],
         rowCount: 1,
       })
-      .mockResolvedValueOnce({ rows: [{ status: 'Elegível' }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ id_usuario: researcherId, status: 'Elegível' }], rowCount: 1 })
       .mockResolvedValueOnce({
         rows: [{ type: 'Inclusão', result: 'Atende' }, { type: 'Exclusão', result: 'Não atende' }],
         rowCount: 2,
       })
-      .mockResolvedValueOnce({ rows: [{ status: 'Registrado' }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ id_usuario: researcherId, status: 'Registrado' }], rowCount: 1 })
       .mockResolvedValueOnce({ rows: [{ count: 2 }], rowCount: 1 })
       .mockResolvedValueOnce({
         rows: [{
@@ -234,7 +243,7 @@ describe('CandidatesService', () => {
         rows: [{ status: 'recrutamento', participantLimit: 5, participantsLinked: 2 }],
         rowCount: 1,
       })
-      .mockResolvedValueOnce({ rows: [{ status: 'Inelegível' }], rowCount: 1 });
+      .mockResolvedValueOnce({ rows: [{ id_usuario: researcherId, status: 'Inelegível' }], rowCount: 1 });
 
     await expect(service.include(studyId, candidate.id, researcherId))
       .rejects.toThrow('Candidato inelegível');
@@ -253,7 +262,7 @@ describe('CandidatesService', () => {
         rows: [{ status: 'recrutamento', participantLimit: 5, participantsLinked: 2 }],
         rowCount: 1,
       })
-      .mockResolvedValueOnce({ rows: [{ status: 'Elegível' }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ id_usuario: researcherId, status: 'Elegível' }], rowCount: 1 })
       .mockResolvedValueOnce({ rows, rowCount: rows.length });
 
     await expect(service.include(studyId, candidate.id, researcherId))
@@ -268,7 +277,7 @@ describe('CandidatesService', () => {
   ])('identifica status persistido %s sem inferir outro motivo (%s)', async (status, code) => {
     transactionClient.query
       .mockResolvedValueOnce({ rows: [{ status: 'recrutamento', participantLimit: 5, participantsLinked: 0 }], rowCount: 1 })
-      .mockResolvedValueOnce({ rows: [{ status }], rowCount: 1 });
+      .mockResolvedValueOnce({ rows: [{ id_usuario: researcherId, status }], rowCount: 1 });
     await expect(service.include(studyId, candidate.id, researcherId)).rejects.toMatchObject({ response: expect.objectContaining({ code }) });
     expect(transactionClient.query).toHaveBeenCalledTimes(2);
   });
@@ -279,7 +288,7 @@ describe('CandidatesService', () => {
         rows: [{ status: 'recrutamento', participantLimit: 5, participantsLinked: 2 }],
         rowCount: 1,
       })
-      .mockResolvedValueOnce({ rows: [{ status: 'Elegível' }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ id_usuario: researcherId, status: 'Elegível' }], rowCount: 1 })
       .mockResolvedValueOnce({ rows: [{ type: 'Inclusão', result: 'Atende' }], rowCount: 1 })
       .mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
@@ -294,9 +303,9 @@ describe('CandidatesService', () => {
         rows: [{ status: 'recrutamento', participantLimit: 5, participantsLinked: 2 }],
         rowCount: 1,
       })
-      .mockResolvedValueOnce({ rows: [{ status: 'Elegível' }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ id_usuario: researcherId, status: 'Elegível' }], rowCount: 1 })
       .mockResolvedValueOnce({ rows: [{ type: 'Inclusão', result: 'Atende' }], rowCount: 1 })
-      .mockResolvedValueOnce({ rows: [{ status: 'Revogado' }], rowCount: 1 });
+      .mockResolvedValueOnce({ rows: [{ id_usuario: researcherId, status: 'Revogado' }], rowCount: 1 });
 
     await expect(service.include(studyId, candidate.id, researcherId))
       .rejects.toThrow('Consentimento ausente ou não concedido');
@@ -309,9 +318,9 @@ describe('CandidatesService', () => {
         rows: [{ status: 'recrutamento', participantLimit: 2, participantsLinked: 2 }],
         rowCount: 1,
       })
-      .mockResolvedValueOnce({ rows: [{ status: 'Elegível' }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ id_usuario: researcherId, status: 'Elegível' }], rowCount: 1 })
       .mockResolvedValueOnce({ rows: [{ type: 'Inclusão', result: 'Atende' }], rowCount: 1 })
-      .mockResolvedValueOnce({ rows: [{ status: 'Registrado' }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ id_usuario: researcherId, status: 'Registrado' }], rowCount: 1 })
       .mockResolvedValueOnce({ rows: [{ count: 2 }], rowCount: 1 });
 
     await expect(service.include(studyId, candidate.id, researcherId))
@@ -321,7 +330,7 @@ describe('CandidatesService', () => {
 
   it('bloqueia cadastro quando o estudo está encerrado', async () => {
     studies.assertCandidateStudyAccess.mockRejectedValue(new BadRequestException());
-    await expect(service.create(studyId, { name: candidate.name }, researcherId))
+    await expect(service.create(studyId, { id_usuario: researcherId, name: candidate.name }, researcherId))
       .rejects.toThrow(BadRequestException);
     expect(database.query).not.toHaveBeenCalled();
   });

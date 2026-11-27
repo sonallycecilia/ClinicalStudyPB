@@ -9,6 +9,7 @@ export type CandidateRecruitmentStatus =
 export interface Candidate {
   id: string;
   studyId: string;
+  id_usuario: string | null;
   name: string;
   email: string | null;
   status: CandidateRecruitmentStatus;
@@ -16,6 +17,7 @@ export interface Candidate {
 }
 
 export interface CreateCandidateInput {
+  id_usuario: string;
   name: string;
   email?: string | null;
 }

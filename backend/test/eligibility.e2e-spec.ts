@@ -1,3 +1,4 @@
+import { candidateAccountId } from './candidate-fixture.js';
 import request from 'supertest';
 import { databaseTestApp } from './database-test-app.js';
 import { UsersService } from '../src/users/users.service.js';
@@ -60,7 +61,7 @@ describe('RF09 — autorização e persistência PostgreSQL', () => {
     }
     await request(api()).patch(`${studyPath}/status`).set('Authorization', auth(ownerToken)).send({ status: 'recrutamento' }).expect(200);
     const candidate = await request(api()).post(`${studyPath}/candidates`).set('Authorization', auth(coordinatorToken))
-      .send({ name: 'Candidato RF09' }).expect(201);
+      .send({ id_usuario: await candidateAccountId(fixture.app), name: 'Candidato RF09' }).expect(201);
     candidateId = candidate.body.id;
     assessmentPath = `${studyPath}/candidates/${candidateId}/eligibility-assessments`;
   });

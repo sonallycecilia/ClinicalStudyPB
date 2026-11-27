@@ -103,7 +103,13 @@ Os estudos iniciam em `planejamento` e persistem um dos estados `planejamento`, 
 
 ## Candidatos (RF08)
 
-`POST /studies/:studyId/candidates` cadastra um candidato com `name` obrigatório e `email` opcional; `GET` no mesmo caminho lista os candidatos. Pesquisadores ativos acessam somente estudos próprios; Coordenadores ativos acessam todos os estudos em `recrutamento`, sem vínculo individual no modelo atual. Estudos encerrados não aceitam cadastro. Os corpos são validados pelo `ValidationPipe` com DTO, `class-validator` e `class-transformer`.
+`POST /studies/:studyId/candidates` exige `id_usuario` (UUID de uma conta existente, ativa e de perfil `Participante`), além de `name` obrigatório e `email` opcional. Use o campo `id` retornado por `GET /users/eligible-participants` como `id_usuario`. O backend revalida a conta e a fase do estudo sob bloqueio, e persiste o vínculo na mesma transação do cadastro. 
+
+O sucesso retorna `201` com os campos anteriores e `id_usuario`. Vínculo ausente, UUID inválido ou conta inexistente, inativa ou de outro perfil retornam `422` com `{ "codigo": "CONTA_PARTICIPANTE_INVALIDA", "mensagem": "Selecione uma conta de participante ativa.", "campo": "id_usuario" }`. A mesma conta no mesmo estudo retorna `409`, inclusive em concorrência; em estudos distintos é permitida. Os demais erros de DTO continuam `400` pelo padrão NestJS, assim como UUID inválido no caminho. Sem sessão retorna `401`; sem autorização, `403`; estudo inexistente, `404`.
+
+`GET` no mesmo caminho lista inclusive candidatos legados com `id_usuario: null`. Pesquisadores ativos acessam somente estudos próprios; Coordenadores ativos acessam todos os estudos em `recrutamento`, sem vínculo individual no modelo atual. Estudos encerrados não aceitam cadastro. Os corpos são validados pelo `ValidationPipe` com DTO, `class-validator` e `class-transformer`. A política anterior do Pesquisador proprietário foi preservada; 
+
+Candidatos sem conta continuam consultáveis (listagem, avaliações e consentimentos históricos), mas novos registros retornam `422` com código `CANDIDATO_SEM_VINCULO`, sem alterar históricos ou vagas. Não há associação automática por nome/e-mail nem migração de históricos. O schema permanece anulável para preservar os legados.
 
 ### Avaliação de elegibilidade (RF09)
 
