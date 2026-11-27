@@ -4,6 +4,7 @@ import { StudyVisitsSection } from './StudyVisitsSection';
 import { StudiesPage } from '../pages/StudiesPage';
 import type { Study } from '../studies/studiesApi';
 import type { PlannedVisit, VisitActivity } from '../studies/visitsApi';
+import type { ScheduledVisit } from '../visits/scheduledVisitsApi';
 import type { WebUser } from '../types';
 
 const { mockUseAuth, mockRequest } = vi.hoisted(() => ({
@@ -685,5 +686,138 @@ describe('StudyVisitsSection — detalhes do estudo', () => {
     expect(screen.queryByRole('article', { name: /Consulta inicial/ })).toBeNull();
     expect(within(heroOf(other.title)).getByText('Planejamento')).toBeTruthy();
     expect(screen.getByRole('button', { name: '+ Cadastrar visita' })).toBeTruthy();
+  });
+});
+
+describe('StudyVisitsSection — adicionar atividade a visita existente (S3C-W1-02)', () => {
+  const scheduledFollowUp: ScheduledVisit = {
+    id: 'sv1', studyId: 'study-one', participationId: 'p1', participantName: 'Participante Teste',
+    plannedVisitId: 'v2', plannedVisitName: 'Retorno', plannedVisitOrder: 2,
+    scheduledAt: '2026-12-01T12:00:00.000Z', status: 'Agendada', realizedAt: null, observation: null, createdAt: '2026-11-20T12:00:00.000Z',
+  };
+
+  /** Agenda do estudo (E03) servida junto à API de visitas em memória. */
+  function withSchedule(schedule: ScheduledVisit[]): Override {
+    return (path) => path.startsWith('/studies/study-one/scheduled-visits') ? jsonResponse(schedule) : null;
+  }
+
+  async function openAddActivity(visitName: string) {
+    fireEvent.click(await screen.findByRole('button', { name: `Adicionar atividade à visita ${visitName}` }));
+    return screen.getByRole('dialog', { name: 'Adicionar atividade à visita' });
+  }
+
+  function fillNewActivity(dialog: HTMLElement, name: string, type: string) {
+    fill(dialog, /Nome da atividade/, name);
+    fill(dialog, /^Tipo/, type);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Adicionar atividade' }));
+  }
+
+  it('oferece a ação somente nas visitas previstas sem agendamento', async () => {
+    routeApi({ visits: [baseline, followUp], activities: [vitals] }, withSchedule([scheduledFollowUp]));
+    render(<StudyVisitsSection studyId="study-one" />);
+
+    const first = await screen.findByRole('article', { name: /Visita 1 Consulta inicial/ });
+    const second = screen.getByRole('article', { name: /Visita 2 Retorno/ });
+    expect(await within(first).findByRole('button', { name: 'Adicionar atividade à visita Consulta inicial' })).toBeTruthy();
+    expect(within(second).queryByRole('button', { name: /Adicionar atividade/ })).toBeNull();
+    expect(within(second).getByText('Visita com agendamento: as atividades não podem ser alteradas.')).toBeTruthy();
+  });
+
+  it('envia a atividade com o identificador da visita e mantém as anteriores visíveis após recarga', async () => {
+    const store = routeApi({ visits: [baseline], activities: [vitals] }, withSchedule([]));
+    render(<StudyVisitsSection studyId="study-one" />);
+    const dialog = await openAddActivity('Consulta inicial');
+
+    // As atividades anteriores aparecem no diálogo, somente para consulta.
+    expect(within(dialog).getByRole('list', { name: 'Atividades de Consulta inicial' })).toBeTruthy();
+    fillNewActivity(dialog, '  Questionário simulado ', 'Questionário');
+
+    expect((await screen.findByRole('status')).textContent).toBe('Atividade adicionada à visita Consulta inicial.');
+    expect(posts()).toEqual([['/studies/study-one/visits/v1/activities', { name: 'Questionário simulado', type: 'Questionário', description: null }]]);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    await waitFor(() => expect(within(screen.getByRole('list', { name: 'Atividades de Consulta inicial' })).getAllByRole('listitem')
+      .map((item) => item.querySelector('strong')?.textContent)).toEqual(['Coleta de sinais vitais', 'Questionário simulado']));
+    expect(store.activities).toHaveLength(2);
+  });
+
+  it('valida os campos obrigatórios sem enviar a atividade', async () => {
+    routeApi({ visits: [baseline] }, withSchedule([]));
+    render(<StudyVisitsSection studyId="study-one" />);
+    const dialog = await openAddActivity('Consulta inicial');
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Adicionar atividade' }));
+
+    expect(within(dialog).getAllByText('Este campo é obrigatório.')).toHaveLength(2);
+    expect(posts()).toEqual([]);
+  });
+
+  it('exibe a recusa 422 da visita já agendada, preserva o texto e confere a agenda de novo ao fechar', async () => {
+    let schedule: ScheduledVisit[] = [];
+    routeApi({ visits: [baseline] }, (path, init) => {
+      if (path.startsWith('/studies/study-one/scheduled-visits')) return jsonResponse(schedule);
+      return init?.method === 'POST' ? jsonResponse({ statusCode: 422, message: 'Visita prevista já possui agendamentos.' }, 422) : null;
+    });
+    render(<StudyVisitsSection studyId="study-one" />);
+    const dialog = await openAddActivity('Consulta inicial');
+    fillNewActivity(dialog, 'Questionário simulado', 'Questionário');
+
+    expect((await within(dialog).findByRole('alert')).textContent).toBe('Visita prevista já possui agendamentos.');
+    expect(within(dialog).getByLabelText(/Nome da atividade/)).toHaveProperty('value', 'Questionário simulado');
+
+    schedule = [{ ...scheduledFollowUp, plannedVisitId: 'v1', plannedVisitName: 'Consulta inicial', plannedVisitOrder: 1 }];
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancelar' }));
+    expect(await screen.findByText('Visita com agendamento: as atividades não podem ser alteradas.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Adicionar atividade à visita/ })).toBeNull();
+  });
+
+  it('usa um texto próprio quando a recusa 422 não traz mensagem', async () => {
+    routeApi({ visits: [baseline] }, (path, init) => {
+      if (path.startsWith('/studies/study-one/scheduled-visits')) return jsonResponse([]);
+      return init?.method === 'POST' ? jsonResponse({ statusCode: 422 }, 422) : null;
+    });
+    render(<StudyVisitsSection studyId="study-one" />);
+    const dialog = await openAddActivity('Consulta inicial');
+    fillNewActivity(dialog, 'Questionário simulado', 'Questionário');
+
+    expect((await within(dialog).findByRole('alert')).textContent).toBe('Não é possível alterar as atividades de uma visita que já possui agendamentos.');
+  });
+
+  it('não reenvia a atividade quando a conexão cai depois de o backend gravá-la', async () => {
+    let lose = true;
+    const store = routeApi({ visits: [baseline], activities: [vitals] }, withSchedule([]), () => lose);
+    render(<StudyVisitsSection studyId="study-one" />);
+    const dialog = await openAddActivity('Consulta inicial');
+    fillNewActivity(dialog, 'Questionário simulado', 'Questionário');
+    await within(dialog).findByRole('alert');
+
+    lose = false;
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Tentar novamente' }));
+
+    expect((await screen.findByRole('status')).textContent).toBe('Atividade adicionada à visita Consulta inicial.');
+    expect(store.activities.map((item) => item.name)).toEqual(['Coleta de sinais vitais', 'Questionário simulado']);
+  });
+
+  it('sem a agenda, não oferece a ação e permite verificar de novo', async () => {
+    let fail = true;
+    routeApi({ visits: [baseline] }, (path) => path.startsWith('/studies/study-one/scheduled-visits')
+      ? (fail ? jsonResponse({ message: 'Erro' }, 500) : jsonResponse([]))
+      : null);
+    render(<StudyVisitsSection studyId="study-one" />);
+
+    const retry = await screen.findByRole('button', { name: 'Verificar agendamentos' });
+    expect(screen.queryByRole('button', { name: /Adicionar atividade à visita/ })).toBeNull();
+    fail = false;
+    fireEvent.click(retry);
+
+    expect(await screen.findByRole('button', { name: 'Adicionar atividade à visita Consulta inicial' })).toBeTruthy();
+  });
+
+  it('em estudo encerrado, não consulta a agenda nem oferece a ação', async () => {
+    routeApi({ visits: [baseline] }, withSchedule([]));
+    render(<StudyVisitsSection studyId="study-one" readOnly />);
+
+    await screen.findByRole('article', { name: /Visita 1 Consulta inicial/ });
+    expect(screen.queryByRole('button', { name: /Adicionar atividade/ })).toBeNull();
+    expect(mockRequest.mock.calls.some(([path]) => String(path).includes('scheduled-visits'))).toBe(false);
   });
 });

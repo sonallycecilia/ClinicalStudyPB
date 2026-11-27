@@ -4,6 +4,7 @@ import { CalendarClock, X } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { ORDER_CONFLICT, UNEXPECTED_VISITS_LOAD_ERROR, VisitsApiError, listVisitsWithActivities, savePlannedVisit } from '../studies/visitsApi';
 import type { PlannedVisitInput, PlannedVisitWithActivities, VisitActivityInput } from '../studies/visitsApi';
+import { useScheduledVisits } from '../visits/useScheduledVisits';
 
 // Mesmos limites do CreatePlannedVisitRequestDto e do CreateVisitActivityRequestDto no backend.
 const MAX_NAME_LENGTH = 150;
@@ -107,6 +108,141 @@ function VisitField({ label, required = false, error, hint, children }: { label:
       {hint && <small className="study-field-hint">{hint}</small>}
       {error && <small role="alert" className="study-field-error">{error}</small>}
     </label>
+  );
+}
+
+const ACTIVITY_TYPES_LIST_ID = 'study-visit-activity-types';
+
+function ActivityFields({ activity, errors, disabled, onChange }: { activity: ActivityDraft; errors: FieldErrors; disabled: boolean; onChange: (field: ActivityField, value: string) => void }) {
+  const error = (field: ActivityField) => errors[activityErrorKey(activity.key, field)];
+  return (
+    <>
+      <div className="study-visit-activity-fields">
+        <VisitField label="Nome da atividade" required error={error('name')}>
+          <input value={activity.name} onChange={(event) => onChange('name', event.target.value)} placeholder="Ex.: Coleta de sinais vitais" aria-invalid={Boolean(error('name'))} disabled={disabled} required />
+        </VisitField>
+        <VisitField label="Tipo" required error={error('type')} hint={`Máximo de ${MAX_TYPE_LENGTH} caracteres.`}>
+          <input list={ACTIVITY_TYPES_LIST_ID} value={activity.type} onChange={(event) => onChange('type', event.target.value)} placeholder="Ex.: Exame" aria-invalid={Boolean(error('type'))} disabled={disabled} required />
+        </VisitField>
+      </div>
+      <VisitField label="Descrição da atividade" error={error('description')} hint={`Opcional. Máximo de ${MAX_DESCRIPTION_LENGTH} caracteres.`}>
+        <textarea className="study-visit-textarea" value={activity.description} onChange={(event) => onChange('description', event.target.value)} placeholder="Ex.: Aferir pressão arterial e frequência cardíaca." aria-invalid={Boolean(error('description'))} disabled={disabled} />
+      </VisitField>
+    </>
+  );
+}
+
+/** Sugere tipos já usados no estudo; a API aceita qualquer texto. */
+function ActivityTypesList({ knownTypes }: { knownTypes: string[] }) {
+  return <datalist id={ACTIVITY_TYPES_LIST_ID}>{knownTypes.map((type) => <option key={type} value={type} />)}</datalist>;
+}
+
+function ActivitiesList({ visit }: { visit: PlannedVisitWithActivities }) {
+  if (visit.activities.length === 0) return <div className="study-empty-state">Nenhuma atividade cadastrada.</div>;
+  return (
+    <ul className="study-criteria-list" aria-label={`Atividades de ${visit.name}`}>
+      {visit.activities.map((activity) => <li className="study-criteria-item" key={activity.id}>
+        <div className="study-visit-activity">
+          <strong>{activity.name}</strong>
+          <span className="study-visit-activity-type">{activity.type}</span>
+        </div>
+        {activity.description && <p className="study-visit-description">{activity.description}</p>}
+      </li>)}
+    </ul>
+  );
+}
+
+interface AddActivityDialogProps {
+  studyId: string;
+  visit: PlannedVisitWithActivities;
+  knownTypes: string[];
+  /** `changed` indica que algo pode ter sido gravado ou recusado pela API, para atualizar a listagem. */
+  onClose: (changed: boolean) => void;
+  onSaved: () => void;
+}
+
+/**
+ * S3C-W1-02 — acrescenta uma atividade a uma visita prevista já gravada (POST .../visits/:visitId/activities).
+ * As atividades anteriores continuam visíveis no diálogo, somente para consulta.
+ */
+function AddActivityDialog({ studyId, visit, knownTypes, onClose, onSaved }: AddActivityDialogProps) {
+  const { request } = useAuth();
+  const [activity, setActivity] = useState<ActivityDraft>({ key: 'new-activity', name: '', type: '', description: '' });
+  const [errors, setErrors] = useState<FieldErrors>({});
+  const [submitError, setSubmitError] = useState<VisitsApiError | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const savingRef = useRef(false);
+  const titleId = `study-visit-add-activity-title-${visit.id}`;
+
+  function update(field: ActivityField, value: string) {
+    const next = { ...activity, [field]: value };
+    setActivity(next);
+    const key = activityErrorKey(activity.key, field);
+    const message = activityFieldError(field, next);
+    setErrors((current) => {
+      if (!(key in current)) return current;
+      const rest = Object.fromEntries(Object.entries(current).filter(([item]) => item !== key));
+      return message ? { ...rest, [key]: message } : rest;
+    });
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (savingRef.current) return;
+    const validation = validateActivities([activity]);
+    setErrors(validation);
+    if (Object.keys(validation).length > 0) return;
+
+    savingRef.current = true;
+    setIsSaving(true);
+    setSubmitError(null);
+    // A visita já existe: somente a atividade é enviada, com o identificador da visita na rota.
+    // Depois de uma falha incerta, a API é consultada antes de reenviar; as atividades anteriores não contam.
+    const knownIds = submitError?.retryable ? visit.activities.map((item) => item.id) : undefined;
+    const result = await savePlannedVisit(request, studyId, visit, [toActivityInput(activity)], visit.id, knownIds);
+    savingRef.current = false;
+    setIsSaving(false);
+    if (!result.error) return onSaved();
+    setSubmitError(result.error);
+    setErrors(Object.fromEntries(Object.entries(result.error.fieldErrors).map(([field, message]) => [activityErrorKey(activity.key, field), message])));
+  }
+
+  function close() {
+    if (!isSaving) onClose(submitError !== null);
+  }
+
+  return (
+    <div className="study-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
+      <section className="study-form-panel study-visit-form-panel" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+        <div className="study-form-heading">
+          <h2 id={titleId}>Adicionar atividade à visita</h2>
+        </div>
+        <p className="study-criteria-description"><span className="study-visit-order">Visita {visit.order}</span> {visit.name}</p>
+        <section className="study-visit-activities" aria-labelledby={`${titleId}-current`}>
+          <div className="study-criteria-group-heading">
+            <h3 id={`${titleId}-current`}>Atividades já cadastradas</h3>
+            <span className="study-status status-planejamento">{activitiesLabel(visit.activities.length)}</span>
+          </div>
+          <ActivitiesList visit={visit} />
+        </section>
+        <form className="study-form" noValidate onSubmit={(event) => void submit(event)}>
+          <fieldset className="study-visit-activity-fieldset" aria-label="Nova atividade">
+            <div className="study-visit-activity-heading">
+              <h4>Nova atividade</h4>
+            </div>
+            <ActivityFields activity={activity} errors={errors} disabled={isSaving} onChange={update} />
+          </fieldset>
+          <ActivityTypesList knownTypes={knownTypes} />
+          {submitError && <div className="study-criteria-load-error">
+            <p role="alert" className="form-error">{submitError.message}</p>
+          </div>}
+          <div className="study-form-actions">
+            <button className="button button-outline" type="button" onClick={close} disabled={isSaving}>Cancelar</button>
+            <button className="button button-primary" type="submit" disabled={isSaving}>{isSaving ? 'Salvando...' : submitError?.retryable ? 'Tentar novamente' : 'Adicionar atividade'}</button>
+          </div>
+        </form>
+      </section>
+    </div>
   );
 }
 
@@ -242,20 +378,9 @@ function VisitFormDialog({ studyId, usedOrders, knownTypes, onClose, onSaved }: 
                 <h4>Atividade {index + 1}</h4>
                 <button type="button" className="text-action delete-action" disabled={isSaving} aria-label={`Remover atividade ${index + 1}`} onClick={() => removeActivity(activity.key)}>Remover</button>
               </div>
-              <div className="study-visit-activity-fields">
-                <VisitField label="Nome da atividade" required error={errors[`${activity.key}-name`]}>
-                  <input value={activity.name} onChange={(event) => updateActivity(activity, 'name', event.target.value)} placeholder="Ex.: Coleta de sinais vitais" aria-invalid={Boolean(errors[`${activity.key}-name`])} disabled={isSaving} required />
-                </VisitField>
-                <VisitField label="Tipo" required error={errors[`${activity.key}-type`]} hint={`Máximo de ${MAX_TYPE_LENGTH} caracteres.`}>
-                  <input list="study-visit-activity-types" value={activity.type} onChange={(event) => updateActivity(activity, 'type', event.target.value)} placeholder="Ex.: Exame" aria-invalid={Boolean(errors[`${activity.key}-type`])} disabled={isSaving} required />
-                </VisitField>
-              </div>
-              <VisitField label="Descrição da atividade" error={errors[`${activity.key}-description`]} hint={`Opcional. Máximo de ${MAX_DESCRIPTION_LENGTH} caracteres.`}>
-                <textarea className="study-visit-textarea" value={activity.description} onChange={(event) => updateActivity(activity, 'description', event.target.value)} placeholder="Ex.: Aferir pressão arterial e frequência cardíaca." aria-invalid={Boolean(errors[`${activity.key}-description`])} disabled={isSaving} />
-              </VisitField>
+              <ActivityFields activity={activity} errors={errors} disabled={isSaving} onChange={(field, value) => updateActivity(activity, field, value)} />
             </fieldset>)}
-            {/* Sugere tipos já usados no estudo; a API aceita qualquer texto. */}
-            <datalist id="study-visit-activity-types">{knownTypes.map((type) => <option key={type} value={type} />)}</datalist>
+            <ActivityTypesList knownTypes={knownTypes} />
             <div className="study-form-actions study-visit-add-activity">
               <button className="button button-outline" type="button" disabled={isSaving} onClick={addActivity}>+ Adicionar atividade</button>
             </div>
@@ -307,9 +432,15 @@ function useStudyVisits(studyId: string) {
 /** Visitas previstas do estudo, com suas atividades; em estudo encerrado (`readOnly`) o backend recusa novos cadastros. */
 export function StudyVisitsSection({ studyId, readOnly = false }: { studyId: string; readOnly?: boolean }) {
   const { visits, isLoading, loadError, reload } = useStudyVisits(studyId);
+  // A agenda só é consultada quando o estudo aceita alterações: ela decide quais visitas recebem atividades (D09).
+  const schedule = useScheduledVisits(readOnly ? '' : studyId);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [activityVisitId, setActivityVisitId] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
   const knownTypes = [...new Set(visits.flatMap((visit) => visit.activities.map((activity) => activity.type)))];
+  const activityVisit = visits.find((visit) => visit.id === activityVisitId);
+  // Qualquer agendamento, em qualquer situação, bloqueia as atividades da visita prevista.
+  const scheduledVisitIds = schedule.state.status === 'ready' ? new Set(schedule.state.visits.map((item) => item.plannedVisitId)) : null;
 
   function closeForm(saved: boolean) {
     setIsFormOpen(false);
@@ -319,6 +450,23 @@ export function StudyVisitsSection({ studyId, readOnly = false }: { studyId: str
   function finishSave() {
     setIsFormOpen(false);
     setNotice('Visita cadastrada com sucesso.');
+    reload();
+  }
+
+  function openActivityForm(visitId: string) {
+    setNotice('');
+    setActivityVisitId(visitId);
+  }
+
+  function closeActivityForm(changed: boolean) {
+    setActivityVisitId(null);
+    // Uma recusa pode indicar que a visita foi agendada depois da consulta; a agenda é conferida de novo.
+    if (changed) { reload(); schedule.reload(); }
+  }
+
+  function finishActivitySave() {
+    setNotice(activityVisit ? `Atividade adicionada à visita ${activityVisit.name}.` : 'Atividade adicionada com sucesso.');
+    setActivityVisitId(null);
     reload();
   }
 
@@ -345,20 +493,26 @@ export function StudyVisitsSection({ studyId, readOnly = false }: { studyId: str
             </div>
             <p className="study-visit-interval"><CalendarClock size={13} /> {intervalLabel(visit.intervalDays)}</p>
             {visit.description && <p className="study-visit-description">{visit.description}</p>}
-            {visit.activities.length === 0
-              ? <div className="study-empty-state">Nenhuma atividade cadastrada.</div>
-              : <ul className="study-criteria-list" aria-label={`Atividades de ${visit.name}`}>
-                {visit.activities.map((activity) => <li className="study-criteria-item" key={activity.id}>
-                  <div className="study-visit-activity">
-                    <strong>{activity.name}</strong>
-                    <span className="study-visit-activity-type">{activity.type}</span>
-                  </div>
-                  {activity.description && <p className="study-visit-description">{activity.description}</p>}
-                </li>)}
-              </ul>}
+            <ActivitiesList visit={visit} />
+            {!readOnly && scheduledVisitIds && (scheduledVisitIds.has(visit.id)
+              ? <p className="study-field-hint">Visita com agendamento: as atividades não podem ser alteradas.</p>
+              : <div className="study-form-actions study-visit-add-activity">
+                <button className="button button-outline" type="button" aria-label={`Adicionar atividade à visita ${visit.name}`} onClick={() => openActivityForm(visit.id)}>+ Adicionar atividade</button>
+              </div>)}
           </article>
         </li>)}
       </ol>}
+      {!readOnly && !isLoading && !loadError && visits.length > 0 && schedule.state.status === 'error' && <div className="study-criteria-load-error">
+        <p className="form-error">Não foi possível verificar os agendamentos das visitas. A inclusão de atividades fica indisponível até a verificação.</p>
+        <button className="button button-outline" type="button" onClick={schedule.reload}>Verificar agendamentos</button>
+      </div>}
+      {activityVisit && <AddActivityDialog
+        studyId={studyId}
+        visit={activityVisit}
+        knownTypes={knownTypes}
+        onClose={closeActivityForm}
+        onSaved={finishActivitySave}
+      />}
       {isFormOpen && <VisitFormDialog
         studyId={studyId}
         usedOrders={visits.map((visit) => visit.order)}

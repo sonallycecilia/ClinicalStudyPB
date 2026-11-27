@@ -73,12 +73,15 @@ const SAVE_ERROR_TEXTS: ErrorTexts = {
 // 401, 403 e 409 trazem texto escrito para o usuário; em 404 e 5xx, o texto pode ser do framework.
 // Em 400, o ValidationPipe responde uma lista técnica em inglês e o ParseUUIDPipe, "Validation failed...";
 // já as regras de negócio (ex.: "Não é possível alterar um estudo encerrado.") vêm como texto em português.
+// 422 (contrato S3C-PO-01, D09): atividade recusada, por exemplo em visita prevista que já possui agendamento.
+export const SCHEDULED_VISIT_LOCKED = 'Não é possível alterar as atividades de uma visita que já possui agendamentos.';
+
 function errorFromResponse(status: number, message: unknown, texts: ErrorTexts): VisitsApiError {
   if (status === 404) return new VisitsApiError(texts.notFound, false);
-  if (status === 400) {
+  if (status === 400 || status === 422) {
     if (Array.isArray(message)) return new VisitsApiError(texts.invalid, false, rejectedFields(message));
     const isUserFacing = typeof message === 'string' && message.length > 0 && !message.startsWith('Validation failed');
-    return new VisitsApiError(isUserFacing ? message : texts.invalid, false);
+    return new VisitsApiError(isUserFacing ? message : status === 422 ? SCHEDULED_VISIT_LOCKED : texts.invalid, false);
   }
   const fallbacks: Record<number, string> = {
     401: 'Sua sessão expirou. Entre novamente para continuar.',

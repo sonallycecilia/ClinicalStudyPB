@@ -182,4 +182,56 @@ describe('RF05 e RF06 — critérios, visitas e atividades', () => {
       expect(response.body.message).to.equal('Não é possível alterar um estudo encerrado.');
     });
   });
+
+  it('CYP-S3C-W1-02 — adiciona atividade a visita existente e mantém as anteriores após recarga', () => {
+    const title = `Estudo Cypress atividade posterior ${Date.now()}`;
+    const visitName = `Consulta inicial ${Date.now()}`;
+    const firstActivity = `Coleta de sinais vitais ${Date.now()}`;
+    const newActivity = `Questionário simulado ${Date.now()}`;
+
+    cy.contains('button', 'Cadastrar estudo').click();
+    fillStudyForm(title);
+    cy.get('[role="dialog"]').contains('button', 'Cadastrar estudo').click();
+    cy.get('[role="dialog"]').contains('button', 'Ver estudos').click();
+    openStudyDetails(title);
+    cy.contains('button', '+ Cadastrar visita').click();
+    cy.get('[role="dialog"]').within(() => {
+      cy.contains('label', 'Nome da visita').find('input').type(visitName);
+      cy.contains('button', '+ Adicionar atividade').click();
+      cy.get('fieldset[aria-label="Atividade 1"]').within(() => {
+        cy.contains('label', 'Nome da atividade').find('input').type(firstActivity);
+        cy.contains('label', 'Tipo').find('input').type('Exame');
+      });
+      cy.contains('button', 'Cadastrar visita').click();
+    });
+    cy.contains('[role="status"]', 'Visita cadastrada com sucesso.').should('be.visible');
+
+    // Visita sem agendamento: a ação aparece na própria visita e o diálogo mostra as atividades anteriores.
+    cy.intercept('POST', `${API_URL}/studies/*/visits/*/activities`).as('addActivity');
+    cy.get(`button[aria-label="Adicionar atividade à visita ${visitName}"]`).click();
+    cy.get('[role="dialog"]').within(() => {
+      cy.contains('h2', 'Adicionar atividade à visita').should('be.visible');
+      cy.contains(firstActivity).should('be.visible');
+      cy.contains('button', 'Adicionar atividade').click();
+      cy.contains('Este campo é obrigatório.').should('be.visible');
+      cy.contains('label', 'Nome da atividade').find('input').type(newActivity);
+      cy.contains('label', 'Tipo').find('input').type('Questionário');
+      cy.contains('button', 'Adicionar atividade').click();
+    });
+    cy.wait('@addActivity').then(({ request, response }) => {
+      expect(response?.statusCode).to.eq(201);
+      expect(request.body).to.deep.equal({ name: newActivity, type: 'Questionário', description: null });
+      expect(response?.body.visitId).to.be.a('string');
+      expect(request.url).to.include(`/visits/${response?.body.visitId}/activities`);
+    });
+    cy.contains('[role="status"]', `Atividade adicionada à visita ${visitName}.`).should('be.visible');
+
+    cy.reload();
+    cy.contains('h2', 'Meus estudos', { timeout: 10000 }).should('be.visible');
+    openStudyDetails(title);
+    cy.get(`ul[aria-label="Atividades de ${visitName}"] li`).should('have.length', 2)
+      .then((items) => {
+        expect([...items].map((item) => item.querySelector('strong')?.textContent)).to.deep.equal([firstActivity, newActivity]);
+      });
+  });
 });
