@@ -37,6 +37,7 @@ import {
 import {
   ApiErrorResponseDto,
   CreateUserRequestDto,
+  EligibleParticipantAccountResponseDto,
   MessageResponseDto,
   PublicUserResponseDto,
   UpdateUserRequestDto,
@@ -58,6 +59,19 @@ export class UsersController {
   @ApiForbiddenResponse({ description: 'Somente Administradores podem listar contas.', type: ApiErrorResponseDto })
   list() {
     return this.usersService.list();
+  }
+
+  @Get('eligible-participants')
+  @Roles('Coordenador')
+  @ApiOperation({
+    summary: 'Consultar contas de Participantes ativos para seleção pelo Coordenador',
+    description: 'Lista contas do perfil Participante com status Ativo, em ordem de criação. A criação de contas pela API é restrita ao Administrador; o modelo não registra a autoria histórica. Não avalia elegibilidade clínica nem filtra por estudo ou vínculo com candidatos.',
+  })
+  @ApiOkResponse({ description: 'Somente id, name e email; retorna [] quando não há contas disponíveis.', type: EligibleParticipantAccountResponseDto, isArray: true })
+  @ApiUnauthorizedResponse({ description: 'Token ausente, inválido, expirado ou sessão inativa.', type: ApiErrorResponseDto })
+  @ApiForbiddenResponse({ description: 'Somente Coordenadores podem consultar estas contas.', type: ApiErrorResponseDto })
+  listEligibleParticipants() {
+    return this.usersService.listEligibleParticipants();
   }
 
   @Post()
