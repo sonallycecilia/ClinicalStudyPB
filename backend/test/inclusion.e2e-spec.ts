@@ -1,3 +1,4 @@
+import { candidateAccountId } from './candidate-fixture.js';
 import request from 'supertest';
 import { databaseTestApp } from './database-test-app.js';
 import { UsersService } from '../src/users/users.service.js';
@@ -64,7 +65,7 @@ describe('RF11 — inclusão autorizada, transacional e concorrente no PostgreSQ
       else exclusionId = criterion.body.id;
     }
     await request(api()).patch(`${studyPath()}/status`).set('Authorization', auth(ownerToken)).send({ status: 'recrutamento' }).expect(200);
-    const candidate = await request(api()).post(`${studyPath()}/candidates`).set('Authorization', auth(coordinatorToken)).send({ name: 'Candidato RF11' }).expect(201);
+    const candidate = await request(api()).post(`${studyPath()}/candidates`).set('Authorization', auth(coordinatorToken)).send({ id_usuario: await candidateAccountId(fixture.app), name: 'Candidato RF11' }).expect(201);
     candidateId = candidate.body.id;
   });
 
@@ -157,7 +158,7 @@ describe('RF11 — inclusão autorizada, transacional e concorrente no PostgreSQ
 
   it('permite apenas um vencedor na disputa concorrente pela última vaga', async () => {
     await evaluate(); await consent();
-    const second = await request(api()).post(`${studyPath()}/candidates`).set('Authorization', auth(coordinatorToken)).send({ name: 'Concorrente RF11' }).expect(201);
+    const second = await request(api()).post(`${studyPath()}/candidates`).set('Authorization', auth(coordinatorToken)).send({ id_usuario: await candidateAccountId(fixture.app), name: 'Concorrente RF11' }).expect(201);
     await evaluate(second.body.id); await consent('Registrado', second.body.id);
     await db().query('UPDATE estudos SET limite_participantes = 1 WHERE id_estudo = $1', [studyId]);
     const responses = await Promise.all([include().then((response) => response), include(ownerToken, second.body.id).then((response) => response)]);

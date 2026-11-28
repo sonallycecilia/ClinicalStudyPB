@@ -1,8 +1,10 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { isUUID } from 'class-validator';
 import type { QueryResultRow } from 'pg';
 import { DatabaseService } from '../database/database.service.js';
 import { StudyStatus } from './study.types.js';
 import { StudiesService } from './studies.service.js';
+import { invalidParticipantAccount } from './candidates.validation.js';
 import type {
   Candidate,
   CandidateConsent,
@@ -19,6 +21,7 @@ import type {
 interface CandidateRow extends QueryResultRow {
   id: string;
   studyId: string;
+  id_usuario: string | null;
   name: string;
   email: string | null;
   status: Candidate['status'];
@@ -67,6 +70,7 @@ interface CandidateInclusionRow extends QueryResultRow {
 const CANDIDATE_COLUMNS = `
   id_candidato::text AS id,
   id_estudo::text AS "studyId",
+  id_usuario::text AS id_usuario,
   nome AS name,
   email AS email,
   status_recrutamento AS status,
@@ -74,6 +78,17 @@ const CANDIDATE_COLUMNS = `
 
 function inclusionRejection(code: CandidateInclusionErrorCode, message: string) {
   return new BadRequestException({ statusCode: 400, message, error: 'Bad Request', code });
+}
+
+function assertLinkedCandidate(candidate: { id_usuario: string | null } | undefined): void {
+  if (!candidate) throw new NotFoundException('Candidato não encontrado neste estudo.');
+  if (!candidate.id_usuario) {
+    throw new UnprocessableEntityException({
+      codigo: 'CANDIDATO_SEM_VINCULO',
+      mensagem: 'Candidato legado sem conta vinculada: permitido somente consultar (D10).',
+      campo: 'id_usuario',
+    });
+  }
 }
 
 @Injectable()
@@ -100,15 +115,46 @@ export class CandidatesService {
     input: CreateCandidateInput,
     userId: string,
   ): Promise<Candidate> {
-    await this.studiesService.assertCandidateStudyAccess(studyId, userId, true);
-    const { rows } = await this.database.query<CandidateRow>(
-      `INSERT INTO candidatos (id_estudo, nome, email)
-       VALUES ($1, $2, $3)
-       RETURNING ${CANDIDATE_COLUMNS}`,
-      [studyId, input.name, input.email ?? null],
-    );
-    if (!rows[0]) throw new Error('O banco não retornou o candidato cadastrado.');
-    return rows[0];
+    const study = await this.studiesService.assertCandidateStudyAccess(studyId, userId, true);
+    if (!input || typeof input.id_usuario !== 'string' || !isUUID(input.id_usuario)) {
+      throw invalidParticipantAccount();
+    }
+    try {
+      return await this.database.transaction(async (client) => {
+        const locked = await client.query<{ status: StudyStatus }>(
+          'SELECT status FROM estudos WHERE id_estudo = $1 AND id_pesquisador = $2 FOR SHARE',
+          [studyId, study.researcherId],
+        );
+        if (!locked.rows[0]) throw new NotFoundException('Estudo não encontrado.');
+        if (userId !== study.researcherId && locked.rows[0].status !== StudyStatus.Recrutamento) {
+          throw new ForbiddenException('O Coordenador só pode cadastrar candidatos de estudos em recrutamento.');
+        }
+        if (locked.rows[0].status === StudyStatus.Encerrado) {
+          throw new BadRequestException('Não é possível cadastrar candidatos em um estudo encerrado.');
+        }
+        // FOR SHARE impede inativação, troca de perfil ou exclusão entre validação e INSERT.
+        const account = await client.query<{ perfil: string; status: string }>(
+          'SELECT perfil, status FROM usuarios WHERE id_usuario = $1 FOR SHARE', [input.id_usuario],
+        );
+        if (account.rows[0]?.perfil !== 'Participante' || account.rows[0].status !== 'Ativo') {
+          throw invalidParticipantAccount();
+        }
+        const { rows } = await client.query<CandidateRow>(
+          `INSERT INTO candidatos (id_estudo, nome, email, id_usuario)
+           VALUES ($1, $2, $3, $4)
+           RETURNING ${CANDIDATE_COLUMNS}`,
+          [studyId, input.name, input.email ?? null, input.id_usuario],
+        );
+        if (!rows[0]) throw new Error('O banco não retornou o candidato cadastrado.');
+        return rows[0];
+      });
+    } catch (error) {
+      const pgError = error as { code?: string; constraint?: string };
+      if (pgError.code === '23505' && pgError.constraint === 'candidatos_estudo_usuario_unico') {
+        throw new ConflictException('Esta conta já está vinculada a um candidato neste estudo.');
+      }
+      throw error;
+    }
   }
 
   async registerConsent(
@@ -132,6 +178,11 @@ export class CandidatesService {
       if (registrarId !== study.researcherId && locked.rows[0].status !== StudyStatus.Recrutamento) {
         throw new ForbiddenException('O Coordenador só pode registrar consentimentos de estudos em recrutamento.');
       }
+      const candidate = await client.query<{ id_usuario: string | null }>(
+        'SELECT id_usuario FROM candidatos WHERE id_estudo = $1 AND id_candidato = $2 FOR UPDATE',
+        [studyId, candidateId],
+      );
+      assertLinkedCandidate(candidate.rows[0]);
       const { rows } = await client.query<CandidateConsentRow>(
         `INSERT INTO consentimentos
           (id_candidato, status, versao_termo, id_registrado_por, observacao)
@@ -210,8 +261,8 @@ export class CandidatesService {
         throw new ForbiddenException('O Coordenador só pode incluir participantes de estudos em recrutamento.');
       }
 
-      const candidateResult = await client.query<{ status: Candidate['status'] }>(
-        `SELECT status_recrutamento AS status
+      const candidateResult = await client.query<{ status: Candidate['status']; id_usuario: string | null }>(
+        `SELECT status_recrutamento AS status, id_usuario
          FROM candidatos
          WHERE id_estudo = $1 AND id_candidato = $2
          FOR UPDATE`,
@@ -219,6 +270,7 @@ export class CandidatesService {
       );
       const candidateRecord = candidateResult.rows[0];
       if (!candidateRecord) throw new NotFoundException('Candidato não encontrado neste estudo.');
+      assertLinkedCandidate(candidateRecord);
       if (candidateRecord.status !== 'Elegível') {
         const code: CandidateInclusionErrorCode = candidateRecord.status === 'Incluído' ? 'CANDIDATE_ALREADY_INCLUDED'
           : candidateRecord.status === 'Inelegível' ? 'CANDIDATE_INELIGIBLE'
@@ -350,8 +402,8 @@ export class CandidatesService {
         throw new ForbiddenException('O Coordenador só pode avaliar candidatos de estudos em recrutamento.');
       }
 
-      const candidateResult = await client.query<{ status: Candidate['status'] }>(
-        `SELECT status_recrutamento AS status
+      const candidateResult = await client.query<{ status: Candidate['status']; id_usuario: string | null }>(
+        `SELECT status_recrutamento AS status, id_usuario
          FROM candidatos
          WHERE id_estudo = $1 AND id_candidato = $2
          FOR UPDATE`,
@@ -360,6 +412,7 @@ export class CandidatesService {
       if (!candidateResult.rows[0]) {
         throw new NotFoundException('Candidato não encontrado neste estudo.');
       }
+      assertLinkedCandidate(candidateResult.rows[0]);
       if (candidateResult.rows[0].status === 'Incluído') {
         throw new BadRequestException('O candidato já foi incluído neste estudo e não pode ser reavaliado.');
       }

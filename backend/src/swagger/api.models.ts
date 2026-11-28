@@ -952,6 +952,10 @@ export class ParticipantHistoryResponseDto implements ParticipantHistory {
 }
 
 export class CreateCandidateRequestDto implements CreateCandidateInput {
+  @ApiProperty({ format: 'uuid', description: 'ID da conta Participante ativa retornado como id por GET /users/eligible-participants.' })
+  @IsUUID()
+  id_usuario!: string;
+
   @ApiProperty({ minLength: 1, maxLength: 150, example: 'Lucas Martins' })
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
@@ -975,6 +979,9 @@ export class CreateCandidateRequestDto implements CreateCandidateInput {
 }
 
 export class CandidateResponseDto implements Candidate {
+  @ApiProperty({ format: 'uuid', nullable: true, description: 'Conta vinculada. Nulo apenas em registros legados, preservados para consulta (D10).' })
+  id_usuario!: string | null;
+
   @ApiProperty({ format: 'uuid' })
   id!: string;
 

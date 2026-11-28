@@ -13,26 +13,26 @@ const validationPipe = new ValidationPipe({
 describe('CreateCandidateRequestDto', () => {
   it('exige nome e rejeita nome vazio ou campos desconhecidos', async () => {
     await expect(validationPipe.transform(
-      { email: 'lucas@example.test' },
+      { id_usuario: '00000000-0000-4000-8000-000000000001', email: 'lucas@example.test' },
       { type: 'body', metatype: CreateCandidateRequestDto },
     )).rejects.toThrow(BadRequestException);
     await expect(validationPipe.transform(
-      { name: '   ' },
+      { id_usuario: '00000000-0000-4000-8000-000000000001', name: '   ' },
       { type: 'body', metatype: CreateCandidateRequestDto },
     )).rejects.toThrow(BadRequestException);
     await expect(validationPipe.transform(
-      { name: 'Lucas', unknown: true },
+      { id_usuario: '00000000-0000-4000-8000-000000000001', name: 'Lucas', unknown: true },
       { type: 'body', metatype: CreateCandidateRequestDto },
     )).rejects.toThrow(BadRequestException);
   });
 
   it('normaliza espaços e permite e-mail opcional válido', async () => {
     await expect(validationPipe.transform(
-      { name: ' Lucas Martins ', email: ' lucas@example.test ' },
+      { id_usuario: '00000000-0000-4000-8000-000000000001', name: ' Lucas Martins ', email: ' lucas@example.test ' },
       { type: 'body', metatype: CreateCandidateRequestDto },
-    )).resolves.toMatchObject({ name: 'Lucas Martins', email: 'lucas@example.test' });
+    )).resolves.toMatchObject({ id_usuario: '00000000-0000-4000-8000-000000000001', name: 'Lucas Martins', email: 'lucas@example.test' });
     await expect(validationPipe.transform(
-      { name: 'Lucas Martins', email: 'inválido' },
+      { id_usuario: '00000000-0000-4000-8000-000000000001', name: 'Lucas Martins', email: 'inválido' },
       { type: 'body', metatype: CreateCandidateRequestDto },
     )).rejects.toThrow(BadRequestException);
   });

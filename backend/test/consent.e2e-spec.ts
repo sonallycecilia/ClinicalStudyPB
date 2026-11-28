@@ -1,3 +1,4 @@
+import { candidateAccountId } from './candidate-fixture.js';
 import request from 'supertest';
 import { databaseTestApp } from './database-test-app.js';
 import { UsersService } from '../src/users/users.service.js';
@@ -45,7 +46,7 @@ describe('RF10 — autorização e persistência do consentimento simulado', () 
     const study = await request(api()).post('/studies').set('Authorization', auth(ownerToken)).send(studyInput).expect(201);
     studyId = study.body.id;
     await request(api()).patch(`${studyPath()}/status`).set('Authorization', auth(ownerToken)).send({ status: 'recrutamento' }).expect(200);
-    const candidate = await request(api()).post(`${studyPath()}/candidates`).set('Authorization', auth(coordinatorToken)).send({ name: 'Candidato de teste RF10' }).expect(201);
+    const candidate = await request(api()).post(`${studyPath()}/candidates`).set('Authorization', auth(coordinatorToken)).send({ id_usuario: await candidateAccountId(fixture.app), name: 'Candidato de teste RF10' }).expect(201);
     candidateId = candidate.body.id;
   });
 

@@ -1,3 +1,4 @@
+import { candidateAccountId } from './candidate-fixture.js';
 import request from 'supertest';
 import { databaseTestApp } from './database-test-app.js';
 import { UsersService } from '../src/users/users.service.js';
@@ -230,7 +231,7 @@ describe('Estudos clínicos com PostgreSQL (E2E)', () => {
 
     const created = await request(api()).post(`/studies/${study.body.id}/candidates`)
       .set('Authorization', bearer(researcherToken))
-      .send({ name: '  Lucas Martins  ', email: 'lucas@example.test' })
+      .send({ id_usuario: await candidateAccountId(fixture.app), name: '  Lucas Martins  ', email: 'lucas@example.test' })
       .expect(201);
     expect(created.body).toMatchObject({
       studyId: study.body.id,
@@ -240,14 +241,14 @@ describe('Estudos clínicos com PostgreSQL (E2E)', () => {
     });
 
     await request(api()).post(`/studies/${study.body.id}/candidates`)
-      .set('Authorization', bearer(researcherToken)).send({ email: 'lucas@example.test' }).expect(400);
+      .set('Authorization', bearer(researcherToken)).send({ id_usuario: await candidateAccountId(fixture.app), email: 'lucas@example.test' }).expect(400);
 
     await request(api()).get(`/studies/${study.body.id}/candidates`)
       .set('Authorization', bearer(researcherToken)).expect(200)
       .expect(({ body }) => expect(body).toEqual([created.body]));
 
     await request(api()).post('/studies/00000000-0000-4000-8000-000000000099/candidates')
-      .set('Authorization', bearer(researcherToken)).send({ name: 'Estudo inexistente' }).expect(404);
+      .set('Authorization', bearer(researcherToken)).send({ id_usuario: await candidateAccountId(fixture.app), name: 'Estudo inexistente' }).expect(404);
     await request(api()).get(`/studies/${study.body.id}/candidates`)
       .set('Authorization', bearer(otherResearcherToken)).expect(403);
   });
@@ -268,7 +269,7 @@ describe('Estudos clínicos com PostgreSQL (E2E)', () => {
       .set('Authorization', bearer(researcherToken))
       .send({ type: 'Inclusão', description: 'Critério de outro estudo.' }).expect(201);
     const candidate = await request(api()).post(`/studies/${study.body.id}/candidates`)
-      .set('Authorization', bearer(researcherToken)).send({ name: 'Pessoa elegível' }).expect(201);
+      .set('Authorization', bearer(researcherToken)).send({ id_usuario: await candidateAccountId(fixture.app), name: 'Pessoa elegível' }).expect(201);
 
     const assessmentInput = {
       evaluations: [
@@ -380,7 +381,7 @@ describe('Estudos clínicos com PostgreSQL (E2E)', () => {
     async function createCandidate(name: string) {
       return (await request(api()).post(`/studies/${study.body.id}/candidates`)
         .set('Authorization', bearer(researcherToken))
-        .send({ name })
+        .send({ id_usuario: await candidateAccountId(fixture.app), name })
         .expect(201)).body;
     }
 
@@ -559,7 +560,7 @@ describe('Estudos clínicos com PostgreSQL (E2E)', () => {
       async (name) => {
         const candidate = await request(api()).post(`/studies/${study.body.id}/candidates`)
           .set('Authorization', bearer(researcherToken))
-          .send({ name })
+          .send({ id_usuario: await candidateAccountId(fixture.app), name })
           .expect(201);
 
         await request(api())
@@ -661,7 +662,7 @@ describe('Estudos clínicos com PostgreSQL (E2E)', () => {
       .expect(201);
     const candidate = await request(api()).post(`/studies/${study.body.id}/candidates`)
       .set('Authorization', bearer(researcherToken))
-      .send({ name: 'Candidato para rollback' })
+      .send({ id_usuario: await candidateAccountId(fixture.app), name: 'Candidato para rollback' })
       .expect(201);
     await request(api())
       .post(`/studies/${study.body.id}/candidates/${candidate.body.id}/eligibility-assessments`)
@@ -750,7 +751,7 @@ describe('Estudos clínicos com PostgreSQL (E2E)', () => {
       .expect(201);
     const candidate = await request(api()).post(`/studies/${study.body.id}/candidates`)
       .set('Authorization', bearer(researcherToken))
-      .send({ name: 'Candidato com avaliação pendente' })
+      .send({ id_usuario: await candidateAccountId(fixture.app), name: 'Candidato com avaliação pendente' })
       .expect(201);
 
     await request(api())
@@ -814,7 +815,7 @@ describe('Estudos clínicos com PostgreSQL (E2E)', () => {
       .expect(201);
     const candidate = await request(api()).post(`/studies/${study.body.id}/candidates`)
       .set('Authorization', bearer(researcherToken))
-      .send({ name: 'Candidato com consentimento revogado' })
+      .send({ id_usuario: await candidateAccountId(fixture.app), name: 'Candidato com consentimento revogado' })
       .expect(201);
     await request(api())
       .post(`/studies/${study.body.id}/candidates/${candidate.body.id}/eligibility-assessments`)
@@ -983,7 +984,7 @@ it('permite ao Coordenador consultar somente estudos na fase Recrutamento, com I
       await request(api()).patch(`${studyPath}/status`).set('Authorization', bearer(ownerToken))
         .send({ status: StudyStatus.Recrutamento }).expect(200);
       const candidate = await request(api()).post(`${studyPath}/candidates`)
-        .set('Authorization', bearer(coordinatorToken)).send({ name: `Candidato RF08 ${index}` }).expect(201);
+        .set('Authorization', bearer(coordinatorToken)).send({ id_usuario: await candidateAccountId(fixture.app), name: `Candidato RF08 ${index}` }).expect(201);
       registered.push({ studyId: created.body.id, candidateId: candidate.body.id });
       for (const token of [coordinatorToken, ownerToken]) {
         await request(api()).get(`${studyPath}/candidates`).set('Authorization', bearer(token))
@@ -993,10 +994,10 @@ it('permite ao Coordenador consultar somente estudos na fase Recrutamento, com I
       for (const token of [unauthorizedResearcher, adminToken, participantToken]) {
         await request(api()).get(`${studyPath}/candidates`).set('Authorization', bearer(token)).expect(403);
         await request(api()).post(`${studyPath}/candidates`).set('Authorization', bearer(token))
-          .send({ name: 'Não autorizado' }).expect(403);
+          .send({ id_usuario: await candidateAccountId(fixture.app), name: 'Não autorizado' }).expect(403);
       }
       await request(api()).get(`${studyPath}/candidates`).expect(401);
-      await request(api()).post(`${studyPath}/candidates`).send({ name: 'Sem sessão' }).expect(401);
+      await request(api()).post(`${studyPath}/candidates`).send({ id_usuario: await candidateAccountId(fixture.app), name: 'Sem sessão' }).expect(401);
     }
     for (const item of registered) {
       await request(api()).get(`/studies/${item.studyId}/candidates`).set('Authorization', bearer(coordinatorToken))
@@ -1018,10 +1019,10 @@ it('permite ao Coordenador consultar somente estudos na fase Recrutamento, com I
       const expected = status === StudyStatus.Recrutamento;
       await request(api()).get(`${studyPath}/candidates`).set('Authorization', bearer(coordinatorToken)).expect(expected ? 200 : 403);
       await request(api()).post(`${studyPath}/candidates`).set('Authorization', bearer(coordinatorToken))
-        .send({ name: 'Candidato de recrutamento' }).expect(expected ? 201 : 403);
+        .send({ id_usuario: await candidateAccountId(fixture.app), name: 'Candidato de recrutamento' }).expect(expected ? 201 : 403);
     }
     await request(api()).post(`${studyPath}/candidates`).set('Authorization', bearer(researcherToken))
-      .send({ name: 'Estudo encerrado' }).expect(400);
+      .send({ id_usuario: await candidateAccountId(fixture.app), name: 'Estudo encerrado' }).expect(400);
     await request(api()).get(`${studyPath}/candidates`).set('Authorization', bearer(researcherToken))
       .expect(200).expect(({ body }) => expect(body).toHaveLength(1));
   });
@@ -1033,7 +1034,7 @@ it('permite ao Coordenador consultar somente estudos na fase Recrutamento, com I
     await request(api()).patch(`${studyPath}/status`).set('Authorization', bearer(researcherToken))
       .send({ status: StudyStatus.Recrutamento }).expect(200);
     const candidate = await request(api()).post(`${studyPath}/candidates`).set('Authorization', bearer(coordinatorToken))
-      .send({ name: 'Candidato protegido' }).expect(201);
+      .send({ id_usuario: await candidateAccountId(fixture.app), name: 'Candidato protegido' }).expect(201);
     const candidatePath = `${studyPath}/candidates/${candidate.body.id}`;
     for (const endpoint of ['consents']) {
       await request(api()).get(`${candidatePath}/${endpoint}`).set('Authorization', bearer(coordinatorToken)).expect(200);

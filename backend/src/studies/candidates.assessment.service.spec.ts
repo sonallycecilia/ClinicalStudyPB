@@ -52,11 +52,11 @@ describe('CandidatesService avaliação de elegibilidade', () => {
   function mockSuccessfulAssessment(status: Candidate['status'], evaluations: Record<string, unknown>[]) {
     txQuery
       .mockResolvedValueOnce({ rows: [{ status: StudyStatus.Recrutamento }], rowCount: 1 })
-      .mockResolvedValueOnce({ rows: [{ status: 'Em avaliação' }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ id_usuario: researcherId, status: 'Em avaliação' }], rowCount: 1 })
       .mockResolvedValueOnce({ rows: criteria, rowCount: criteria.length })
       .mockResolvedValueOnce({ rows: [], rowCount: 1 })
       .mockResolvedValueOnce({ rows: [], rowCount: 1 })
-      .mockResolvedValueOnce({ rows: [{ status }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ id_usuario: researcherId, status }], rowCount: 1 })
       .mockResolvedValueOnce({ rows: evaluations, rowCount: evaluations.length });
   }
 
@@ -92,11 +92,11 @@ describe('CandidatesService avaliação de elegibilidade', () => {
     ];
     txQuery
       .mockResolvedValueOnce({ rows: [{ status: StudyStatus.Recrutamento }], rowCount: 1 })
-      .mockResolvedValueOnce({ rows: [{ status: 'Elegível' }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ id_usuario: researcherId, status: 'Elegível' }], rowCount: 1 })
       .mockResolvedValueOnce({ rows: criteria, rowCount: criteria.length })
       .mockResolvedValueOnce({ rows: [], rowCount: 1 })
       .mockResolvedValueOnce({ rows: [], rowCount: 1 })
-      .mockResolvedValueOnce({ rows: [{ status: 'Inelegível' }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ id_usuario: researcherId, status: 'Inelegível' }], rowCount: 1 })
       .mockResolvedValueOnce({ rows: updatedEvaluations, rowCount: updatedEvaluations.length });
 
     await expect(service.evaluate(studyId, candidateId, {
@@ -156,7 +156,7 @@ describe('CandidatesService avaliação de elegibilidade', () => {
   it('impede reavaliar um candidato já incluído sem alterar suas avaliações', async () => {
     txQuery
       .mockResolvedValueOnce({ rows: [{ status: StudyStatus.Recrutamento }], rowCount: 1 })
-      .mockResolvedValueOnce({ rows: [{ status: 'Incluído' }], rowCount: 1 });
+      .mockResolvedValueOnce({ rows: [{ id_usuario: researcherId, status: 'Incluído' }], rowCount: 1 });
 
     await expect(service.evaluate(studyId, candidateId, {
       evaluations: [
@@ -200,7 +200,7 @@ describe('CandidatesService avaliação de elegibilidade', () => {
   it('rejeita critérios de outro estudo e respostas duplicadas antes de gravar', async () => {
     txQuery
       .mockResolvedValueOnce({ rows: [{ status: StudyStatus.Recrutamento }], rowCount: 1 })
-      .mockResolvedValueOnce({ rows: [{ status: 'Em avaliação' }], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [{ id_usuario: researcherId, status: 'Em avaliação' }], rowCount: 1 })
       .mockResolvedValueOnce({ rows: criteria, rowCount: criteria.length });
     await expect(service.evaluate(studyId, candidateId, {
       evaluations: [
