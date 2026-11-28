@@ -27,7 +27,8 @@ export type Criterion = {
 };
 export type Visit = { id: string; studyId: string; name: string; order: number };
 export type Activity = { id: string; visitId: string; name: string; type: string };
-export type Candidate = { id: string; studyId: string; name: string; email: string | null; status: string };
+export type Candidate = { id: string; studyId: string; id_usuario: string | null; name: string; email: string | null; status: string };
+export type ParticipantAccount = { id: string; name: string; email: string; role: string; status: string };
 export type Assessment = {
   candidateId: string;
   studyId: string;
@@ -121,14 +122,36 @@ export function createCriterion(
     });
 }
 
+export function createParticipantAccount(
+  name = `Participante Cypress ${Date.now()}`,
+): Cypress.Chainable<ParticipantAccount> {
+  const suffix = `${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
+  return login('administrator').then(({ accessToken: adminToken }) =>
+    api<ParticipantAccount>('POST', '/users', adminToken, {
+      name,
+      email: `cypress.${suffix}@example.test`,
+      phone: '83999990000',
+      role: 'Participante',
+      password: 'SenhaTeste123!',
+    }).then(({ status, body }) => {
+      expect(status, 'create active participant account for Cypress').to.equal(201);
+      expect(body).to.include({ role: 'Participante', status: 'Ativo' });
+      expect(body.id).to.be.a('string');
+      return body;
+    }));
+}
+
 export function createCandidate(token: string, studyId: string, name = `Candidato Cypress ${Date.now()}`): Cypress.Chainable<Candidate> {
-  return api<Candidate>('POST', `/studies/${studyId}/candidates`, token, {
-    name,
-    email: `cypress.${Date.now()}@example.test`,
-  }).then((response) => {
-    expect(response.status, 'candidate creation').to.equal(201);
-    return response.body;
-  });
+  return createParticipantAccount(name).then((account) =>
+    api<Candidate>('POST', `/studies/${studyId}/candidates`, token, {
+      id_usuario: account.id,
+      name,
+      email: account.email,
+    }).then((response) => {
+      expect(response.status, 'candidate creation').to.equal(201);
+      expect(response.body.id_usuario, 'candidate account association').to.equal(account.id);
+      return response.body;
+    }));
 }
 
 export function createCandidateFixture(

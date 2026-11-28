@@ -1,4 +1,4 @@
-import { api, createCandidate, createRecruitingStudy, login, missingId } from '../support/rf05-rf11';
+import { api, createCandidate, createParticipantAccount, createRecruitingStudy, login, missingId } from '../support/rf05-rf11';
 import type { Candidate } from '../support/rf05-rf11';
 
 describe('RF08 — cadastro de candidatos', () => {
@@ -35,19 +35,35 @@ describe('RF08 — cadastro de candidatos', () => {
   it('CT-RF08-03: impede cadastro sem nome ou com e-mail inválido', () => {
     login().then(({ accessToken }) => {
       createRecruitingStudy(accessToken).then((study) => {
-        api('POST', `/studies/${study.id}/candidates`, accessToken, { name: '   ' })
-          .its('status').should('equal', 400);
-        api('POST', `/studies/${study.id}/candidates`, accessToken, {
-          name: 'Candidato válido', email: 'email-invalido',
-        }).its('status').should('equal', 400);
+        createParticipantAccount('Candidato para validação').then((account) => {
+          api('POST', `/studies/${study.id}/candidates`, accessToken, {
+            id_usuario: account.id, name: '   ',
+          }).its('status').should('equal', 400);
+          api('POST', `/studies/${study.id}/candidates`, accessToken, {
+            id_usuario: account.id, name: 'Candidato válido', email: 'email-invalido',
+          }).its('status').should('equal', 400);
+        });
       });
     });
   });
 
   it('CT-RF08-04: impede cadastro de candidato em estudo inexistente', () => {
     login().then(({ accessToken }) => {
-      api('POST', `/studies/${missingId}/candidates`, accessToken, { name: 'Candidato' })
-        .its('status').should('equal', 404);
+      createParticipantAccount('Candidato em estudo inexistente').then((account) => {
+        api('POST', `/studies/${missingId}/candidates`, accessToken, {
+          id_usuario: account.id, name: 'Candidato',
+        }).its('status').should('equal', 404);
+      });
+    });
+  });
+
+  it('CT-RF08-06: rejeita cadastro sem conta de Participante vinculada', () => {
+    login().then(({ accessToken }) => {
+      createRecruitingStudy(accessToken).then((study) => {
+        api('POST', `/studies/${study.id}/candidates`, accessToken, {
+          name: 'Candidato sem conta', email: 'sem.conta@example.test',
+        }).its('status').should('equal', 422);
+      });
     });
   });
 
