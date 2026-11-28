@@ -1123,7 +1123,8 @@ describe('Participantes e visitas agendadas (E2E)', () => {
 
   it('permite leitura X02/X03 ao Coordenador sem liberar escrita e aplica estados de estudo', async () => {
     const study = await createStudy('D01 leitura pelo Coordenador');
-    const visit = await createPlannedVisit(study.id);
+    const visit = await createPlannedVisit(study.id, 'Consulta posterior', 2);
+    await createPlannedVisit(study.id, 'Consulta inicial', 1);
     await request(api())
       .post(`/studies/${study.id}/visits/${visit.id}/activities`)
       .set('Authorization', bearer(researcherToken))
@@ -1133,11 +1134,55 @@ describe('Participantes e visitas agendadas (E2E)', () => {
     await request(api())
       .get(`/studies/${study.id}/visits`)
       .set('Authorization', bearer(coordinatorToken))
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.map((plannedVisit: { order: number }) => plannedVisit.order)).toEqual([1, 2]);
+        expect(body[1]).toMatchObject({
+          id: visit.id,
+          studyId: study.id,
+          name: 'Consulta posterior',
+          order: 2,
+          intervalDays: 14,
+          description: 'Visita de acompanhamento.',
+        });
+      });
+    await request(api())
+      .get(`/studies/${study.id}/visits`)
+      .set('Authorization', bearer(researcherToken))
       .expect(200);
+    await request(api())
+      .get(`/studies/${study.id}/visits`)
+      .set('Authorization', bearer(otherResearcherToken))
+      .expect(403);
+    await request(api())
+      .get(`/studies/${study.id}/visits`)
+      .set('Authorization', bearer(adminToken))
+      .expect(403);
+    await request(api())
+      .get(`/studies/${study.id}/visits`)
+      .set('Authorization', bearer(participantToken))
+      .expect(403);
+    await request(api()).get(`/studies/${study.id}/visits`).expect(401);
+    await request(api())
+      .get(`/studies/${study.id}/visits`)
+      .set('Authorization', 'Bearer invalid')
+      .expect(401);
+    await request(api())
+      .get('/studies/invalido/visits')
+      .set('Authorization', bearer(coordinatorToken))
+      .expect(400);
+    await request(api())
+      .get('/studies/00000000-0000-4000-8000-000000000099/visits')
+      .set('Authorization', bearer(coordinatorToken))
+      .expect(404);
     await request(api())
       .get(`/studies/${study.id}/visits/${visit.id}/activities`)
       .set('Authorization', bearer(coordinatorToken))
       .expect(200);
+    await request(api())
+      .get(`/studies/${study.id}/visits/${visit.id}`)
+      .set('Authorization', bearer(coordinatorToken))
+      .expect(403);
     await request(api())
       .post(`/studies/${study.id}/visits`)
       .set('Authorization', bearer(coordinatorToken))
@@ -1149,10 +1194,24 @@ describe('Participantes e visitas agendadas (E2E)', () => {
       .send({ name: 'Atividade proibida', type: 'Exame' })
       .expect(403);
 
+    const planningStudy = await request(api())
+      .post('/studies')
+      .set('Authorization', bearer(researcherToken))
+      .send({ ...studyInput, title: 'D01 estudo em planejamento' })
+      .expect(201);
+    await request(api())
+      .get(`/studies/${planningStudy.body.id}/visits`)
+      .set('Authorization', bearer(coordinatorToken))
+      .expect(403);
+
     await request(api())
       .patch(`/studies/${study.id}/status`)
       .set('Authorization', bearer(researcherToken))
       .send({ status: 'execução' })
+      .expect(200);
+    await request(api())
+      .get(`/studies/${study.id}/visits`)
+      .set('Authorization', bearer(coordinatorToken))
       .expect(200);
     await request(api())
       .patch(`/studies/${study.id}/status`)
